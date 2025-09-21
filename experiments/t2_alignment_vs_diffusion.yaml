@@ -1,0 +1,6 @@
+
+# Example sweep config (placeholder)
+manifold: T2
+compare:
+  - alignment
+  - diffusion

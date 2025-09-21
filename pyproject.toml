@@ -1,0 +1,33 @@
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wsindy-manifold"
+version = "0.1.0"
+description = "Weak-form sparse PDE discovery on Riemannian manifolds + EF-ROM baseline"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Eugenio David Macias Orozco"}]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "scikit-learn>=1.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "black>=24.0",
+  "ruff>=0.6.0",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py310","py311"]
+
+[tool.ruff]
+line-length = 100
+select = ["E","F","W","I","UP"]

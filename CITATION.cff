@@ -1,0 +1,10 @@
+
+cff-version: 1.2.0
+title: "WSINDy on Manifolds (Thesis Code)"
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Macias Orozco"
+    given-names: "Eugenio David"
+version: "0.1.0"
+date-released: "2025-09-21"
+license: "MIT"

@@ -1,0 +1,6 @@
+
+# Example sweep config (placeholder)
+manifold: S2
+model: morse
+noise_sigma: 0.05
+bandwidth: 0.15
