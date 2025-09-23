@@ -1,41 +1,72 @@
-# WSINDy on Manifolds — Thesis Repo
+# Rectangular Collective Motion Simulator
 
-**Weak-Form Sparse Cell-to-Cell Interaction PDE Discovery from Noisy Trajectories on Curved Manifolds**
+Simulation toolkit for two-dimensional self-propelled agent swarms on a rectangular
+periodic or reflecting domain. The implementation follows the D'Orsogna model with a
+Morse attraction--repulsion potential, using parameter sweeps similar to Bhaskar &
+Ziegelmeier, *Chaos* **29**, 123125 (2019).
 
-This repo contains a modular, reproducible codebase to (1) discover interaction PDEs on curved Riemannian manifolds via a weak-form sparse regression (WSINDy), and (2) benchmark against an Equation‑Free Reduced‑Order Model (EF‑ROM).
+## Model
 
-## Features
-- Sobolev/Galerkin weak formulation with compactly supported test functions
-- Geodesic KDE for density & gradient estimation on manifolds
-- Sparse regression with MSTLS (multi-step thresholded least squares)
-- EF‑ROM baseline via POD/SVD + MVAR or LSTM
-- Diagnostics: predictive error, Koopman/transfer spectra, persistent homology, UQ
+For agents with positions $\mathbf{x}_i \in \mathbb{R}^2$ and velocities
+$\mathbf{v}_i \in \mathbb{R}^2$, the equations of motion read
+
+\begin{align}
+\dot{\mathbf{x}}_i &= \mathbf{v}_i, \\
+\dot{\mathbf{v}}_i &= (\alpha - \beta \lVert \mathbf{v}_i \rVert^2)\mathbf{v}_i
+ - \sum_{j\neq i} f(r_{ij}) \hat{\mathbf{r}}_{ij}, \\
+f(r) &= \frac{C_r}{\ell_r} e^{-r/\ell_r} - \frac{C_a}{\ell_a} e^{-r/\ell_a},
+\end{align}
+
+where $r_{ij} = \lVert \mathbf{x}_i - \mathbf{x}_j \rVert$ under the chosen boundary
+conditions and $\hat{\mathbf{r}}_{ij} = (\mathbf{x}_j - \mathbf{x}_i)/r_{ij}$.
+The interaction radius is truncated at $r_\mathrm{cut} = 3\max(\ell_r, \ell_a)$
+and neighbour lists accelerate force evaluation.
+
+Default parameters ($N=200$, $\alpha=1.5$, $\beta=0.5$, $L_x=L_y=20$) recover the
+collective behaviours described in the literature. Optionally a Vicsek-style alignment
+torque may be enabled.
+
+## Installation
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
 
 ## Quickstart
+
+Run a single simulation using the provided configuration:
+
 ```bash
-# clone your GitHub repo after creation, then cd into it and:
-conda env create -f env.yml  # or: python -m venv .venv && source .venv/bin/activate && pip install -e .[dev]
-conda activate wsindy-mfld
-pre-commit install  # optional: enables ruff/black on commit
-pytest -q           # run tests
+python -m rectsim.cli single --config examples/configs/single.yaml
 ```
 
-## Layout
-```
-src/wsindy_manifold/         # core Python package
-  geometry/                  # charts, differential ops, quadrature on M
-  density/                   # geodesic KDE, restriction (traj -> density)
-  wsindy/                    # weak system assembly + MSTLS
-  efrom/                     # EF-ROM: POD/SVD, MVAR, LSTM
-  diagnostics/               # metrics, Koopman, topology, UQ
-notebooks/                   # experiments & demos
-experiments/                 # YAML configs for sweeps
-tests/                       # unit tests (pytest)
-.github/workflows/ci.yml     # auto CI (lint+tests)
+Outputs are written to the directory specified in the configuration and include:
+
+- `traj.npz`: trajectory, velocity and metadata arrays.
+- `metrics.csv`: polarization, angular momentum and distance statistics.
+- `traj_final.png`: final positions with velocity quivers.
+- `order_params.png`: time series of order parameters.
+- `density_anim.mp4`: Gaussian-smoothed density movie (if enabled).
+- `density.npz`: gridded densities with coordinates and times.
+- `run.json`: configuration, seed and Git commit hash.
+
+To run a parameter sweep and collect a manifest:
+
+```bash
+python -m rectsim.cli grid --config examples/configs/grid.yaml
 ```
 
-## Citation
-Please cite this repository if it helps your research. See `CITATION.cff`.
+The grid runner creates per-combination output folders, a `manifest.csv` summary and
+heatmaps of average order parameters versus $(C_r, \ell_r)$.
+
+## Reproducibility
+
+All random number generation uses a configurable seed (default `0`). The run metadata
+includes the full configuration and the current Git commit hash to facilitate later
+analysis or WSINDy/EF-ROM system identification.
 
 ## License
-MIT — see `LICENSE`.
+
+MIT License. See `LICENSE` for details.

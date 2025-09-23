@@ -1,33 +1,28 @@
-
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "wsindy-manifold"
+name = "rectsim"
 version = "0.1.0"
-description = "Weak-form sparse PDE discovery on Riemannian manifolds + EF-ROM baseline"
+description = "Simulation of 2D collective motion with Morse interactions on a rectangular domain"
+authors = [{name = "Collective Motion Lab"}]
+license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [{name = "Eugenio David Macias Orozco"}]
 dependencies = [
-  "numpy>=1.24",
-  "scipy>=1.10",
-  "scikit-learn>=1.2",
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "tqdm",
+    "pyyaml",
+    "imageio",
+    "pandas",
+    "numba",
 ]
 
 [project.optional-dependencies]
-dev = [
-  "pytest>=7.0",
-  "black>=24.0",
-  "ruff>=0.6.0",
-]
+dev = ["pytest"]
 
-[tool.black]
-line-length = 100
-target-version = ["py310","py311"]
-
-[tool.ruff]
-line-length = 100
-select = ["E","F","W","I","UP"]
+[project.scripts]
+rectsim = "rectsim.cli:main"
