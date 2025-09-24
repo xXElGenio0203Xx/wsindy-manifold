@@ -25,6 +25,8 @@ def polarization(v: ArrayLike) -> float:
 
 
 def _center_of_mass(x: ArrayLike) -> ArrayLike:
+    """Return the mean position of all agents."""
+
     return np.mean(x, axis=0)
 
 

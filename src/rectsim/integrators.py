@@ -22,6 +22,8 @@ class State:
     t: float
 
     def copy(self) -> "State":
+        """Return a deep copy of the state object."""
+
         return State(x=self.x.copy(), v=self.v.copy(), t=float(self.t))
 
 
@@ -32,6 +34,8 @@ def _acceleration(
     fx: ArrayLike,
     fy: ArrayLike,
 ) -> ArrayLike:
+    """Compute the self-propulsion acceleration plus external forces."""
+
     speed_sq = np.sum(v**2, axis=1, keepdims=True)
     self_prop = (alpha - beta * speed_sq) * v
     return self_prop + np.column_stack((fx, fy))
@@ -53,6 +57,8 @@ def step_rk4(
     bc = domain["bc"]
 
     def eval_force(pos: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
+        """Wrap the force function with boundary-condition handling."""
+
         pos_wrapped = pos.copy()
         apply_bc(pos_wrapped, Lx, Ly, bc)
         return force_fn(pos_wrapped)

@@ -33,11 +33,15 @@ class ForceCalculator:
     calls: int = 0
 
     def rebuild(self, positions: ArrayLike) -> None:
+        """Rebuild the neighbor cell list for the provided particle positions."""
+
         start = time.perf_counter()
         self.cell_list = build_cells(positions, self.Lx, self.Ly, self.rcut, self.bc)
         self.total_time += time.perf_counter() - start
 
     def __call__(self, positions: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
+        """Evaluate Morse forces using cached neighbor information."""
+
         start = time.perf_counter()
         fx, fy = morse_force_pairs(
             positions,
@@ -67,6 +71,8 @@ def _alignment_step(
     dt: float,
     target_speed: float,
 ) -> ArrayLike:
+    """Relax velocities toward neighborhood averages for alignment interactions."""
+
     if rate <= 0:
         return v
 
@@ -180,7 +186,13 @@ def simulate(config: Dict[str, Dict]) -> Dict[str, ArrayLike]:
             frame_times.append(state.t)
 
         elapsed = time.perf_counter() - sim_start
-        pbar.set_postfix({"t": f"{state.t:.2f}", "force": force_calc.total_time:.2f, "elapsed": elapsed:.2f})
+        pbar.set_postfix(
+            {
+                "t": f"{state.t:.2f}",
+                "force": f"{force_calc.total_time:.2f}",
+                "elapsed": f"{elapsed:.2f}",
+            }
+        )
 
     pbar.close()
 

@@ -20,6 +20,8 @@ from .metrics import compute_timeseries
 
 
 def _parse_overrides(unknown: List[str]) -> List[Tuple[str, str]]:
+    """Convert unknown CLI args into key/value override tuples."""
+
     overrides: List[Tuple[str, str]] = []
     i = 0
     while i < len(unknown):
@@ -35,6 +37,8 @@ def _parse_overrides(unknown: List[str]) -> List[Tuple[str, str]]:
 
 
 def _convert_value(value: str):
+    """Interpret an override value as JSON when possible for type fidelity."""
+
     try:
         return json.loads(value)
     except json.JSONDecodeError:
@@ -42,6 +46,8 @@ def _convert_value(value: str):
 
 
 def _footer_text(config: Dict) -> str:
+    """Create a short text summary of key simulation parameters."""
+
     params = config["params"]
     sim = config["sim"]
     return (
@@ -52,6 +58,8 @@ def _footer_text(config: Dict) -> str:
 
 
 def _plot_final(out_dir: Path, traj: np.ndarray, vel: np.ndarray, config: Dict) -> None:
+    """Save a scatter/velocity quiver plot for the final frame of a run."""
+
     final_pos = traj[-1]
     final_vel = vel[-1]
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -79,6 +87,8 @@ def _plot_final(out_dir: Path, traj: np.ndarray, vel: np.ndarray, config: Dict) 
 
 
 def _plot_order_params(out_dir: Path, metrics_df: pd.DataFrame, config: Dict) -> None:
+    """Write plots of macroscopic order parameters across the simulation."""
+
     fig, axes = plt.subplots(2, 2, figsize=(10, 8), sharex=True)
     axes = axes.ravel()
     axes[0].plot(metrics_df["time"], metrics_df["polarization"], label="P")
@@ -106,6 +116,8 @@ def _plot_order_params(out_dir: Path, metrics_df: pd.DataFrame, config: Dict) ->
 
 
 def _plot_speeds(out_dir: Path, vel: np.ndarray, times: np.ndarray, config: Dict) -> None:
+    """Record distributions of particle speeds and energy through time."""
+
     speeds = np.linalg.norm(vel, axis=2)
     final = speeds[-1]
     fig, ax = plt.subplots(figsize=(6, 4))
@@ -131,6 +143,8 @@ def _plot_speeds(out_dir: Path, vel: np.ndarray, times: np.ndarray, config: Dict
 
 
 def _run_single(config: Dict) -> Dict:
+    """Execute one simulation and persist configured outputs to disk."""
+
     cfg = deepcopy(config)
     out_dir = Path(cfg["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -191,12 +205,16 @@ def _run_single(config: Dict) -> Dict:
 
 
 def cmd_single(args: argparse.Namespace, overrides: List[Tuple[str, str]]) -> None:
+    """Entry point for the ``single`` CLI command."""
+
     override_pairs = [(k, _convert_value(v)) for k, v in overrides]
     config = load_config(args.config, override_pairs)
     _run_single(config)
 
 
 def cmd_grid(args: argparse.Namespace, overrides: List[Tuple[str, str]]) -> None:
+    """Entry point for the ``grid`` CLI command that sweeps parameters."""
+
     override_pairs = [(k, _convert_value(v)) for k, v in overrides]
     config = load_config(args.config, override_pairs)
     base_cfg = deepcopy(config)
@@ -262,6 +280,8 @@ def cmd_grid(args: argparse.Namespace, overrides: List[Tuple[str, str]]) -> None
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Construct the top-level CLI argument parser."""
+
     parser = argparse.ArgumentParser(prog="rectsim")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -275,6 +295,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Iterable[str] | None = None) -> None:
+    """Run the command-line interface using the provided argv sequence."""
+
     parser = build_parser()
     args, unknown = parser.parse_known_args(argv)
     overrides = _parse_overrides(unknown)

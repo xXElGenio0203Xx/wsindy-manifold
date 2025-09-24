@@ -12,12 +12,16 @@ import pandas as pd
 
 
 def ensure_dir(path: str | Path) -> Path:
+    """Create a directory path if needed and return it as a :class:`Path`."""
+
     directory = Path(path)
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
 def save_npz(out_dir: str | Path, name: str, **arrays: np.ndarray) -> Path:
+    """Save numpy arrays into an ``.npz`` archive within ``out_dir``."""
+
     directory = ensure_dir(out_dir)
     path = directory / f"{name}.npz"
     np.savez(path, **arrays)
@@ -25,6 +29,8 @@ def save_npz(out_dir: str | Path, name: str, **arrays: np.ndarray) -> Path:
 
 
 def save_csv(out_dir: str | Path, name: str, df: pd.DataFrame) -> Path:
+    """Persist a :class:`pandas.DataFrame` as a CSV file in ``out_dir``."""
+
     directory = ensure_dir(out_dir)
     path = directory / f"{name}.csv"
     df.to_csv(path, index=False)
@@ -32,6 +38,8 @@ def save_csv(out_dir: str | Path, name: str, df: pd.DataFrame) -> Path:
 
 
 def git_commit_hash() -> str | None:
+    """Return the current git commit hash if available in the environment."""
+
     try:
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     except (subprocess.CalledProcessError, FileNotFoundError):  # pragma: no cover - git optional
@@ -40,6 +48,8 @@ def git_commit_hash() -> str | None:
 
 
 def save_run_metadata(out_dir: str | Path, config: Dict, results: Dict) -> Path:
+    """Write a JSON summary of the run configuration and outcomes."""
+
     directory = ensure_dir(out_dir)
     payload = {
         "seed": config.get("seed"),

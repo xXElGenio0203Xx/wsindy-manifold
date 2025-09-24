@@ -22,6 +22,8 @@ ArrayLike = np.ndarray
 
 
 def _morse_pair_force(r: float, Cr: float, Ca: float, lr: float, la: float) -> float:
+    """Return the scalar Morse force magnitude for a particle pair."""
+
     r = max(r, 1e-6)
     return Cr / lr * np.exp(-r / lr) - Ca / la * np.exp(-r / la)
 
