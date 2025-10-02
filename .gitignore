@@ -14,3 +14,7 @@ dist/
 .DS_Store
 outputs/
 data/
+
+# local node modules for renderer
+scripts/node_modules/
+scripts/package-lock.json
