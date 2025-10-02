@@ -59,13 +59,54 @@ def hist2d_movie(
 
         if animate:
             movie_path = out_path / "density_anim.mp4"
-            with imageio.get_writer(movie_path, fps=fps) as writer:
-                for frame in rho:
-                    frame_norm = frame - frame.min()
-                    if frame_norm.max() > 0:
-                        frame_norm /= frame_norm.max()
-                    image = (255 * frame_norm).astype(np.uint8)
-                    writer.append_data(image)
+            # First attempt: use imageio's ffmpeg writer directly. If that fails,
+            # fall back to writing PNG frames and assembling with the ffmpeg
+            # binary provided by imageio-ffmpeg (if available).
+            try:
+                w = imageio.get_writer(movie_path, fps=fps, format="FFMPEG")
+                with w as writer:
+                    for frame in rho:
+                        frame_norm = frame - frame.min()
+                        if frame_norm.max() > 0:
+                            frame_norm /= frame_norm.max()
+                        image = (255 * frame_norm).astype(np.uint8)
+                        writer.append_data(image)
+            except Exception:
+                # fallback: write PNG frames then call ffmpeg binary
+                try:
+                    import imageio_ffmpeg as iio_ff
+                    import subprocess
+
+                    frames_dir = out_path / "frames"
+                    frames_dir.mkdir(parents=True, exist_ok=True)
+                    for i, frame in enumerate(rho):
+                        frame_norm = frame - frame.min()
+                        if frame_norm.max() > 0:
+                            frame_norm /= frame_norm.max()
+                        image = (255 * frame_norm).astype(np.uint8)
+                        frame_path = frames_dir / f"frame_{i:04d}.png"
+                        imageio.imwrite(frame_path, image)
+
+                    ffmpeg_exe = iio_ff.get_ffmpeg_exe()
+                    cmd = [
+                        ffmpeg_exe,
+                        "-y",
+                        "-framerate",
+                        str(fps),
+                        "-i",
+                        str(frames_dir / "frame_%04d.png"),
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        str(movie_path),
+                    ]
+                    subprocess.run(cmd, check=True)
+                except Exception as exc:
+                    raise RuntimeError(
+                        "Failed to create animation: ensure 'imageio-ffmpeg' is installed "
+                        "and that ffmpeg can run in this environment."
+                    ) from exc
 
     return rho, xgrid, ygrid
 

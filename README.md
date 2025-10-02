@@ -70,3 +70,29 @@ analysis or WSINDy/EF-ROM system identification.
 ## License
 
 MIT License. See `LICENSE` for details.
+
+---
+
+Rendering LaTeX in this README
+--------------------------------
+
+GitHub's Markdown renderer doesn't natively render LaTeX math in `README.md`. This
+project includes a tiny renderer that converts LaTeX math blocks into SVG images and
+produces `README.rendered.md` which references those SVGs. The script lives at
+`scripts/render_readme_math.js` and is run automatically by a GitHub Action on pushes
+to `main`.
+
+Usage locally:
+
+1. Install Node.js (>=18).
+2. From the project root run:
+
+```bash
+cd scripts
+npm install mathjax-node
+node render_readme_math.js
+```
+
+This writes `README.rendered.md` and the generated SVGs under `assets/readme/`.
+Open `README.rendered.md` in GitHub or a Markdown viewer to see equations rendered as
+images.

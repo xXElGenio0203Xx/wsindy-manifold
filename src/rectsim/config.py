@@ -49,6 +49,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "ny": 128,
             "bandwidth": 0.5,
         },
+        "plot_options": {
+            "traj_marker_size": 20,
+            "traj_quiver_scale": 3.0,
+            "traj_quiver_width": 0.004,
+            "traj_quiver_alpha": 0.8,
+        },
     },
 }
 

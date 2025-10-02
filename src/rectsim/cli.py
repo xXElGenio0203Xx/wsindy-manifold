@@ -63,7 +63,14 @@ def _plot_final(out_dir: Path, traj: np.ndarray, vel: np.ndarray, config: Dict) 
     final_pos = traj[-1]
     final_vel = vel[-1]
     fig, ax = plt.subplots(figsize=(6, 6))
-    ax.scatter(final_pos[:, 0], final_pos[:, 1], c="C0", s=10, alpha=0.7)
+    # read plotting options from config with sensible defaults
+    plot_opts = config.get("outputs", {}).get("plot_options", {})
+    marker_size = plot_opts.get("traj_marker_size", 20)
+    quiver_scale = plot_opts.get("traj_quiver_scale", 3.0)
+    quiver_width = plot_opts.get("traj_quiver_width", 0.004)
+    quiver_alpha = plot_opts.get("traj_quiver_alpha", 0.8)
+
+    ax.scatter(final_pos[:, 0], final_pos[:, 1], c="C0", s=marker_size, alpha=0.8)
     ax.quiver(
         final_pos[:, 0],
         final_pos[:, 1],
@@ -71,9 +78,10 @@ def _plot_final(out_dir: Path, traj: np.ndarray, vel: np.ndarray, config: Dict) 
         final_vel[:, 1],
         angles="xy",
         scale_units="xy",
-        scale=10.0,
+        scale=quiver_scale,
+        width=quiver_width,
         color="C1",
-        alpha=0.6,
+        alpha=quiver_alpha,
     )
     ax.set_xlim(0, config["sim"]["Lx"])
     ax.set_ylim(0, config["sim"]["Ly"])
