@@ -1,4 +1,23 @@
-"""Morse potential forces for the D'Orsogna model."""
+"""Morse potential forces for the D'Orsogna model.
+
+This module implements a Morse-like pair potential and its radial force.
+
+The pair potential used (up to an additive constant) is::
+
+    U(r) = C_r exp(-r / l_r) - C_a exp(-r / l_a)
+
+The radial force magnitude returned by :func:`_morse_pair_force` is the
+negative derivative of the potential:
+
+    f(r) = -dU/dr = C_r / l_r * exp(-r / l_r) - C_a / l_a * exp(-r / l_a)
+
+The vector force applied to particle i by j is central and given by::
+
+    F_i = f(r) * (x_i - x_j) / r
+    F_j = -F_i
+
+Positive f(r) corresponds to repulsion; negative f(r) to attraction.
+"""
 
 from __future__ import annotations
 
