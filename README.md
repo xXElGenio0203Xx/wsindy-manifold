@@ -41,13 +41,6 @@ Run a single simulation using the provided configuration:
 ```bash
 python -m rectsim.cli single --config examples/configs/single.yaml
 ```
-
-Outputs are written to the directory specified in the configuration and include:
-
-- `traj.npz`: trajectory, velocity and metadata arrays.
-- `metrics.csv`: polarization, angular momentum and distance statistics.
-- `traj_final.png`: final positions with velocity quivers.
-- `order_params.png`: time series of order parameters.
 - `density_anim.mp4`: Gaussian-smoothed density movie (if enabled).
 - `density.npz`: gridded densities with coordinates and times.
 - `run.json`: configuration, seed and Git commit hash.
