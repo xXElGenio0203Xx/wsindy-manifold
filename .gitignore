@@ -1,3 +1,24 @@
+# Ignore generated artifacts and outputs
+artifacts/
+outputs/
+
+# Virtual environments
+.venv/
+env/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS files
+.DS_Store
+
+# Large media and model files
+*.mp4
+*.gif
+*.npz
+*.log
 __pycache__/
 .ipynb_checkpoints/
 *.pyc
