@@ -1,5 +1,5 @@
-# Gentle clustering - balanced forces
-# N=200, Ca=1.0, Cr=0.5, alignment ON
+# Loose clustering - prevent collapse with stronger repulsion
+# N=200, balanced forces to avoid tight packing
 
 # Domain configuration
 domain:
@@ -28,12 +28,12 @@ dynamics:
   
   forces:
     enabled: true
-    Cr: 0.5                       # Repulsion
-    Ca: 1.0                       # Attraction (C = Cr/Ca = 0.5)
-    lr: 0.5                       # Repulsion range (ℓ = lr/la = 0.5)
-    la: 1.0                       # Attraction range
+    Cr: 1.0                       # STRONGER repulsion (was 0.5) to prevent collapse
+    Ca: 0.8                       # Weaker attraction (was 1.0)
+    lr: 0.8                       # LONGER repulsion range (was 0.5)
+    la: 1.5                       # Longer attraction range (was 1.0)
     rcut_factor: 3.0
-    mu_t: 0.5                     # Force coupling
+    mu_t: 0.4                     # Weaker force coupling (was 0.5)
   
   noise:
     type: gaussian
@@ -46,7 +46,7 @@ dynamics:
 
 # Integration
 integration:
-  T: 100.0
+  T: 10.0
   dt: 0.01
   save_every: 10
   neighbor_rebuild: 5
@@ -55,7 +55,7 @@ integration:
 
 # Outputs
 outputs:
-  run_name: gentle_clustering
+  run_name: loose_clustering
   order_parameters: true
   animations: true
   save_csv: false

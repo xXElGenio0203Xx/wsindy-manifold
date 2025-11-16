@@ -1,0 +1,54 @@
+# Strong clustering with both Morse forces AND Vicsek alignment
+# Very strong attraction (Ca=15) + alignment for tight cohesive clusters
+
+sim_name: "strong_clustering"
+
+model:
+  type: discrete
+  speed: 1.5                      # Self-propulsion speed
+
+sim:
+  N: 200
+  Lx: 30.0
+  Ly: 30.0
+  bc: periodic                    # Periodic boundaries
+  T: 100.0
+  dt: 0.01
+  save_every: 10
+  neighbor_rebuild: 5
+  seed: 42
+
+params:
+  R: 4.0                          # Large alignment radius
+
+noise:
+  kind: gaussian
+  eta: 0.1                        # Low noise for strong order
+  match_variance: true
+
+forces:
+  enabled: true
+  type: morse
+  params:
+    Ca: 15.0                      # VERY STRONG attraction
+    Cr: 3.0                       # Moderate repulsion (C = 0.2)
+    la: 8.0                       # Long-range attraction
+    lr: 0.5                       # Short-range repulsion (ℓ = 0.0625)
+    rcut_factor: 3.0
+    mu_t: 1.5                     # Strong force coupling
+    alpha: 1.5
+    beta: 0.5
+
+alignment:
+  enabled: true                   # Turn ON Vicsek alignment!
+
+initial_distribution: uniform
+
+outputs:
+  run_name: strong_clustering
+  save_npz: true
+  order_parameters: true
+  save_csv: false
+  animations: true
+  fps: 20
+  density_resolution: 60

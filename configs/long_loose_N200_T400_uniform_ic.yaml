@@ -1,5 +1,5 @@
-# Long loose clustering - 4x duration for better MVAR-ROM training
-# Simple dynamics, low-dimensional POD, extended time for learning
+# Long loose clustering - UNIFORM initial conditions for testing generalization
+# Same dynamics as long_loose_N200_T400.yaml but with uniform IC instead of gaussian
 
 # Domain configuration
 domain:
@@ -10,7 +10,7 @@ domain:
 # Particle configuration
 particles:
   N: 200
-  initial_distribution: uniform
+  initial_distribution: uniform  # Different IC
   initial_speed: 0.5
   velocity_distribution: random
 
@@ -19,7 +19,7 @@ model:
   type: discrete
   speed_mode: constant
 
-# Dynamics
+# Dynamics (SAME as long_loose_N200_T400.yaml)
 dynamics:
   alignment:
     enabled: true
@@ -44,24 +44,23 @@ dynamics:
     alpha: 1.5
     beta: 0.5
 
-# Integration
+# Integration (SAME duration)
 integration:
-  T: 400.0                        # 4x longer (was 100)
+  T: 400.0                        # Same duration
   dt: 0.01
   save_every: 10
   neighbor_rebuild: 5
   integrator: euler
-  seed: 42
+  seed: 99                        # Different seed for different IC
 
 # Outputs
 outputs:
-  run_name: long_loose_N200_T400
+  run_name: long_loose_N200_T400_uniform_ic
   order_parameters: true
-  animations: true
+  animations: false               # Skip animations for speed
   save_csv: false
   fps: 20
   density_resolution: 50
   arrows:
-    enabled: true
-    scale: speed
-    scale_factor: 1.0
+    enabled: false
+

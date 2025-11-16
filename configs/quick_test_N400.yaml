@@ -1,17 +1,17 @@
-# Gentle clustering - balanced forces
-# N=200, Ca=1.0, Cr=0.5, alignment ON
+# Quick test - verify N=400 particles are actually used
+# Very short simulation for testing
 
 # Domain configuration
 domain:
-  Lx: 20.0
-  Ly: 20.0
+  Lx: 40.0
+  Ly: 40.0
   bc: periodic
 
 # Particle configuration
 particles:
-  N: 200
+  N: 400                          # Check this shows up!
   initial_distribution: uniform
-  initial_speed: 0.5
+  initial_speed: 1.2
   velocity_distribution: random
 
 # Model type
@@ -23,21 +23,21 @@ model:
 dynamics:
   alignment:
     enabled: true
-    radius: 2.0
+    radius: 5.0
     rate: 1.0
   
   forces:
     enabled: true
-    Cr: 0.5                       # Repulsion
-    Ca: 1.0                       # Attraction (C = Cr/Ca = 0.5)
-    lr: 0.5                       # Repulsion range (ℓ = lr/la = 0.5)
-    la: 1.0                       # Attraction range
+    Cr: 5.0
+    Ca: 30.0
+    lr: 0.4
+    la: 12.0
     rcut_factor: 3.0
-    mu_t: 0.5                     # Force coupling
+    mu_t: 2.0
   
   noise:
     type: gaussian
-    eta: 0.3
+    eta: 0.05
     match_variance: true
   
   self_propulsion:
@@ -46,16 +46,16 @@ dynamics:
 
 # Integration
 integration:
-  T: 100.0
+  T: 10.0                         # VERY SHORT - just 10 time units!
   dt: 0.01
-  save_every: 10
+  save_every: 5                   # Save less often
   neighbor_rebuild: 5
   integrator: euler
   seed: 42
 
 # Outputs
 outputs:
-  run_name: gentle_clustering
+  run_name: quick_test_N400
   order_parameters: true
   animations: true
   save_csv: false
