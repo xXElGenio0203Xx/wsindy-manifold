@@ -1,6 +1,7 @@
 # Ignore generated artifacts and outputs
 artifacts/
 outputs/
+slurm_logs/
 
 # Virtual environments
 .venv/

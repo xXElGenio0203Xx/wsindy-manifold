@@ -1,4 +1,25 @@
-"""Command-line interface for rectangular collective motion simulations."""
+"""Command-line interface and plotting utilities for the simulator.
+
+This module provides the command-line entry points and the helper
+functions that write plots and outputs for single runs and parameter
+grids.
+
+Key responsibilities
+- parse CLI overrides and convert them into dotted-key overrides
+- run single simulations and persist outputs (NPZ, CSV, plots, movies)
+- run grid sweeps and produce summary heatmaps
+
+How this module fits in
+- It uses :mod:`rectsim.config` to load validated configurations.
+- It calls :func:`rectsim.dynamics.simulate` to produce trajectories.
+- It uses :mod:`rectsim.metrics` and :mod:`rectsim.density` to compute
+    time-series and density movies, and :mod:`rectsim.io` to save files.
+
+Why these helpers exist
+- Keeping plotting and file I/O here keeps the simulation core
+    (``dynamics`` and ``morse``) free of side-effects, which makes
+    the numerical code easier to test and reuse.
+"""
 
 from __future__ import annotations
 
@@ -13,14 +34,31 @@ import numpy as np
 import pandas as pd
 
 from .config import load_config
-from .density import hist2d_movie
+from .density import density_movie_kde, hist2d_movie
 from .dynamics import simulate
 from .io import save_csv, save_npz, save_run_metadata
-from .metrics import compute_timeseries
+from .metrics import (
+    compute_timeseries,
+    mean_relative_error,
+    r2,
+    rmse,
+    tolerance_horizon,
+)
+from .vicsek_discrete import simulate_vicsek
+from wsindy_manifold.efrom import efrom_train_and_forecast
+from wsindy_manifold.latent.anim import animate_heatmap_movie, animate_side_by_side
 
 
 def _parse_overrides(unknown: List[str]) -> List[Tuple[str, str]]:
-    """Convert unknown CLI args into key/value override tuples."""
+    """Convert unknown CLI args into key/value override tuples.
+
+    How it works
+    ------------
+    The CLI accepts extra arguments like ``--sim.N 50``. The parser
+    receives them as an ``unknown`` list; this helper consumes the
+    list two items at a time and returns pairs without the leading
+    ``--`` so callers can pass them to ``load_config``.
+    """
 
     overrides: List[Tuple[str, str]] = []
     i = 0
@@ -37,7 +75,13 @@ def _parse_overrides(unknown: List[str]) -> List[Tuple[str, str]]:
 
 
 def _convert_value(value: str):
-    """Interpret an override value as JSON when possible for type fidelity."""
+    """Interpret an override value as JSON when possible for type fidelity.
+
+    This converts strings that look like JSON (numbers, booleans, lists,
+    objects) into Python objects. If parsing fails the raw string is
+    returned. This preserves types for overrides (e.g., ``--sim.N 50``
+    yields an int).
+    """
 
     try:
         return json.loads(value)
@@ -150,8 +194,192 @@ def _plot_speeds(out_dir: Path, vel: np.ndarray, times: np.ndarray, config: Dict
     plt.close(fig)
 
 
+def _vicsek_footer_text(cfg: Dict) -> str:
+    noise = cfg.get("noise", {})
+    parts = [
+        f"N={cfg['N']}",
+        f"Lx={cfg['Lx']}",
+        f"Ly={cfg['Ly']}",
+        f"bc={cfg['bc']}",
+        f"v0={cfg['v0']}",
+        f"R={cfg['R']}",
+        f"noise={noise.get('kind', 'gaussian')}",
+    ]
+    if noise.get("kind", "gaussian") == "gaussian":
+        parts.append(f"sigma={noise.get('sigma', 0.0)}")
+    else:
+        parts.append(f"eta={noise.get('eta', 0.0)}")
+    return "  ".join(parts)
+
+
+def _plot_vicsek_final(
+    out_dir: Path,
+    traj: np.ndarray,
+    vel: np.ndarray,
+    cfg: Dict,
+    plot_opts: Dict,
+) -> None:
+    final_pos = traj[-1]
+    final_vel = vel[-1]
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    marker_size = plot_opts.get("traj_marker_size", 20)
+    draw_quiver = plot_opts.get("traj_quiver", True)
+    quiver_scale = plot_opts.get("traj_quiver_scale", 3.0)
+    quiver_width = plot_opts.get("traj_quiver_width", 0.004)
+    quiver_alpha = plot_opts.get("traj_quiver_alpha", 0.8)
+
+    ax.scatter(final_pos[:, 0], final_pos[:, 1], c="C0", s=marker_size, alpha=0.8)
+    if draw_quiver:
+        ax.quiver(
+            final_pos[:, 0],
+            final_pos[:, 1],
+            final_vel[:, 0],
+            final_vel[:, 1],
+            angles="xy",
+            scale_units="xy",
+            scale=quiver_scale,
+            width=quiver_width,
+            color="C1",
+            alpha=quiver_alpha,
+        )
+    ax.set_xlim(0, cfg["Lx"])
+    ax.set_ylim(0, cfg["Ly"])
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_title("Final positions and headings")
+    fig.text(0.01, 0.01, _vicsek_footer_text(cfg), fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out_dir / "traj_final.png", dpi=200)
+    plt.close(fig)
+
+
+def _plot_vicsek_order_parameter(
+    out_dir: Path,
+    times: np.ndarray,
+    psi: np.ndarray,
+    cfg: Dict,
+) -> None:
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(times, psi, label="psi")
+    ax.set_xlabel("Time")
+    ax.set_ylabel(r"$\psi$")
+    ax.set_title("Vicsek order parameter")
+    ax.legend()
+    fig.text(0.01, 0.01, _vicsek_footer_text(cfg), fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out_dir / "order_parameter.png", dpi=200)
+    plt.close(fig)
+
+
+def _run_vicsek_single(config: Dict) -> Dict:
+    """Execute a discrete Vicsek simulation and persist outputs."""
+
+    cfg = deepcopy(config)
+    vicsek_cfg = deepcopy(cfg.get("vicsek", {}))
+    if not vicsek_cfg:
+        raise ValueError("Vicsek configuration missing under key 'vicsek'.")
+
+    out_dir = Path(vicsek_cfg.get("out_dir", cfg.get("out_dir", "outputs/vicsek")))
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    results = simulate_vicsek(vicsek_cfg)
+    traj = results["traj"]
+    headings = results["headings"]
+    vel = results["vel"]
+    times = results["times"]
+    psi = results["psi"]
+
+    psi_df = pd.DataFrame({"time": times, "psi": psi})
+
+    outputs_cfg = cfg.get("outputs", {})
+    plot_opts = outputs_cfg.get("plot_options", {})
+
+    if outputs_cfg.get("save_npz", True):
+        payload = {
+            "x": traj,
+            "headings": headings,
+            "v": vel,
+            "times": times,
+            "psi": psi,
+            "vicsek": np.array(json.dumps(vicsek_cfg)),
+        }
+        traj_npz = save_npz(out_dir, "traj", **payload)
+        alias_path = traj_npz.with_name("trajectories.npz")
+        np.savez(alias_path, **payload)
+
+    if outputs_cfg.get("save_csv", True):
+        save_csv(out_dir, "order_parameter", psi_df)
+
+    if outputs_cfg.get("plots", True):
+        _plot_vicsek_final(out_dir, traj, vel, vicsek_cfg, plot_opts)
+        _plot_vicsek_order_parameter(out_dir, times, psi, vicsek_cfg)
+
+    grid_cfg = outputs_cfg.get("grid_density", {})
+    if grid_cfg.get("enabled", True):
+        hist2d_movie(
+            traj,
+            times,
+            vicsek_cfg["Lx"],
+            vicsek_cfg["Ly"],
+            grid_cfg.get("nx", 128),
+            grid_cfg.get("ny", 128),
+            grid_cfg.get("bandwidth", 0.5),
+            vicsek_cfg["bc"],
+            out_dir,
+            animate=outputs_cfg.get("animate", True),
+        )
+        from .density import traj_movie
+
+        try:
+            traj_movie(
+                traj,
+                vel,
+                times,
+                vicsek_cfg["Lx"],
+                vicsek_cfg["Ly"],
+                out_dir,
+                fps=24,
+                marker_size=plot_opts.get("traj_marker_size", 4),
+                draw_vectors=plot_opts.get("traj_quiver", True),
+            )
+        except Exception:
+            pass
+
+    save_run_metadata(out_dir, cfg, results)
+
+    return {
+        "config": cfg,
+        "results": results,
+        "metrics": psi_df,
+        "out_dir": out_dir,
+    }
+
+
 def _run_single(config: Dict) -> Dict:
-    """Execute one simulation and persist configured outputs to disk."""
+    """Execute a single simulation and persist configured outputs.
+
+    Steps performed
+    ----------------
+    1. Create the output directory.
+    2. Call :func:`rectsim.dynamics.simulate` to compute trajectories.
+    3. Compute time-series metrics via :func:`rectsim.metrics.compute_timeseries`.
+    4. Optionally save NPZ/CSV files and produce plots (final positions,
+       order parameters, speed histogram, energy vs time).
+    5. Optionally compute and write density movies via
+       :func:`rectsim.density.hist2d_movie`.
+    6. Persist run metadata via :func:`rectsim.io.save_run_metadata`.
+
+    Why this is separated from the integrator
+    ------------------------------------------
+    The integrator (``dynamics``) returns pure data structures. Side
+    effects (disk I/O and plotting) are centralized here so they can
+    be modified independently from numerical code.
+    """
+
+    model = config.get("model", "social_force")
+    if model == "vicsek_discrete":
+        return _run_vicsek_single(config)
 
     cfg = deepcopy(config)
     out_dir = Path(cfg["out_dir"])
@@ -169,9 +397,21 @@ def _run_single(config: Dict) -> Dict:
     )
 
     if cfg["outputs"].get("save_npz", True):
-        save_npz(
+        traj_npz = save_npz(
             out_dir,
             "traj",
+            x=results["traj"],
+            v=results["vel"],
+            times=results["times"],
+            params=np.array(json.dumps(results["params"])),
+            sim=np.array(json.dumps(results["sim"])),
+        )
+        # Duplicate the archive under ``trajectories.npz`` for downstream
+        # tooling (e.g. latent-model scripts) that historically looked for
+        # that filename. Keeping both avoids breaking existing consumers.
+        alias_path = traj_npz.with_name("trajectories.npz")
+        np.savez(
+            alias_path,
             x=results["traj"],
             v=results["vel"],
             times=results["times"],
@@ -201,8 +441,38 @@ def _run_single(config: Dict) -> Dict:
             out_dir,
             animate=cfg["outputs"].get("animate", True),
         )
+        # produce a trajectory animation as well for visual comparison
+        plot_opts = cfg.get("outputs", {}).get("plot_options", {})
+        from .density import traj_movie
+
+        try:
+            traj_movie(
+                results["traj"],
+                results.get("vel"),
+                results["times"],
+                cfg["sim"]["Lx"],
+                cfg["sim"]["Ly"],
+                out_dir,
+                fps=24,
+                marker_size=plot_opts.get("traj_marker_size", 4),
+                draw_vectors=plot_opts.get("traj_quiver", False),
+            )
+        except Exception:
+            # Do not fail the whole run if trajectory animation cannot be produced
+            pass
 
     save_run_metadata(out_dir, cfg, results)
+
+    # Optionally run the EF-ROM latent pipeline automatically. This is
+    # controlled by the config path `outputs.efrom.auto_run` and enabled
+    # by default so users get forecasts and comparison animations after a
+    # successful simulation run.
+    efrom_cfg = cfg.get("outputs", {}).get("efrom", {})
+    if efrom_cfg.get("auto_run", True):
+        try:
+            _run_efrom_pipeline(cfg, {"results": results, "out_dir": out_dir})
+        except Exception as exc:  # do not fail the whole run on postproc errors
+            print(f"EF-ROM postprocessing failed: {exc}")
 
     return {
         "config": cfg,
@@ -212,11 +482,20 @@ def _run_single(config: Dict) -> Dict:
     }
 
 
+def _grid_centers(nx: int, ny: int, Lx: float, Ly: float) -> np.ndarray:
+    x_centres = (np.arange(nx) + 0.5) * (Lx / nx)
+    y_centres = (np.arange(ny) + 0.5) * (Ly / ny)
+    xv, yv = np.meshgrid(x_centres, y_centres, indexing="xy")
+    return np.stack([xv.ravel(), yv.ravel()], axis=-1)
+
+
 def cmd_single(args: argparse.Namespace, overrides: List[Tuple[str, str]]) -> None:
     """Entry point for the ``single`` CLI command."""
 
     override_pairs = [(k, _convert_value(v)) for k, v in overrides]
     config = load_config(args.config, override_pairs)
+    if getattr(args, "model", None):
+        config["model"] = args.model
     _run_single(config)
 
 
@@ -225,6 +504,11 @@ def cmd_grid(args: argparse.Namespace, overrides: List[Tuple[str, str]]) -> None
 
     override_pairs = [(k, _convert_value(v)) for k, v in overrides]
     config = load_config(args.config, override_pairs)
+    if getattr(args, "model", None):
+        config["model"] = args.model
+
+    if config.get("model", "social_force") != "social_force":
+        raise ValueError("Grid sweeps are currently supported only for the social_force model.")
     base_cfg = deepcopy(config)
 
     grid_cfg = base_cfg.get("grid", {})
@@ -287,6 +571,140 @@ def cmd_grid(args: argparse.Namespace, overrides: List[Tuple[str, str]]) -> None
             plt.close(fig)
 
 
+def cmd_validate_all(args: argparse.Namespace, overrides: List[Tuple[str, str]]) -> None:
+    """Run simulation + EF-ROM validation pipeline."""
+
+    override_pairs = [(k, _convert_value(v)) for k, v in overrides]
+    config = load_config(args.config, override_pairs)
+    if getattr(args, "model", None):
+        config["model"] = args.model
+
+    if config.get("model", "social_force") != "social_force":
+        raise ValueError("validate_all is currently implemented only for the social_force model.")
+    run = _run_single(config)
+    _run_efrom_pipeline(config, run)
+
+
+def _run_efrom_pipeline(config: Dict, run: Dict) -> None:
+    """Run EF-ROM training and produce forecast animations for a single run.
+
+    This helper mirrors the previous `cmd_validate_all` logic but is
+    callable from other places (e.g., automatically after `_run_single`).
+    It writes artifacts under `<out_dir>/efrom`.
+    """
+
+    results = run["results"]
+    traj = results["traj"]
+    times = results["times"]
+    sim_cfg = config["sim"]
+    out_dir = Path(run["out_dir"]) / "efrom"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    grid_cfg = config["outputs"]["grid_density"]
+    nx = grid_cfg["nx"]
+    ny = grid_cfg["ny"]
+    bandwidth = grid_cfg.get("bandwidth", 0.5)
+    rho = density_movie_kde(
+        traj,
+        sim_cfg["Lx"],
+        sim_cfg["Ly"],
+        nx,
+        ny,
+        bandwidth,
+        sim_cfg["bc"],
+    )
+
+    efrom_cfg = config["outputs"].get("efrom", {})
+    rank = int(efrom_cfg.get("rank", min(10, nx * ny)))
+    order = int(efrom_cfg.get("order", 4))
+    horizon = int(efrom_cfg.get("horizon", max(1, rho.shape[0] // 5)))
+
+    split = max(order, int(np.floor(0.8 * rho.shape[0])))
+    split = min(split, rho.shape[0] - max(horizon, order + 1))
+    rho_train = rho[:split]
+    rho_test = rho[split:]
+    horizon = min(horizon, rho_test.shape[0])
+    if horizon <= 0:
+        raise ValueError("Not enough frames to compute EF-ROM forecast")
+
+    cell_area = (sim_cfg["Lx"] / nx) * (sim_cfg["Ly"] / ny)
+    rho_pred, _ = efrom_train_and_forecast(
+        rho_train,
+        rho_test,
+        rank=rank,
+        order=order,
+        horizon=horizon,
+        cell_area=cell_area,
+    )
+    rho_true = rho_test[:horizon]
+
+    flat_true = rho_true.reshape(horizon, -1)
+    flat_pred = rho_pred.reshape(horizon, -1)
+    rmse_val = float(rmse(flat_true, flat_pred))
+    r2_val = float(r2(flat_true, flat_pred))
+    rel_err_series = mean_relative_error(flat_true, flat_pred, axis=1)
+    tol_idx = tolerance_horizon(rel_err_series)
+    mass_pred = flat_pred.sum(axis=1) * cell_area
+    mass_target = traj.shape[1]
+    mass_drift = float(np.max(np.abs(mass_pred - mass_target)))
+
+    metrics_payload = {
+        "rmse": rmse_val,
+        "r2": r2_val,
+        "mean_relative_error": rel_err_series.tolist(),
+        "tolerance_index": int(tol_idx),
+        "mass_drift": mass_drift,
+    }
+    (out_dir / "metrics.json").write_text(json.dumps(metrics_payload, indent=2), encoding="utf-8")
+
+    dx = sim_cfg["Lx"] / nx
+    dy = sim_cfg["Ly"] / ny
+    Xc = _grid_centers(nx, ny, sim_cfg["Lx"], sim_cfg["Ly"])
+    vmin = float(min(rho_true.min(), rho_pred.min()))
+    vmax = float(max(rho_true.max(), rho_pred.max()))
+    animate_heatmap_movie(
+        rho_true.reshape(horizon, -1),
+        Xc,
+        dx,
+        dy,
+        sim_cfg["Lx"],
+        sim_cfg["Ly"],
+        out_path=str(out_dir / "truth"),
+        fps=20,
+        vmin=vmin,
+        vmax=vmax,
+        title="Truth",
+    )
+    animate_heatmap_movie(
+        rho_pred.reshape(horizon, -1),
+        Xc,
+        dx,
+        dy,
+        sim_cfg["Lx"],
+        sim_cfg["Ly"],
+        out_path=str(out_dir / "forecast"),
+        fps=20,
+        vmin=vmin,
+        vmax=vmax,
+        title="EF-ROM",
+    )
+    animate_side_by_side(
+        rho_true.reshape(horizon, -1),
+        rho_pred.reshape(horizon, -1),
+        Xc,
+        dx,
+        dy,
+        sim_cfg["Lx"],
+        sim_cfg["Ly"],
+        out_path=str(out_dir / "compare"),
+        fps=20,
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+    print("EF-ROM metrics:")
+    print(json.dumps(metrics_payload, indent=2))
+    print(f"Artifacts written to {out_dir}")
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level CLI argument parser."""
 
@@ -295,9 +713,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     single = subparsers.add_parser("single", help="Run a single simulation")
     single.add_argument("--config", required=True, help="Path to configuration YAML")
+    single.add_argument(
+        "--model",
+        choices=["social_force", "vicsek_discrete"],
+        help="Override the model specified in the config file",
+    )
 
     grid = subparsers.add_parser("grid", help="Run a parameter grid")
     grid.add_argument("--config", required=True, help="Path to grid configuration YAML")
+    grid.add_argument(
+        "--model",
+        choices=["social_force", "vicsek_discrete"],
+        help="Override the model specified in the config file",
+    )
+
+    validate = subparsers.add_parser(
+        "validate_all",
+        help="Run simulation, KDE, latent training, and forecast validation",
+    )
+    validate.add_argument("--config", required=True, help="Path to configuration YAML")
+    validate.add_argument(
+        "--model",
+        choices=["social_force", "vicsek_discrete"],
+        help="Override the model specified in the config file",
+    )
 
     return parser
 
@@ -313,6 +752,8 @@ def main(argv: Iterable[str] | None = None) -> None:
         cmd_single(args, overrides)
     elif args.command == "grid":
         cmd_grid(args, overrides)
+    elif args.command == "validate_all":
+        cmd_validate_all(args, overrides)
     else:  # pragma: no cover - defensive
         parser.error(f"Unknown command {args.command}")
 

@@ -1,0 +1,78 @@
+# Continuous Vicsek-D'Orsogna Hybrid Model (RK4 Integration)
+# 
+# This configuration demonstrates the continuous-time hybrid model that combines:
+# - Vicsek alignment (heading coordination)
+# - Morse forces (attraction-repulsion, D'Orsogna style)
+# - RK4 integration (4th order accurate ODE solver)
+#
+# Key differences from discrete version:
+# - Continuous time evolution (smoother trajectories)
+# - Higher accuracy with RK4 integration
+# - Self-propulsion term: (α - β|v|²)v drives particles to natural speed
+
+seed: 42
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+model:
+  type: dorsogna                  # Use continuous D'Orsogna backend
+
+# ============================================================================
+# SIMULATION PARAMETERS
+# ============================================================================
+sim:
+  N: 100                          # Number of particles
+  Lx: 20.0                        # Domain width
+  Ly: 20.0                        # Domain height
+  bc: periodic                    # Boundary: "periodic" or "reflecting"
+  T: 100.0                        # Total simulation time
+  dt: 0.01                        # Time step
+  save_every: 50                  # Save every N steps (RK4 is more expensive)
+  neighbor_rebuild: 10            # Rebuild neighbor lists every N steps
+  integrator: rk4                 # Use RK4 (or "euler_semiimplicit")
+
+# ============================================================================
+# D'ORSOGNA PARAMETERS
+# ============================================================================
+params:
+  # Self-propulsion and damping
+  alpha: 1.5                      # Self-propulsion magnitude
+  beta: 1.0                       # Friction coefficient
+  # Natural speed: v0 = α/β = 1.5
+  
+  # Morse force parameters
+  Cr: 2.0                         # Repulsion strength
+  Ca: 1.0                         # Attraction strength
+  lr: 0.5                         # Repulsion length scale (short-range)
+  la: 1.5                         # Attraction length scale (long-range)
+  rcut_factor: 5.0                # Force cutoff: rcut_factor * max(lr, la)
+  
+  # Vicsek alignment (optional - set enabled: true to activate)
+  alignment:
+    enabled: true                 # Enable Vicsek alignment!
+    radius: 2.0                   # Alignment interaction radius
+    rate: 1.0                     # Rotational mobility μ_r
+    Dtheta: 0.001                 # Rotational diffusion D_θ
+
+# ============================================================================
+# STANDARDIZED OUTPUT CONFIGURATION
+# ============================================================================
+outputs:
+  run_name: vicsek_dorsogna_continuous
+  
+  # Output flags
+  save_csv: true
+  save_plots: true
+  
+  # Animations
+  animations: true
+  fps: 20
+  density_resolution: 50
+  
+  # Order parameters to compute
+  order_parameters:
+    - polarization                # Φ: velocity alignment
+    - angular_momentum            # L: collective rotation
+    - mean_speed                  # Should stabilize near α/β
+    - density_variance            # Spatial clustering

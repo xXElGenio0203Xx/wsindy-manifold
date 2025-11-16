@@ -1,0 +1,34 @@
+model: vicsek_discrete
+vicsek:
+  seed: 1
+  N: 1000            # Larger system for better statistics
+  Lx: 25.0          # Domain size gives density ρ = N/(LxLy) = 1.6
+  Ly: 25.0
+  bc: periodic
+  T: 1000.0         # Long run to reach steady state
+  dt: 0.2           # Small enough that v0*dt < 0.5*R
+  v0: 0.5           # Particle speed
+  R: 1.0            # Interaction radius
+  noise:
+    kind: uniform     
+    eta: 2.356194    # ≈ 3π/4 radians - near critical point
+  save_every: 10
+  neighbor_rebuild: 5
+  out_dir: outputs/vicsek_transition
+
+outputs:
+  save_npz: true
+  save_csv: true
+  plots: true
+  animate: true
+  grid_density:
+    enabled: true
+    nx: 128
+    ny: 128
+    bandwidth: 0.5
+  plot_options:
+    traj_marker_size: 8      # Smaller markers for many particles
+    traj_quiver: true
+    traj_quiver_scale: 2.5
+    traj_quiver_width: 0.003
+    traj_quiver_alpha: 0.8

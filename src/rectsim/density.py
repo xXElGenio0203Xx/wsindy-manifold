@@ -8,6 +8,8 @@ from typing import Iterable, Tuple
 import imageio
 import numpy as np
 from scipy.ndimage import gaussian_filter
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 ArrayLike = np.ndarray
 
@@ -111,4 +113,141 @@ def hist2d_movie(
     return rho, xgrid, ygrid
 
 
-__all__ = ["hist2d_movie"]
+def density_movie_kde(
+    traj: ArrayLike,
+    Lx: float,
+    Ly: float,
+    nx: int,
+    ny: int,
+    bandwidth: float,
+    bc: str,
+) -> ArrayLike:
+    """Return a Gaussian-kernel density movie on a uniform grid.
+
+    This mirrors the KDE post-processing used in Bhaskar & Ziegelmeier (2019)
+    when evaluating D'Orsogna swarms. Each frame integrates to the number of
+    agents so mass is preserved prior to POD compression.
+
+    Parameters
+    ----------
+    traj : ndarray, shape (T, N, 2)
+        Particle positions across time.
+    Lx, Ly : float
+        Domain extents in x and y.
+    nx, ny : int
+        Number of grid cells along each axis.
+    bandwidth : float
+        Standard deviation of the Gaussian kernel in grid-cell units.
+    bc : {"periodic", "reflecting"}
+        Boundary condition controlling wrap behaviour during smoothing.
+
+    Returns
+    -------
+    ndarray, shape (T, ny, nx)
+        Density field per frame. Each frame integrates to ``N`` when multiplied
+        by the cell area ``dx*dy``.
+    """
+
+    traj = np.asarray(traj)
+    if traj.ndim != 3 or traj.shape[2] != 2:
+        raise ValueError("traj must have shape (T, N, 2)")
+
+    T, N, _ = traj.shape
+    x_edges = np.linspace(0.0, Lx, nx + 1)
+    y_edges = np.linspace(0.0, Ly, ny + 1)
+    dx = Lx / nx
+    dy = Ly / ny
+
+    mode = "wrap" if bc == "periodic" else "nearest"
+    rho = np.empty((T, ny, nx), dtype=float)
+
+    for t in range(T):
+        hist, _, _ = np.histogram2d(
+            traj[t, :, 0],
+            traj[t, :, 1],
+            bins=[x_edges, y_edges],
+            range=[[0.0, Lx], [0.0, Ly]],
+        )
+        density = hist / (dx * dy)
+        if bandwidth > 0:
+            density = gaussian_filter(density, sigma=bandwidth, mode=mode)
+        density = density.T  # ensure shape (ny, nx)
+        total_mass = density.sum() * dx * dy
+        if total_mass > 0:
+            density *= (N / total_mass)
+        rho[t] = density
+
+    return rho
+
+
+__all__ = ["hist2d_movie", "density_movie_kde"]
+
+
+def traj_movie(
+    traj: ArrayLike,
+    vel: ArrayLike | None,
+    times: Iterable[float],
+    Lx: float,
+    Ly: float,
+    out_dir: str | Path | None = None,
+    fps: int = 24,
+    marker_size: int = 4,
+    draw_vectors: bool = False,
+) -> Path | None:
+    """Create an MP4 showing particle positions over time.
+
+    This is a lightweight trajectory visualizer. It writes ``traj_positions.mp4``
+    into ``out_dir`` when provided. The function is intentionally simple and
+    uses Matplotlib to render each frame then writes with imageio's ffmpeg
+    writer. If the writer fails it raises a RuntimeError describing the
+    requirement.
+    """
+
+    out_path = Path(out_dir) if out_dir is not None else None
+    if out_path is None:
+        return None
+    out_path.mkdir(parents=True, exist_ok=True)
+    movie_path = out_path / "traj_positions.mp4"
+
+    try:
+        w = imageio.get_writer(movie_path, fps=fps, format="FFMPEG")
+        with w as writer:
+            for i, frame in enumerate(traj):
+                fig, ax = plt.subplots(figsize=(6, 6))
+                ax.scatter(frame[:, 0], frame[:, 1], s=marker_size, c="C0")
+                if draw_vectors and vel is not None:
+                    vframe = vel[i]
+                    ax.quiver(
+                        frame[:, 0],
+                        frame[:, 1],
+                        vframe[:, 0],
+                        vframe[:, 1],
+                        angles="xy",
+                        scale_units="xy",
+                        scale=3.0,
+                        width=0.002,
+                        color="C1",
+                        alpha=0.9,
+                    )
+                ax.set_xlim(0, Lx)
+                ax.set_ylim(0, Ly)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                fig.tight_layout()
+                # Use an Agg canvas to render the figure to an RGB buffer.
+                canvas = FigureCanvas(fig)
+                canvas.draw()
+                # Get RGBA buffer from the Agg canvas then convert to RGB
+                buf = canvas.buffer_rgba()
+                arr = np.frombuffer(buf, dtype=np.uint8)
+                h, w = canvas.get_width_height()
+                arr = arr.reshape((h, w, 4))
+                img = arr[:, :, :3].copy()
+                writer.append_data(img)
+                plt.close(fig)
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to create trajectory animation: ensure 'imageio-ffmpeg' and ffmpeg are available"
+        ) from exc
+
+    return movie_path

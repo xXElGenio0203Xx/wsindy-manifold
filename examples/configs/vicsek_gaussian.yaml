@@ -1,0 +1,34 @@
+model: vicsek_discrete
+vicsek:
+  seed: 1
+  N: 500
+  Lx: 40.0
+  Ly: 40.0
+  bc: periodic
+  T: 2000.0
+  dt: 1.0
+  v0: 0.5
+  R: 1.0
+  noise:
+    kind: gaussian
+    sigma: 0.2
+    eta: 0.4
+  save_every: 5
+  neighbor_rebuild: 5
+  out_dir: outputs/vicsek_gauss
+outputs:
+  save_npz: true
+  save_csv: true
+  plots: true
+  animate: true
+  grid_density:
+    enabled: true
+    nx: 128
+    ny: 128
+    bandwidth: 0.5
+  plot_options:
+    traj_marker_size: 12
+    traj_quiver: true
+    traj_quiver_scale: 2.5
+    traj_quiver_width: 0.003
+    traj_quiver_alpha: 0.8

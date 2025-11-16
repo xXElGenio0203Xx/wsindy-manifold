@@ -15,6 +15,7 @@ def test_alignment_step_basic():
     dt = 0.1
     target_speed = 0.5
 
-    new_v = _alignment_step(x, v, Lx, Ly, bc, radius, rate, dt, target_speed)
+    rng = np.random.default_rng(0)
+    new_v = _alignment_step(x, v, Lx, Ly, bc, radius, rate, 0.0, dt, target_speed, rng)
     # The third particle should gain a positive x-component (tilt toward the mean rightward direction).
     assert new_v[2][0] > 0

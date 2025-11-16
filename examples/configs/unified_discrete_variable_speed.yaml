@@ -1,0 +1,91 @@
+# Unified Configuration: Discrete Vicsek Model with Variable Speed
+# 
+# This demonstrates the discrete Vicsek model with VARIABLE SPEED mode, where
+# forces directly affect particle velocities (like in the D'Orsogna model).
+# In this mode, speeds can change due to forces, not just positions.
+
+# ==============================================================================
+# DOMAIN CONFIGURATION
+# ==============================================================================
+domain:
+  Lx: 20.0                        # Domain width
+  Ly: 20.0                        # Domain height
+  bc: periodic                    # Boundary conditions: "periodic" or "reflecting"
+
+# ==============================================================================
+# PARTICLE INITIALIZATION
+# ==============================================================================
+particles:
+  N: 100                          # Number of particles
+  initial_distribution: gaussian_cluster  # Start from a compact cluster
+  initial_speed: 0.5              # Initial speed magnitude
+  velocity_distribution: random   # Random initial directions
+
+# ==============================================================================
+# MODEL TYPE
+# ==============================================================================
+model:
+  type: discrete                  # "discrete" (Vicsek discrete-time) or "continuous" (D'Orsogna ODE)
+  speed_mode: variable            # "constant" (traditional) or "variable" (forces affect velocity)
+  # VARIABLE SPEED MODE:
+  # - Forces directly change velocity: v += dt * mu_t * F
+  # - Speed magnitude can change over time
+  # - Alignment rotates velocities while preserving speed
+  # - More similar to D'Orsogna dynamics but with discrete updates
+
+# ==============================================================================
+# DYNAMICS PARAMETERS
+# ==============================================================================
+dynamics:
+  # Alignment (Vicsek-style coordination)
+  alignment:
+    enabled: true                 # Enable alignment interactions
+    radius: 2.0                   # Alignment interaction radius
+  
+  # Forces (Morse potential, D'Orsogna-style)
+  forces:
+    enabled: true                 # Enable forces - they will affect velocity directly!
+    Cr: 2.0                       # Repulsion strength
+    Ca: 0.8                       # Attraction strength (slightly weaker)
+    lr: 0.5                       # Repulsion length scale (short-range)
+    la: 1.5                       # Attraction length scale (long-range)
+    rcut_factor: 5.0              # Force cutoff radius = rcut_factor * max(lr, la)
+    mu_t: 0.8                     # Translational mobility (higher for stronger force effects)
+  
+  # Noise (angular perturbations)
+  noise:
+    type: gaussian                # "gaussian" or "uniform"
+    eta: 0.2                      # Lower noise to see force effects more clearly
+    match_variance: true          # Match variance between gaussian and uniform noise
+
+# ==============================================================================
+# INTEGRATION PARAMETERS
+# ==============================================================================
+integration:
+  T: 100.0                        # Total simulation time
+  dt: 0.01                        # Time step
+  save_every: 10                  # Save every N steps
+  neighbor_rebuild: 5             # Rebuild neighbor lists every N steps
+  seed: 42                        # Random seed for reproducibility
+
+# ==============================================================================
+# OUTPUT CONFIGURATION
+# ==============================================================================
+outputs:
+  directory: outputs/discrete_variable_speed  # Output directory
+  
+  # What to compute and save
+  order_parameters: true          # Compute all 4 order parameters (always)
+  animations: true                # Create MP4 animations
+  save_csv: true                  # Save CSV data files
+  
+  # Animation settings
+  fps: 20                         # Frames per second for videos
+  density_resolution: 50          # Grid resolution for density field
+  
+  # Arrow visualization in trajectory animation
+  arrows:
+    enabled: true                 # Show velocity arrows (default: true)
+    scale: speed                  # "speed" - arrow length shows varying speeds!
+    scale_factor: 1.5             # Larger arrows to see speed variations
+

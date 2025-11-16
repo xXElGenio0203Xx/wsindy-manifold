@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "seed": 42,
+    "description": "Test configuration for CrowdROM pipeline"
+  },
+  "simulation": {
+    "model": "Vicsek",
+    "C": 3,
+    "T": 10.0,
+    "dt_micro": 0.01,
+    "dt_obs": 0.1,
+    "boundary_conditions": {"x": "periodic", "y": "periodic"},
+    "integrator": "Euler",
+    "num_particles": 50,
+    "speeds": {"mean": 1.0, "std": 0.0},
+    "noise": {"type": "gaussian", "std": 0.1},
+    "forces": {},
+    "cutoff_radius": 2.0
+  },
+  "domain_grid": {
+    "domain": {"xmin": 0.0, "xmax": 20.0, "ymin": 0.0, "ymax": 20.0},
+    "nx": 40,
+    "ny": 40,
+    "dx": 0.5,
+    "dy": 0.5,
+    "obstacles": []
+  },
+  "kde": {
+    "kernel": "gaussian",
+    "bandwidth_mode": "manual",
+    "H": {"hx": 2.0, "hy": 2.0},
+    "periodic_x": true,
+    "periodic_extension_n": 3
+  },
+  "pod": {
+    "energy_threshold": 0.99
+  },
+  "non_stationarity": {
+    "adf_alpha": 0.01,
+    "adf_max_lags": "auto"
+  }
+}

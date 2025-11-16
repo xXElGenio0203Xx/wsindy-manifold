@@ -1,0 +1,75 @@
+# Discrete Vicsek-D'Orsogna Hybrid Model
+# 
+# This configuration demonstrates the discrete-time hybrid model that combines:
+# - Vicsek alignment (heading coordination)
+# - Morse forces (attraction-repulsion, D'Orsogna style)
+# - Explicit Euler integration (discrete time steps)
+#
+# Key features:
+# - Variable particle speeds (forces affect velocity)
+# - Both alignment AND spacing emerge naturally
+# - Discrete synchronous updates
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+model:
+  type: vicsek_discrete           # Use discrete backend
+  speed: 0.5                      # Base self-propulsion speed v0
+
+# ============================================================================
+# SIMULATION PARAMETERS
+# ============================================================================
+sim:
+  N: 100                          # Number of particles
+  Lx: 20.0                        # Domain width
+  Ly: 20.0                        # Domain height
+  bc: periodic                    # Boundary: "periodic" or "reflecting"
+  T: 100.0                        # Total simulation time
+  dt: 0.01                        # Time step (small for stability)
+  save_every: 10                  # Save every N steps
+  neighbor_rebuild: 5             # Rebuild neighbor lists every N steps
+  seed: 42                        # Random seed
+
+# ============================================================================
+# ALIGNMENT PARAMETERS (Vicsek)
+# ============================================================================
+params:
+  R: 2.0                          # Alignment radius
+
+# ============================================================================
+# NOISE CONFIGURATION
+# ============================================================================
+noise:
+  kind: gaussian                  # Noise type: "uniform" or "gaussian"
+  eta: 0.3                        # Noise strength (radians)
+  match_variance: true            # Match variance across noise types
+
+# ============================================================================
+# MORSE FORCES (D'Orsogna)
+# ============================================================================
+forces:
+  enabled: true                   # Enable Morse forces!
+  type: morse                     # Force type
+  params:
+    Cr: 2.0                       # Repulsion strength
+    Ca: 1.0                       # Attraction strength
+    lr: 0.5                       # Repulsion length scale (short-range)
+    la: 1.5                       # Attraction length scale (long-range)
+    rcut_factor: 5.0              # Force cutoff: rcut_factor * max(lr, la)
+    mu_t: 0.5                     # Translational mobility (force coupling)
+
+# ============================================================================
+# STANDARDIZED OUTPUT CONFIGURATION
+# ============================================================================
+outputs:
+  directory: outputs/vicsek_dorsogna_discrete  # Output directory
+  
+  # Output flags
+  order_parameters: true          # Compute and save metrics
+  animations: true                # Create MP4 videos
+  save_csv: true                  # Save CSV data files
+  
+  # Animation settings
+  fps: 20                         # Frames per second for videos
+  density_resolution: 50          # Grid resolution for density field

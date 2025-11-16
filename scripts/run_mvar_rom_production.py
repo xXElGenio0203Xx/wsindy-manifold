@@ -5,6 +5,12 @@ Production MVAR-ROM evaluation script.
 Loads simulation outputs from simulations/<sim_name>__<run_id>/
 and generates MVAR-ROM forecasts in mvar_outputs/<sim_name>__<run_id>__<exp_name>/
 
+Training/Evaluation Strategy:
+- Train POD and MVAR on the ENTIRE simulation dataset (t=0 to t=T)
+- Forecast from t=0 using first w frames as seed
+- Evaluate by comparing forecast to ground truth over full trajectory
+- This measures model's ability to reproduce the dynamics it was trained on
+
 Output structure:
 - manifest.json
 - config.yaml
@@ -72,8 +78,10 @@ class MVARROMConfig:
     mvar_order: int = 4
     ridge: float = 1e-6
     
-    # Data split
-    train_frac: float = 0.8  # 80% train - better than 90% for test set size
+    # Training
+    # Note: We train on the entire dataset and evaluate on full trajectory
+    # No train/test split - forecast from skip_initial to t=T using learned MVAR
+    skip_initial: int = 0  # Skip first N frames (for avoiding initial transients)
     
     # Evaluation
     tolerance_threshold: float = 0.10
@@ -153,7 +161,7 @@ def plot_pod_energy(
 
 def plot_errors_timeseries(
     metrics_df: pd.DataFrame,
-    T0: int,
+    seed_frames: int,
     save_path: Path
 ):
     """Plot error timeseries."""
@@ -163,7 +171,8 @@ def plot_errors_timeseries(
     ax = axes[0]
     ax.plot(metrics_df.index, metrics_df['e1'], 'b-', linewidth=2)
     ax.axhline(0.1, color='r', linestyle='--', alpha=0.5, label='10% threshold')
-    ax.axvline(T0, color='k', linestyle=':', alpha=0.5, label='Train/Test split')
+    if seed_frames > 0:
+        ax.axvline(seed_frames, color='gray', linestyle=':', alpha=0.5, label='Seed frames')
     ax.set_ylabel('Relative L¹ Error', fontsize=11, fontweight='bold')
     ax.grid(True, alpha=0.3)
     ax.legend(loc='best', fontsize=9)
@@ -173,7 +182,8 @@ def plot_errors_timeseries(
     ax = axes[1]
     ax.plot(metrics_df.index, metrics_df['e2'], 'g-', linewidth=2)
     ax.axhline(0.1, color='r', linestyle='--', alpha=0.5)
-    ax.axvline(T0, color='k', linestyle=':', alpha=0.5)
+    if seed_frames > 0:
+        ax.axvline(seed_frames, color='gray', linestyle=':', alpha=0.5)
     ax.set_ylabel('Relative L² Error', fontsize=11, fontweight='bold')
     ax.grid(True, alpha=0.3)
     ax.set_ylim([0, max(metrics_df['e2'].max() * 1.1, 0.2)])
@@ -182,7 +192,8 @@ def plot_errors_timeseries(
     ax = axes[2]
     ax.plot(metrics_df.index, metrics_df['einf'], 'm-', linewidth=2)
     ax.axhline(0.1, color='r', linestyle='--', alpha=0.5)
-    ax.axvline(T0, color='k', linestyle=':', alpha=0.5)
+    if seed_frames > 0:
+        ax.axvline(seed_frames, color='gray', linestyle=':', alpha=0.5)
     ax.set_ylabel('Relative L∞ Error', fontsize=11, fontweight='bold')
     ax.set_xlabel('Frame Index', fontsize=11, fontweight='bold')
     ax.grid(True, alpha=0.3)
@@ -314,8 +325,6 @@ def main():
                        help='Experiment name (default: mvar_pod_w<w>_ridge<λ>)')
     parser.add_argument('--out-root', type=Path, default=Path('mvar_outputs'),
                        help='Output root directory')
-    parser.add_argument('--train-frac', type=float, default=0.8,
-                       help='Training fraction (default: 0.8)')
     parser.add_argument('--pod-energy', type=float, default=0.99,
                        help='POD energy threshold (default: 0.99, optimal for MVAR)')
     parser.add_argument('--pod-modes', type=int, default=None,
@@ -324,6 +333,8 @@ def main():
                        help='MVAR lag order')
     parser.add_argument('--ridge', type=float, default=1e-6,
                        help='Ridge regularization')
+    parser.add_argument('--skip-initial', type=int, default=0,
+                       help='Skip first N frames (to avoid initial transients)')
     parser.add_argument('--no-videos', action='store_true',
                        help='Skip video generation')
     parser.add_argument('--fps', type=int, default=20,
@@ -343,7 +354,7 @@ def main():
         pod_modes=args.pod_modes,
         mvar_order=args.mvar_order,
         ridge=args.ridge,
-        train_frac=args.train_frac,
+        skip_initial=args.skip_initial,
         save_videos=not args.no_videos,
         fps=args.fps
     )
@@ -371,21 +382,21 @@ def main():
     T = densities.shape[0]
     X = densities.reshape(T, n_c)
     
-    # Split train/test
-    T0 = int(config.train_frac * T)
-    T1 = T - T0
+    print(f"\nTotal frames: T={T}")
+    print(f"Training on entire dataset (T={T} frames)")
     
-    X_train = X[:T0]
-    X_test = X[T0:]
-    
-    print(f"\nData split: T0={T0}, T1={T1} ({config.train_frac*100:.0f}% train)\n")
+    if config.skip_initial > 0:
+        print(f"Skipping first {config.skip_initial} frames (initial transients)")
+        print(f"Will forecast from t={config.skip_initial} to t={T} for evaluation\n")
+    else:
+        print(f"Will forecast from t=0 to t={T} for evaluation\n")
     
     # ========================================================================
-    # 1. POD
+    # 1. POD on entire dataset
     # ========================================================================
-    print("[1/7] Fitting POD...")
+    print("[1/7] Fitting POD on full dataset...")
     t_start = time.time()
-    Ud, xbar, d, energy_curve = fit_pod(X_train, energy=config.pod_energy, n_modes=config.pod_modes)
+    Ud, xbar, d, energy_curve = fit_pod(X, energy=config.pod_energy, n_modes=config.pod_modes)
     t_pod = time.time() - t_start
     
     print(f"POD complete: d={d}, time={t_pod:.2f}s")
@@ -401,19 +412,17 @@ def main():
     # ========================================================================
     # 2. Restrict to latent space
     # ========================================================================
-    print("\n[2/7] Restricting to latent space...")
-    Y_train = restrict(X_train, Ud, xbar)
-    Y_test = restrict(X_test, Ud, xbar)
+    print("\n[2/7] Restricting full dataset to latent space...")
+    Y = restrict(X, Ud, xbar)
     
-    print(f"Latent train: {Y_train.shape}")
-    print(f"Latent test:  {Y_test.shape}")
+    print(f"Latent representation: {Y.shape}")
     
     # ========================================================================
-    # 3. Fit MVAR
+    # 3. Fit MVAR on entire latent dataset
     # ========================================================================
-    print("\n[3/7] Fitting MVAR...")
+    print("\n[3/7] Fitting MVAR on full latent dataset...")
     t_start = time.time()
-    mvar_model = fit_mvar(Y_train, w=config.mvar_order, ridge_lambda=config.ridge)
+    mvar_model = fit_mvar(Y, w=config.mvar_order, ridge_lambda=config.ridge)
     A0 = mvar_model['A0']
     A = mvar_model['A']
     t_mvar = time.time() - t_start
@@ -430,7 +439,7 @@ def main():
         'mvar_order': int(config.mvar_order),
         'ridge': float(config.ridge),
         'latent_dim': int(d),
-        'train_samples': int(T0),
+        'train_samples': int(T),
         'training_time_s': float(t_mvar)
     }
     
@@ -441,17 +450,24 @@ def main():
     # ========================================================================
     # 4. Forecast (closed-loop)
     # ========================================================================
-    print("\n[4/7] Forecasting (closed-loop)...")
+    t_start_forecast = config.skip_initial
+    T_forecast = T - t_start_forecast
     
-    # Seed with last w frames from train
-    Y_seed = Y_train[-config.mvar_order:]
+    if config.skip_initial > 0:
+        print(f"\n[4/7] Forecasting from t={t_start_forecast} (closed-loop)...")
+        # Seed with w frames starting at skip_initial
+        Y_seed = Y[t_start_forecast:t_start_forecast + config.mvar_order]
+    else:
+        print("\n[4/7] Forecasting from t=0 (closed-loop)...")
+        # Seed with first w frames from full dataset
+        Y_seed = Y[:config.mvar_order]
     
     t_start = time.time()
-    Y_forecast = rollout(Y_seed, steps=T1, model=mvar_model)
+    Y_forecast = rollout(Y_seed, steps=T_forecast, model=mvar_model)
     t_forecast = time.time() - t_start
     
-    fps = T1 / t_forecast
-    print(f"Forecast complete: {T1} steps in {t_forecast:.2f}s ({fps:.1f} FPS)")
+    fps = T_forecast / t_forecast
+    print(f"Forecast complete: {T_forecast} steps in {t_forecast:.2f}s ({fps:.1f} FPS)")
     
     # Save forecast
     forecast_dir = out_dir / "forecast"
@@ -465,9 +481,12 @@ def main():
     print("\n[5/7] Lifting to physical space...")
     X_forecast = lift(Y_forecast, Ud, xbar, preserve_mass=True)
     
+    # Ground truth for comparison (from skip_initial onwards)
+    X_true_eval = X[t_start_forecast:]
+    
     # Reshape to 2D
-    densities_true = X_test.reshape(T1, ny, nx)
-    densities_pred = X_forecast.reshape(T1, ny, nx)
+    densities_true = X_true_eval.reshape(T_forecast, ny, nx)
+    densities_pred = X_forecast.reshape(T_forecast, ny, nx)
     
     # Save densities
     np.savez_compressed(forecast_dir / "density_true.npz", rho=densities_true)
@@ -479,8 +498,8 @@ def main():
     # ========================================================================
     print("\n[6/7] Evaluating...")
     
-    # Frame-wise metrics
-    frame_errors = rel_errors(X_forecast, X_test)
+    # Frame-wise metrics (comparing forecast to ground truth)
+    frame_errors = rel_errors(X_forecast, X_true_eval)
     
     metrics_df = pd.DataFrame({
         'e1': frame_errors['e1'],
@@ -491,14 +510,16 @@ def main():
     })
     
     # Summary metrics
-    summary = compute_summary_metrics(X_forecast, X_test, threshold=config.tolerance_threshold)
+    summary = compute_summary_metrics(X_forecast, X_true_eval, threshold=config.tolerance_threshold)
     
     # Add additional info
     summary['d'] = d
     summary['compression_ratio'] = n_c / d
     summary['mvar_order'] = config.mvar_order
     summary['ridge'] = config.ridge
-    summary['train_frac'] = config.train_frac
+    summary['total_frames'] = T
+    summary['skip_initial'] = config.skip_initial
+    summary['forecast_frames'] = T_forecast
     summary['forecast_fps'] = fps
     
     # Mass conservation
@@ -541,9 +562,12 @@ def main():
     print("\n[7/7] Generating plots and videos...")
     
     # Plots
-    plot_errors_timeseries(metrics_df, T0, eval_dir / "errors_timeseries.png")
-    plot_snapshots(X_test, X_forecast, nx, ny, 6, eval_dir / "snapshots.png")
-    plot_latent_scatter(Y_test, Y_forecast, min(3, d), eval_dir / "latent_scatter.png")
+    plot_errors_timeseries(metrics_df, config.mvar_order, eval_dir / "errors_timeseries.png")
+    plot_snapshots(X_true_eval, X_forecast, nx, ny, 6, eval_dir / "snapshots.png")
+    
+    # Latent scatter (use evaluation portion)
+    Y_true_eval = Y[t_start_forecast:]
+    plot_latent_scatter(Y_true_eval, Y_forecast, min(3, d), eval_dir / "latent_scatter.png")
     
     # Videos
     if config.save_videos:
@@ -587,8 +611,7 @@ def main():
         seed=sim_data['manifest']['seed'],
         code_version="1.0.0",
         source_sim=str(args.sim_dir),
-        T0=T0,
-        T1=T1,
+        T=T,
         d=d
     )
     

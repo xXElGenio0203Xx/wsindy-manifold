@@ -1,0 +1,53 @@
+# Simple D'Orsogna Model - Quick Demo
+# 
+# Minimal configuration for fast testing of Morse forces
+# - Small particle count (50)
+# - Short simulation time (20 time units)
+# - Coarse time step
+# - No alignment (pure Morse forces only)
+
+seed: 42
+
+model:
+  type: dorsogna
+
+sim:
+  N: 50                     # Small number of particles
+  T: 20.0                   # Short simulation time
+  dt: 0.05                  # Larger time step (5x faster)
+  Lx: 10.0                  # Smaller domain
+  Ly: 10.0
+  bc: periodic
+  save_every: 10            # Save every 10 steps (40 frames total)
+  neighbor_rebuild: 5       # Rebuild neighbors frequently
+  integrator: euler_semiimplicit  # Faster than RK4
+
+params:
+  # Self-propulsion and damping
+  alpha: 1.0                # Natural speed v0 = α/β = 1.0
+  beta: 1.0
+  mu_t: 1.0                 # Translational mobility (force coupling)
+  
+  # Morse forces (moderate strength)
+  Cr: 1.0                   # Repulsion
+  Ca: 0.5                   # Attraction
+  lr: 0.3                   # Short repulsive range
+  la: 1.0                   # Longer attractive range
+  rcut_factor: 4.0          # Cutoff = 4.0
+  
+  # No alignment (pure forces only)
+  alignment:
+    enabled: false
+
+outputs:
+  save_dir: outputs/dorsogna_simple
+  save_csv: true
+  save_plots: true
+  animations: true
+  fps: 10                   # Lower fps for smaller files
+  density_resolution: 30    # Lower resolution
+  order_parameters:
+    - polarization
+    - angular_momentum
+    - mean_speed
+    - density_variance

@@ -1,0 +1,90 @@
+# Unified Configuration: Discrete Vicsek with D'Orsogna Forces
+# Variable Speed + Semi-Implicit Euler Integration
+#
+# This combines discrete-time Vicsek alignment with D'Orsogna force dynamics.
+# Variable speed mode allows forces to change particle velocities.
+# Semi-implicit Euler provides better stability for force-driven systems.
+
+# ==============================================================================
+# DOMAIN CONFIGURATION
+# ==============================================================================
+domain:
+  Lx: 15.0                        # Domain width (matching D'Orsogna reference)
+  Ly: 15.0                        # Domain height
+  bc: periodic                    # Boundary conditions: "periodic" or "reflecting"
+
+# ==============================================================================
+# PARTICLE INITIALIZATION
+# ==============================================================================
+particles:
+  N: 50                           # Number of particles (matching D'Orsogna reference)
+  initial_distribution: uniform   # Start uniformly distributed
+  initial_speed: 0.5              # Initial speed magnitude (will change due to forces)
+  velocity_distribution: random   # Random initial directions
+
+# ==============================================================================
+# MODEL TYPE
+# ==============================================================================
+model:
+  type: discrete                  # Discrete-time Vicsek model
+  speed_mode: variable            # VARIABLE SPEED: forces change velocity magnitude
+  # Variable speed allows D'Orsogna-like dynamics where particle speeds evolve
+
+# ==============================================================================
+# DYNAMICS PARAMETERS
+# ==============================================================================
+dynamics:
+  # Alignment (Vicsek-style coordination)
+  alignment:
+    enabled: true                 # Enable alignment interactions
+    radius: 2.0                   # Alignment interaction radius
+    rate: 2.0                     # Rotational mobility (used in continuous, reference only here)
+  
+  # Forces (D'Orsogna Morse potential)
+  forces:
+    enabled: true                 # Enable D'Orsogna forces
+    Cr: 1.5                       # Repulsion strength
+    Ca: 1.0                       # Attraction strength
+    lr: 0.4                       # Repulsion length scale (short-range)
+    la: 1.2                       # Attraction length scale (long-range)
+    rcut_factor: 4.0              # Force cutoff radius = rcut_factor * max(lr, la)
+    mu_t: 1.0                     # Translational mobility (how strongly forces affect velocity)
+  
+  # Noise (angular perturbations)
+  noise:
+    type: gaussian                # Gaussian angular noise
+    eta: 0.05                     # Low noise strength (corresponds to Dtheta = 0.05 in continuous)
+    match_variance: true          # Match variance between gaussian and uniform noise
+
+# ==============================================================================
+# INTEGRATION PARAMETERS
+# ==============================================================================
+integration:
+  T: 30.0                         # Total simulation time (matching D'Orsogna reference)
+  dt: 0.05                        # Time step (matching D'Orsogna reference)
+  save_every: 10                  # Save every N steps
+  neighbor_rebuild: 5             # Rebuild neighbor lists every N steps
+  integrator: euler_semiimplicit  # "euler" or "euler_semiimplicit" (more stable for forces)
+  seed: 42                        # Random seed for reproducibility
+
+# ==============================================================================
+# OUTPUT CONFIGURATION
+# ==============================================================================
+outputs:
+  directory: outputs/discrete_dorsogna_semiimplicit  # Output directory
+  
+  # What to compute and save
+  order_parameters: true          # Compute all 4 order parameters
+  animations: true                # Create MP4 animations
+  save_csv: true                  # Save CSV data files
+  
+  # Animation settings
+  fps: 15                         # Frames per second for videos
+  density_resolution: 40          # Grid resolution for density field
+  
+  # Arrow visualization in trajectory animation
+  arrows:
+    enabled: true                 # Show velocity arrows
+    scale: speed                  # Arrow length proportional to speed (will show variation!)
+    scale_factor: 1.5             # Larger arrows to see speed variations clearly
+

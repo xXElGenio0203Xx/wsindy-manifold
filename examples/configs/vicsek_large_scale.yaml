@@ -1,0 +1,54 @@
+# Large-Scale Discrete Vicsek Simulation
+# 
+# This configuration runs the discrete Vicsek model with a large number
+# of particles to observe emergent flocking behavior at scale.
+#
+# Expected behavior: 
+# - Initial random → gradual alignment → coherent flocks
+# - Possible phase transition depending on noise level
+
+model:
+  type: vicsek
+  speed: 1.0                # Fixed speed v0
+
+sim:
+  N: 1000                   # Large number of particles!
+  T: 200.0                  # Simulation time
+  dt: 0.4                   # Time step (must satisfy v0*dt < 0.5*R)
+  Lx: 50.0                  # Large domain to accommodate particles
+  Ly: 50.0
+  bc: periodic              # Periodic boundary conditions
+  save_every: 10            # Save every 10 steps (50 frames)
+  neighbor_rebuild: 1       # Rebuild neighbors every step (important for Vicsek)
+  seed: 42                  # Random seed
+
+params:
+  R: 1.0                    # Alignment interaction radius
+  
+# Moderate Gaussian noise for interesting dynamics
+noise:
+  kind: gaussian            # Gaussian noise
+  eta: 0.5                  # Noise amplitude (moderate)
+
+# Forces (not used in discrete Vicsek)
+forces:
+  enabled: false
+
+outputs:
+  run_name: vicsek_large_scale
+  
+  # Output flags
+  save_csv: true
+  save_plots: true
+  
+  # Animations
+  animations: true
+  fps: 10                   # Lower fps for large particle count
+  density_resolution: 60    # Higher resolution for density field
+  
+  # Order parameters
+  order_parameters:
+    - polarization          # Φ: velocity alignment
+    - angular_momentum      # L: collective rotation
+    - mean_speed            # Should stay at v0 ≈ 1.0
+    - density_variance      # Spatial clustering

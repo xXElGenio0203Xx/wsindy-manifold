@@ -1,4 +1,26 @@
-"""Configuration utilities for rectangular collective motion simulations."""
+"""Configuration utilities for rectangular collective motion simulations.
+
+This module centralizes loading, merging, and validating configuration
+values for the rectsim package. It provides:
+
+- A `DEFAULT_CONFIG` describing reasonable defaults for simulation
+    parameters, force constants, output controls and plotting options.
+- `load_config(path, overrides)` which reads a user YAML file, merges it
+    deeply with the defaults, applies dotted-key CLI overrides and runs
+    a validation pass.
+- Small helpers used during merging and override application. These are
+    intentionally lightweight to avoid pulling in heavy dependencies at
+    import time and to make behavior explicit for unit tests.
+
+Design notes
+------------
+We prefer a simple nested dictionary config rather than heavy schema
+libraries for two reasons: (1) it keeps the dependency surface small
+and (2) it is easy to override fields from the command-line using
+``--some.path value`` style arguments. The module performs basic value
+validation and emits a ``RuntimeWarning`` for suspicious but
+non-fatal settings (for example an unusually large time-step).
+"""
 
 from __future__ import annotations
 
@@ -13,6 +35,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "seed": 0,
     "out_dir": "outputs/single",
     "device": "cpu",
+    "model": "social_force",
     "sim": {
         "N": 200,
         "Lx": 20.0,
@@ -32,11 +55,31 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "lr": 0.9,
         "la": 1.0,
         "rcut_factor": 3.0,
+        "mu_t": 1.0,
         "alignment": {
             "enabled": False,
             "radius": 1.5,
             "rate": 0.1,
         },
+    },
+    "vicsek": {
+        "seed": 0,
+        "N": 400,
+        "Lx": 20.0,
+        "Ly": 20.0,
+        "bc": "periodic",
+        "T": 1000.0,
+        "dt": 1.0,
+        "v0": 1.0,
+        "R": 1.0,
+        "noise": {
+            "kind": "gaussian",
+            "sigma": 0.2,
+            "eta": 0.4,
+        },
+        "save_every": 1,
+        "neighbor_rebuild": 5,
+        "out_dir": "outputs/vicsek",
     },
     "outputs": {
         "save_npz": True,
@@ -49,8 +92,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "ny": 128,
             "bandwidth": 0.5,
         },
+        "efrom": {
+            "rank": 10,
+            "order": 4,
+            "horizon": 20,
+        },
         "plot_options": {
             "traj_marker_size": 20,
+            "traj_quiver": True,
             "traj_quiver_scale": 3.0,
             "traj_quiver_width": 0.004,
             "traj_quiver_alpha": 0.8,
@@ -64,7 +113,20 @@ class ConfigError(ValueError):
 
 
 def _deep_update(base: MutableMapping[str, Any], update: Mapping[str, Any]) -> None:
-    """Recursively update a nested mapping."""
+    """Recursively merge ``update`` into ``base`` in-place.
+
+    This behaves similarly to ``dict.update`` but performs a deep
+    recursive merge for nested mappings. Lists and non-mapping values
+    are replaced by the value from ``update``. The function mutates
+    ``base`` and returns ``None``.
+
+    Example
+    -------
+    >>> base = {"a": 1, "b": {"x": 2, "y": 3}}
+    >>> _deep_update(base, {"b": {"y": 9, "z": 10}})
+    >>> base
+    {"a": 1, "b": {"x": 2, "y": 9, "z": 10}}
+    """
 
     for key, value in update.items():
         if isinstance(value, Mapping) and isinstance(base.get(key), MutableMapping):
@@ -74,7 +136,19 @@ def _deep_update(base: MutableMapping[str, Any], update: Mapping[str, Any]) -> N
 
 
 def _set_by_dotted_key(config: MutableMapping[str, Any], dotted_key: str, value: Any) -> None:
-    """Set a value in a nested mapping using a dotted key."""
+    """Assign ``value`` into ``config`` using a dotted path.
+
+    The dotted key syntax allows CLI overrides such as
+    ``sim.N`` or ``params.alignment.radius``. Intermediate mappings are
+    created as needed. This mutates ``config`` in-place.
+
+    Notes
+    -----
+    - The function is intentionally permissive: if an intermediate key
+      already exists but is not a mapping, it will be replaced by a
+      mapping to allow the assignment to succeed. This mirrors the
+      common expectations for CLI override behavior.
+    """
 
     keys = dotted_key.split(".")
     target: MutableMapping[str, Any] = config
@@ -86,7 +160,61 @@ def _set_by_dotted_key(config: MutableMapping[str, Any], dotted_key: str, value:
 
 
 def _validate(config: Mapping[str, Any]) -> None:
-    """Validate configuration values, raising :class:`ConfigError` if invalid."""
+    """Perform sanity checks on the merged configuration.
+
+    This function raises :class:`ConfigError` for invalid values that
+    would definitely prevent a correct simulation (for example non
+    positive sizes or invalid integrator names). For settings that are
+    unusual but not strictly invalid (e.g. a large time step) a
+    ``RuntimeWarning`` is emitted instead.
+
+    The checks are intentionally conservative; they aim to catch common
+    user mistakes early while leaving room for advanced users to tweak
+    unusual parameters.
+    """
+
+    model = config.get("model", "social_force")
+    if model not in {"social_force", "vicsek_discrete"}:
+        raise ConfigError("Model must be 'social_force' or 'vicsek_discrete'.")
+
+    if model == "vicsek_discrete":
+        vicsek = config.get("vicsek")
+        if not isinstance(vicsek, Mapping):
+            raise ConfigError("Vicsek configuration must be provided when model is 'vicsek_discrete'.")
+
+        required = ["N", "Lx", "Ly", "bc", "T", "dt", "v0", "R", "save_every", "neighbor_rebuild"]
+        missing = [key for key in required if key not in vicsek]
+        if missing:
+            raise ConfigError(f"Vicsek configuration missing keys: {', '.join(missing)}")
+
+        if vicsek["N"] <= 0:
+            raise ConfigError("Number of agents must be positive.")
+        if vicsek["Lx"] <= 0 or vicsek["Ly"] <= 0:
+            raise ConfigError("Domain dimensions must be positive.")
+        if vicsek["dt"] <= 0:
+            raise ConfigError("Time step must be positive.")
+        if vicsek["T"] <= 0:
+            raise ConfigError("Final time must be positive.")
+        if vicsek["save_every"] <= 0:
+            raise ConfigError("save_every must be positive.")
+        if vicsek["neighbor_rebuild"] <= 0:
+            raise ConfigError("neighbor_rebuild must be positive.")
+        if vicsek["v0"] <= 0:
+            raise ConfigError("Self-propulsion speed v0 must be positive.")
+        if vicsek["R"] < 0:
+            raise ConfigError("Vicsek interaction radius R must be non-negative.")
+        if vicsek["bc"] not in {"periodic", "reflecting"}:
+            raise ConfigError("Boundary condition must be 'periodic' or 'reflecting'.")
+
+        noise = vicsek.get("noise", {})
+        if noise.get("kind", "gaussian") not in {"gaussian", "uniform"}:
+            raise ConfigError("Vicsek noise kind must be 'gaussian' or 'uniform'.")
+        if noise.get("sigma", 0.0) < 0.0:
+            raise ConfigError("Vicsek Gaussian noise sigma must be non-negative.")
+        if noise.get("eta", 0.0) < 0.0:
+            raise ConfigError("Vicsek uniform noise eta must be non-negative.")
+
+        return
 
     sim = config["sim"]
     params = config["params"]
@@ -116,6 +244,8 @@ def _validate(config: Mapping[str, Any]) -> None:
         raise ConfigError("la and lr must be positive.")
     if params["rcut_factor"] <= 0:
         raise ConfigError("rcut_factor must be positive.")
+    if params.get("mu_t", 1.0) <= 0:
+        raise ConfigError("mu_t must be positive.")
 
     align = params.get("alignment", {})
     if align.get("enabled"):
@@ -124,6 +254,16 @@ def _validate(config: Mapping[str, Any]) -> None:
         if align.get("rate", 0) < 0:
             raise ConfigError("Alignment rate must be non-negative.")
 
+    efrom_cfg = config.get("outputs", {}).get("efrom", {})
+    if efrom_cfg:
+        if efrom_cfg.get("rank", 1) <= 0:
+            raise ConfigError("EF-ROM rank must be positive.")
+        if efrom_cfg.get("order", 1) <= 0:
+            raise ConfigError("EF-ROM VAR order must be positive.")
+        if efrom_cfg.get("horizon", 1) <= 0:
+            raise ConfigError("EF-ROM forecast horizon must be positive.")
+
+    # Warn about suspicious but non-fatal settings
     if sim["dt"] > 0.05:
         warnings.warn(
             "Time step dt > 0.05 may lead to unstable integration.",
@@ -135,18 +275,29 @@ def _validate(config: Mapping[str, Any]) -> None:
 def load_config(path: str | Path, overrides: Iterable[tuple[str, Any]] | None = None) -> Dict[str, Any]:
     """Load a YAML configuration file and merge it with defaults.
 
+    This helper performs the following steps:
+
+    1. Create a deep copy of :data:`DEFAULT_CONFIG` so callers receive a
+       fresh mutable dict.
+    2. If ``path`` exists, load the YAML and deep-merge it into the
+       defaults using :func:`_deep_update`.
+    3. Apply any dotted-key overrides supplied by the CLI via
+       :func:`_set_by_dotted_key`.
+    4. Run :func:`_validate` to perform sanity checks.
+
     Parameters
     ----------
     path:
         Path to the YAML configuration file.
     overrides:
         Optional iterable of ``(key, value)`` pairs where ``key`` is a dotted
-        path specifying the field to override.
+        path specifying the field to override (e.g. ``sim.N``).
 
     Returns
     -------
     dict
-        The merged and validated configuration dictionary.
+        The merged and validated configuration dictionary. The returned
+        object is safe to mutate by the caller.
     """
 
     cfg = json.loads(json.dumps(DEFAULT_CONFIG))

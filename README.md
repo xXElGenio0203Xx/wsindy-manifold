@@ -26,6 +26,29 @@ Default parameters ($N=200$, $\alpha=1.5$, $\beta=0.5$, $L_x=L_y=20$) recover th
 collective behaviours described in the literature. Optionally a Vicsek-style alignment
 torque may be enabled.
 
+### Discrete Vicsek Model
+
+The package also includes an implementation of the discrete-time Vicsek model, where
+particles move at constant speed and update their headings based on local alignment:
+
+\begin{align}
+\mathbf{x}_i(t + \Delta t) &= \mathbf{x}_i(t) + v_0 \mathbf{p}_i(t) \Delta t, \\
+\theta_i(t + \Delta t) &= \text{Arg}\left[\sum_{j \in \mathcal{N}_i} e^{i\theta_j(t)}\right] + \eta_i(t),
+\end{align}
+
+where $\mathbf{p}_i = (\cos\theta_i, \sin\theta_i)$ is the unit heading vector,
+$\mathcal{N}_i$ includes neighbors within radius $R$, and $\eta_i$ is either:
+- Gaussian noise with standard deviation $\sigma$ (angular diffusion)
+- Uniform noise in $[-\eta/2, \eta/2]$ (as in the original Vicsek paper)
+
+Run a Vicsek simulation with:
+```bash
+python -m rectsim.cli single --config examples/configs/vicsek_gaussian.yaml
+```
+
+This produces similar outputs plus an order parameter plot showing the evolution of
+the polarization $\psi(t) = \|\langle \mathbf{p}_i \rangle\|$.
+
 ## Installation
 
 ```bash
@@ -53,6 +76,49 @@ python -m rectsim.cli grid --config examples/configs/grid.yaml
 
 The grid runner creates per-combination output folders, a `manifest.csv` summary and
 heatmaps of average order parameters versus $(C_r, \ell_r)$.
+
+## Latent EF-ROM (rect 2D)
+
+An equation-free reduced-order model pipeline is available under `wsindy_manifold.latent`.
+It transforms raw agent trajectories into density forecasts via KDE movies, POD
+restriction and a multivariate VAR model. Minimal dependencies (`numpy`, `scipy`,
+`matplotlib`) keep scripts CLI-friendly and reproducible.
+
+1. Generate trajectories (or use an existing run):
+   ```bash
+   python -m scripts.run_rect --config configs/rect_demo.yaml
+   ```
+2. Convert trajectories into KDE heatmaps and a movie:
+   ```bash
+   python -m scripts.make_heatmap \
+       --traj_npz outputs/single/trajectories.npz \
+       --Lx 20 --Ly 20 --bc periodic \
+       --nx 128 --ny 128 --hx 0.6 --hy 0.6 \
+       --out_dir artifacts/latent/rect_demo
+   ```
+3. Train the POD + MVAR latent model on the saved heatmaps:
+   ```bash
+   python -m scripts.train_latent_heatmap \
+       --heatmap_npz artifacts/latent/rect_demo/heatmap_true.npz \
+       --energy_keep 0.99 --w 4 --ridge_lambda 1e-6 \
+       --train_frac 0.8 --seed 0 \
+       --out_dir artifacts/latent/rect_demo
+   ```
+4. Forecast future heatmaps (200 frames shown here) and collect metrics:
+   ```bash
+   python -m scripts.forecast_latent_heatmap \
+       --pod_model artifacts/latent/rect_demo/pod_model.npz \
+       --mvar_model artifacts/latent/rect_demo/mvar_model.npz \
+       --seed_npz artifacts/latent/rect_demo/seed_lastw.npz \
+       --grid_meta artifacts/latent/rect_demo/kde_grid.npz \
+       --true_npz artifacts/latent/rect_demo/heldout_true.npz \  # optional
+       --steps 200 \
+       --out_dir artifacts/latent/rect_demo/forecast
+   ```
+
+Use `scripts/compare_heatmaps.py` to produce side-by-side videos for arbitrary runs,
+and `scripts/plot_latent.py` for quick density/latent visualisations. The file
+`configs/latent_rect_heatmap.yaml` collects sensible defaults for the rectangular demo.
 
 ## Reproducibility
 
@@ -89,3 +155,11 @@ node render_readme_math.js
 This writes `README.rendered.md` and the generated SVGs under `assets/readme/`.
 Open `README.rendered.md` in GitHub or a Markdown viewer to see equations rendered as
 images.
+
+
+Next steps : Read Kefriakedis paper with  the orsogna model,
+
+Next Steps: Use model for the vicsek Model, use the simplest one from the oens professor is sharing with me. Try to do the vicsek as an euler step instead of integrating it, it should be a discrete system where I update the new directions every single time step, use the SFM code from professor Constantino and add the merge with repository of simple euler dfiscrete time Vicsek Alignment. Think about vicsek model and the papers and chooose the simplest one, see that everything works.  
+
+
+

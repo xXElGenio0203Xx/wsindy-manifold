@@ -1,7 +1,12 @@
-"""Time integration schemes for the D'Orsogna model."""
+r"""Time integration schemes for the D'Orsogna model.
+
+Implements the velocity update :math:`(\alpha-\beta\lVert v\rVert^2)v`
+from D'Orsogna et al. (2006) with optional external/social forces.
+"""
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Callable, Tuple
 
@@ -11,6 +16,7 @@ from .domain import apply_bc
 
 ArrayLike = np.ndarray
 ForceFunction = Callable[[ArrayLike], Tuple[ArrayLike, ArrayLike]]
+DEBUG_VALIDATE_DORSONGA = bool(int(os.environ.get("RECTSIM_VALIDATE_DORSONGA", "0")))
 
 
 @dataclass
@@ -33,12 +39,20 @@ def _acceleration(
     beta: float,
     fx: ArrayLike,
     fy: ArrayLike,
+    mu_t: float,
 ) -> ArrayLike:
     """Compute the self-propulsion acceleration plus external forces."""
 
     speed_sq = np.sum(v**2, axis=1, keepdims=True)
     self_prop = (alpha - beta * speed_sq) * v
-    return self_prop + np.column_stack((fx, fy))
+    if DEBUG_VALIDATE_DORSONGA:
+        linear = (alpha - beta) * v
+        mask = np.abs(speed_sq - 1.0) > 1e-6
+        if np.any(mask) and np.allclose(self_prop, linear):
+            raise RuntimeError(
+                "Self-propulsion term lost |v|^2 dependence; expected (alpha - beta|v|^2)v",
+            )
+    return self_prop + mu_t * np.column_stack((fx, fy))
 
 
 def step_rk4(
@@ -52,6 +66,7 @@ def step_rk4(
 
     alpha = params["alpha"]
     beta = params["beta"]
+    mu_t = params.get("mu_t", 1.0)
     Lx = domain["Lx"]
     Ly = domain["Ly"]
     bc = domain["bc"]
@@ -67,7 +82,7 @@ def step_rk4(
     v0 = state.v
 
     fx0, fy0 = eval_force(x0)
-    a0 = _acceleration(v0, alpha, beta, fx0, fy0)
+    a0 = _acceleration(v0, alpha, beta, fx0, fy0, mu_t)
 
     k1_x = v0
     k1_v = a0
@@ -75,7 +90,7 @@ def step_rk4(
     x1 = x0 + 0.5 * dt * k1_x
     v1 = v0 + 0.5 * dt * k1_v
     fx1, fy1 = eval_force(x1)
-    a1 = _acceleration(v1, alpha, beta, fx1, fy1)
+    a1 = _acceleration(v1, alpha, beta, fx1, fy1, mu_t)
 
     k2_x = v1
     k2_v = a1
@@ -83,7 +98,7 @@ def step_rk4(
     x2 = x0 + 0.5 * dt * k2_x
     v2 = v0 + 0.5 * dt * k2_v
     fx2, fy2 = eval_force(x2)
-    a2 = _acceleration(v2, alpha, beta, fx2, fy2)
+    a2 = _acceleration(v2, alpha, beta, fx2, fy2, mu_t)
 
     k3_x = v2
     k3_v = a2
@@ -91,7 +106,7 @@ def step_rk4(
     x3 = x0 + dt * k3_x
     v3 = v0 + dt * k3_v
     fx3, fy3 = eval_force(x3)
-    a3 = _acceleration(v3, alpha, beta, fx3, fy3)
+    a3 = _acceleration(v3, alpha, beta, fx3, fy3, mu_t)
 
     k4_x = v3
     k4_v = a3
@@ -118,12 +133,13 @@ def step_euler_semiimplicit(
 
     alpha = params["alpha"]
     beta = params["beta"]
+    mu_t = params.get("mu_t", 1.0)
     Lx = domain["Lx"]
     Ly = domain["Ly"]
     bc = domain["bc"]
 
     fx, fy = force_fn(state.x)
-    accel_force = np.column_stack((fx, fy))
+    accel_force = mu_t * np.column_stack((fx, fy))
 
     v_new = state.v.copy()
     for _ in range(iterations):

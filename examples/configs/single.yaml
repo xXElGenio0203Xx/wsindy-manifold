@@ -18,6 +18,11 @@ params:
   lr: 0.9
   la: 1.0
   rcut_factor: 3.0
+  alignment:
+    enabled: false
+    radius: 1.5
+    rate: 0.1
+    Dtheta: 0.0
 outputs:
   save_npz: true
   save_csv: true

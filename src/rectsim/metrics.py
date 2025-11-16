@@ -1,4 +1,10 @@
-"""Order parameters and diagnostics for collective motion simulations."""
+"""Order parameters and diagnostics for collective motion simulations.
+
+Implements the polarization, angular momentum and nearest-neighbour
+statistics used in Bhaskar & Ziegelmeier (2019) alongside generic error
+metrics (RMSE, R², mean relative error, tolerance horizon) for EF-ROM
+evaluation.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +20,47 @@ except ImportError:  # pragma: no cover - optional dependency
 from .domain import pair_displacements
 
 ArrayLike = np.ndarray
+
+def rmse(y_true: ArrayLike, y_pred: ArrayLike, axis=None) -> float | ArrayLike:
+    """Root-mean-square error between ``y_true`` and ``y_pred``."""
+
+    diff = np.asarray(y_true) - np.asarray(y_pred)
+    return np.sqrt(np.mean(diff**2, axis=axis))
+
+
+def r2(y_true: ArrayLike, y_pred: ArrayLike) -> float:
+    """Coefficient of determination (R²)."""
+
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    ss_res = np.sum((y_true - y_pred) ** 2)
+    ss_tot = np.sum((y_true - y_true.mean()) ** 2)
+    if ss_tot == 0:
+        return 1.0
+    return 1.0 - ss_res / ss_tot
+
+
+def mean_relative_error(
+    y_true: ArrayLike,
+    y_pred: ArrayLike,
+    eps: float = 1e-12,
+    axis=None,
+) -> float | ArrayLike:
+    """Mean relative error with epsilon safeguard."""
+
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    rel = np.abs(y_true - y_pred) / (np.abs(y_true) + eps)
+    return np.mean(rel, axis=axis)
+
+
+def tolerance_horizon(rel_err_t: ArrayLike, tol: float = 0.10) -> int:
+    """Return first index where relative error exceeds ``tol`` (else length)."""
+
+    rel_err_t = np.asarray(rel_err_t)
+    exceeding = np.argwhere(rel_err_t >= tol)
+    return int(exceeding[0, 0]) if exceeding.size else int(len(rel_err_t))
+
 
 
 def polarization(v: ArrayLike) -> float:
@@ -95,4 +142,8 @@ __all__ = [
     "abs_angular_momentum",
     "dnn",
     "compute_timeseries",
+    "rmse",
+    "r2",
+    "mean_relative_error",
+    "tolerance_horizon",
 ]
