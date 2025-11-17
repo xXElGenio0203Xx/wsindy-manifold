@@ -14,6 +14,78 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 ArrayLike = np.ndarray
 
 
+def compute_density_grid(
+    pos: ArrayLike,
+    nx: int,
+    ny: int,
+    Lx: float,
+    Ly: float,
+    bandwidth: float = 0.5,
+    bc: str = "periodic",
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute density field on a grid for a single snapshot.
+    
+    This is a single-frame version of density_movie_kde used by ROM scripts.
+    
+    Parameters
+    ----------
+    pos : ndarray, shape (N, 2)
+        Particle positions at one time point.
+    nx, ny : int
+        Number of grid cells along each axis.
+    Lx, Ly : float
+        Domain extents in x and y.
+    bandwidth : float, optional
+        Standard deviation of the Gaussian kernel in grid-cell units.
+    bc : {"periodic", "reflecting"}, optional
+        Boundary condition controlling wrap behaviour during smoothing.
+    
+    Returns
+    -------
+    rho : ndarray, shape (ny, nx)
+        Density field normalized so that rho.sum() * dx * dy = N.
+    x_edges : ndarray, shape (nx+1,)
+        Grid edges in x direction.
+    y_edges : ndarray, shape (ny+1,)
+        Grid edges in y direction.
+    """
+    pos = np.asarray(pos)
+    if pos.ndim != 2 or pos.shape[1] != 2:
+        raise ValueError("pos must have shape (N, 2)")
+    
+    N = pos.shape[0]
+    x_edges = np.linspace(0.0, Lx, nx + 1)
+    y_edges = np.linspace(0.0, Ly, ny + 1)
+    dx = Lx / nx
+    dy = Ly / ny
+    
+    # Compute 2D histogram
+    hist, _, _ = np.histogram2d(
+        pos[:, 0],
+        pos[:, 1],
+        bins=[x_edges, y_edges],
+        range=[[0.0, Lx], [0.0, Ly]],
+    )
+    
+    # Convert to density (particles per unit area)
+    density = hist / (dx * dy)
+    
+    # Apply Gaussian smoothing if bandwidth > 0
+    if bandwidth > 0:
+        mode = "wrap" if bc == "periodic" else "nearest"
+        density = gaussian_filter(density, sigma=bandwidth, mode=mode)
+    
+    # Transpose to get (ny, nx) shape
+    density = density.T
+    
+    # Renormalize to preserve total mass N
+    total_mass = density.sum() * dx * dy
+    if total_mass > 0:
+        density *= (N / total_mass)
+    
+    return density, x_edges, y_edges
+
+
 def hist2d_movie(
     traj: ArrayLike,
     times: Iterable[float],
