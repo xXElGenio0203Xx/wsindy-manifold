@@ -202,6 +202,9 @@ def main():
         latent_dim=rom_cfg.latent_dim,
     )
     
+    # Add grid info to pod_result for save_train_summary
+    pod_result["grid_info"] = grid_info
+    
     print(f"\n✓ POD basis computed")
     print(f"  Latent dimension: {pod_result['latent_dim']}")
     print(f"  Energy captured: {pod_result['energy'][pod_result['latent_dim']-1]:.4f}")
