@@ -303,8 +303,16 @@ def _run_vicsek_single(config: Dict) -> Dict:
         seed = cfg.get("seed", 42)
         rng = np.random.default_rng(seed)
         
+        # Prepare backend config: rename model_config → model
+        backend_cfg = deepcopy(cfg)
+        if "model_config" in backend_cfg:
+            backend_cfg["model"] = backend_cfg.pop("model_config")
+        elif isinstance(backend_cfg.get("model"), str):
+            # If model is still a string, create empty dict
+            backend_cfg["model"] = {}
+        
         # Call backend interface
-        results = simulate_backend(cfg, rng)
+        results = simulate_backend(backend_cfg, rng)
         
         # Extract results (backend returns different format)
         # Backend: {times, traj, vel, head, meta}
