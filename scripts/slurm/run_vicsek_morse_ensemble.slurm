@@ -70,6 +70,11 @@ echo "Running simulation with seed=${SEED}"
 echo "Output directory: ${OUTPUT_DIR}"
 echo ""
 
+# DEBUG: Show the exact command being run
+echo "DEBUG: Full command:"
+echo "rectsim single --config configs/vicsek_morse_base.yaml --seed ${SEED} --outputs.grid_density.enabled false --out_dir ${OUTPUT_DIR}"
+echo ""
+
 # Run the simulation
 # - Outputs only npz/csv (no videos, no plots)
 # - Uses discrete Vicsek with Morse forces
@@ -81,6 +86,15 @@ rectsim single \
   --seed ${SEED} \
   --outputs.grid_density.enabled false \
   --out_dir ${OUTPUT_DIR}
+
+# DEBUG: Show where files actually ended up
+echo ""
+echo "DEBUG: Checking output locations..."
+echo "Contents of ${OUTPUT_DIR}:"
+ls -lh "${OUTPUT_DIR}" 2>&1 || echo "Directory does not exist or is empty"
+echo ""
+echo "Contents of simulations/vicsek_morse_base/:"
+ls -lh simulations/vicsek_morse_base/*.npz 2>&1 | head -5 || echo "No NPZ files in base directory"
 
 EXIT_CODE=$?
 
