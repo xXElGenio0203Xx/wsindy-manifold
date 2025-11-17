@@ -389,7 +389,7 @@ def _run_vicsek_single(config: Dict) -> Dict:
             grid_cfg.get("bandwidth", 0.5),
             vicsek_cfg["bc"],
             out_dir,
-            animate=outputs_cfg.get("animate", True),
+            animate=outputs_cfg.get("animate_density", False),
         )
         from .density import traj_movie
 
