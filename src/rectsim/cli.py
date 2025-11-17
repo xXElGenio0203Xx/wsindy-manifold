@@ -276,16 +276,46 @@ def _run_vicsek_single(config: Dict) -> Dict:
     """Execute a discrete Vicsek simulation and persist outputs."""
 
     cfg = deepcopy(config)
-    vicsek_cfg = deepcopy(cfg.get("vicsek", {}))
-    if not vicsek_cfg:
-        raise ValueError("Vicsek configuration missing under key 'vicsek'.")
-
-    out_dir = Path(vicsek_cfg.get("out_dir", cfg.get("out_dir", "outputs/vicsek")))
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    results = simulate_vicsek(vicsek_cfg)
+    
+    # Check if using old vicsek schema or new backend schema
+    if "vicsek" in cfg:
+        # OLD SCHEMA: config has "vicsek" key
+        vicsek_cfg = deepcopy(cfg.get("vicsek", {}))
+        if not vicsek_cfg:
+            raise ValueError("Vicsek configuration missing under key 'vicsek'.")
+        out_dir = Path(vicsek_cfg.get("out_dir", cfg.get("out_dir", "outputs/vicsek")))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        results = simulate_vicsek(vicsek_cfg)
+    else:
+        # NEW SCHEMA: config has "sim", "model_config", "params", etc. (backend interface)
+        from .vicsek_discrete import simulate_backend
+        out_dir = Path(cfg.get("out_dir", "outputs/vicsek"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate RNG
+        seed = cfg.get("seed", 42)
+        rng = np.random.default_rng(seed)
+        
+        # Call backend interface
+        results = simulate_backend(cfg, rng)
+        
+        # Extract results (backend returns different format)
+        # Backend: {times, traj, vel, head, meta}
+        # Old: {traj, headings, vel, times, psi}
+        # Compute order parameter if not present
+        if "psi" not in results:
+            # Compute psi from headings
+            headings = results.get("head", results.get("headings"))
+            psi = np.linalg.norm(headings.mean(axis=1), axis=1)
+            results["psi"] = psi
+        
+        # Map backend keys to old keys for compatibility
+        if "head" in results and "headings" not in results:
+            results["headings"] = results["head"]
+    
+    # Extract results (compatible with both schemas)
     traj = results["traj"]
-    headings = results["headings"]
+    headings = results.get("headings", results.get("head"))
     vel = results["vel"]
     times = results["times"]
     psi = results["psi"]
@@ -294,6 +324,23 @@ def _run_vicsek_single(config: Dict) -> Dict:
 
     outputs_cfg = cfg.get("outputs", {})
     plot_opts = outputs_cfg.get("plot_options", {})
+    
+    # Get config parameters (handle both old and new schemas)
+    if "vicsek" in cfg:
+        vicsek_cfg = cfg["vicsek"]
+    else:
+        # Build vicsek_cfg dict from new schema for compatibility
+        vicsek_cfg = {
+            "N": cfg["sim"]["N"],
+            "Lx": cfg["sim"]["Lx"],
+            "Ly": cfg["sim"]["Ly"],
+            "bc": cfg["sim"]["bc"],
+            "T": cfg["sim"]["T"],
+            "dt": cfg["sim"]["dt"],
+            "v0": cfg.get("model_config", {}).get("speed", 0.5),
+            "R": cfg.get("params", {}).get("R", 1.0),
+            "out_dir": str(out_dir),
+        }
 
     if outputs_cfg.get("save_npz", True):
         payload = {
