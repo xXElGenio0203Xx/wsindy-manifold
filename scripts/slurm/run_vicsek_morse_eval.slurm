@@ -64,18 +64,26 @@ echo ""
 # Run ROM/MVAR Evaluation
 # ------------------------------------------------------------------------------
 
+# Get config from command line (default to base config if not provided)
+CONFIG=${1:-configs/vicsek_morse_base.yaml}
+
+# Extract experiment name from config
+EXPERIMENT=$(grep "experiment_name:" ${CONFIG} | awk '{print $2}')
+
 echo "Starting ROM/MVAR evaluation..."
+echo "Config: ${CONFIG}"
+echo "Experiment: ${EXPERIMENT}"
 echo ""
 
 # Run evaluation
-# - Loads rom_mvar/vicsek_morse_base/model/*
-# - Generates 2 test simulations (seeds 1000, 1001)
+# - Loads rom_mvar/${EXPERIMENT}/model/*
+# - Generates test simulations
 # - Forecasts with MVAR
 # - Computes metrics
-# - Saves to rom_mvar/vicsek_morse_base/test_ics/ic_*/
+# - Saves to rom_mvar/${EXPERIMENT}/test_ics/ic_*/
 python scripts/rom_mvar_eval.py \
-  --experiment vicsek_morse_base \
-  --config configs/vicsek_morse_base.yaml
+  --experiment ${EXPERIMENT} \
+  --config ${CONFIG}
 
 EXIT_CODE=$?
 

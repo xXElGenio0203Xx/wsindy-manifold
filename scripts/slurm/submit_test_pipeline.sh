@@ -52,7 +52,8 @@ eval_jid=$(sbatch --parsable --dependency=afterok:${rom_jid} \
   --job-name=test_eval \
   --output=logs/test_eval_%j.out \
   --error=logs/test_eval_%j.err \
-  scripts/slurm/run_vicsek_morse_eval.slurm)
+  scripts/slurm/run_vicsek_morse_eval.slurm \
+  configs/vicsek_morse_test.yaml)
 
 echo "  ✓ Test evaluation submitted: ${eval_jid}"
 echo ""

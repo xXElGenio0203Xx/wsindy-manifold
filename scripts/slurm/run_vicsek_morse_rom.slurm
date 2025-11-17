@@ -66,16 +66,24 @@ echo ""
 # Run ROM/MVAR Training
 # ------------------------------------------------------------------------------
 
+# Get config from command line (default to base config if not provided)
+CONFIG=${1:-configs/vicsek_morse_base.yaml}
+
+# Extract experiment name from config
+EXPERIMENT=$(grep "experiment_name:" ${CONFIG} | awk '{print $2}')
+
 echo "Starting ROM/MVAR training pipeline..."
+echo "Config: ${CONFIG}"
+echo "Experiment: ${EXPERIMENT}"
 echo ""
 
 # Run training
-# - Loads simulations/vicsek_morse_base/run_*/density.npz
+# - Loads simulations/${EXPERIMENT}/run_*/density.npz
 # - Computes global POD basis
 # - Fits MVAR model
-# - Saves to rom_mvar/vicsek_morse_base/model/
+# - Saves to rom_mvar/${EXPERIMENT}/model/
 python scripts/rom_mvar_train.py \
-  --config configs/vicsek_morse_base.yaml
+  --config ${CONFIG}
 
 EXIT_CODE=$?
 
