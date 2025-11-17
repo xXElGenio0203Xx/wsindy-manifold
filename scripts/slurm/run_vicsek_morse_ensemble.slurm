@@ -76,8 +76,8 @@ echo ""
 # - T=300, N=200, 64x64 density grid
 rectsim single \
   --config configs/vicsek_morse_base.yaml \
-  seed=${SEED} \
-  out_dir=${OUTPUT_DIR}
+  --seed ${SEED} \
+  --out-dir ${OUTPUT_DIR}
 
 EXIT_CODE=$?
 
