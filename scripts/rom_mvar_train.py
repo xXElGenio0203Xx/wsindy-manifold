@@ -64,10 +64,11 @@ def load_density_from_simulation(sim_result: dict, nx: int, ny: int) -> np.ndarr
         Flattened density snapshots.
     """
     results = sim_result["results"]
+    cfg = sim_result["config"]
     traj = results["traj"]  # (T, N, 2)
-    Lx = results["sim"]["Lx"]
-    Ly = results["sim"]["Ly"]
-    bc = results["sim"]["bc"]
+    Lx = cfg["sim"]["Lx"]
+    Ly = cfg["sim"]["Ly"]
+    bc = cfg["sim"]["bc"]
     
     T = traj.shape[0]
     density_movie = np.zeros((T, nx, ny))
