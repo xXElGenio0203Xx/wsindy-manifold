@@ -189,7 +189,7 @@ def main():
         traj = results["traj"]
         times = results["times"]
         T = traj.shape[0]
-        bc = results["sim"]["bc"]
+        bc = test_cfg["sim"]["bc"]
         
         density_true_movie = np.zeros((T, nx, ny))
         for t in range(T):
