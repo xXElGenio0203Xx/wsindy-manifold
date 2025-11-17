@@ -74,10 +74,12 @@ echo ""
 # - Outputs only npz/csv (no videos, no plots)
 # - Uses discrete Vicsek with Morse forces
 # - T=300, N=200, 64x64 density grid
+# - Disable grid_density animation (requires ffmpeg)
 rectsim single \
   --config configs/vicsek_morse_base.yaml \
   --seed ${SEED} \
-  --out-dir ${OUTPUT_DIR}
+  --out-dir ${OUTPUT_DIR} \
+  outputs.grid_density.enabled=false
 
 EXIT_CODE=$?
 
