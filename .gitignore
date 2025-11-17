@@ -1,6 +1,8 @@
 # Ignore generated artifacts and outputs
 artifacts/
 outputs/
+simulations/
+mvar_outputs/
 slurm_logs/
 
 # Virtual environments
