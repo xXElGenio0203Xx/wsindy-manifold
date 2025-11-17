@@ -189,9 +189,26 @@ def main():
     print()
 
     all_metrics = []
+    all_order_params = []  # For concatenated order parameter CSV
+    
+    # Get gating parameters
+    video_ics = config.video_ics
+    order_params_ics = config.order_params_ics
+    enable_density_videos = config.animate_density
 
-    for test_idx in config.test_runs:
-        print(f"  Processing test run {test_idx}...")
+    for ic_id, test_idx in enumerate(config.test_runs):
+        print(f"  Processing IC {ic_id} (test run {test_idx})...")
+        
+        # Determine if this IC gets videos and order parameter plots
+        enable_videos_for_ic = (ic_id < video_ics) and enable_density_videos
+        enable_order_plots_for_ic = (ic_id < order_params_ics) and config.plot_order_params
+        
+        # Create IC-specific subfolder if needed for videos/plots
+        if enable_videos_for_ic or enable_order_plots_for_ic:
+            ic_dir = forecast_dir / f"ic_{ic_id:03d}"
+            ic_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            ic_dir = None
 
         # --------------------------------------------------------------------
         # Load latent trajectory
@@ -278,9 +295,14 @@ def main():
 
         # Order parameters
         order_df = compare_order_parameters(rho_true, rho_pred)
+        
+        # Add metadata columns for concatenation
+        order_df["ic_id"] = ic_id
+        order_df["run_id"] = test_idx
+        all_order_params.append(order_df)
 
         # --------------------------------------------------------------------
-        # Save forecast data
+        # Save forecast data (always in global forecast_dir)
         # --------------------------------------------------------------------
         forecast_file = forecast_dir / f"forecast_run_{test_idx:04d}.npz"
         np.savez(

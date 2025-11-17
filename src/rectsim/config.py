@@ -95,7 +95,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "save_npz": True,
         "save_csv": True,
         "plots": True,
-        "animate": True,
+        "animate": True,  # Legacy field; kept for backward compatibility
+        # Video generation controls
+        "animate_traj": False,
+        "animate_density": False,
+        "video_ics": 1,  # Number of ICs for which we generate videos
+        # Order parameter plot controls
+        "plot_order_params": True,
+        "order_params_ics": 1,  # Number of ICs for which we generate order parameter plots
         "grid_density": {
             "enabled": True,
             "nx": 128,
@@ -273,6 +280,13 @@ def _validate(config: Mapping[str, Any]) -> None:
         if efrom_cfg.get("horizon", 1) <= 0:
             raise ConfigError("EF-ROM forecast horizon must be positive.")
 
+    # Validate new video/plot controls
+    outputs = config.get("outputs", {})
+    if outputs.get("video_ics", 1) < 0:
+        raise ConfigError("video_ics must be non-negative.")
+    if outputs.get("order_params_ics", 1) < 0:
+        raise ConfigError("order_params_ics must be non-negative.")
+
     # Warn about suspicious but non-fatal settings
     if sim["dt"] > 0.05:
         warnings.warn(
@@ -280,6 +294,21 @@ def _validate(config: Mapping[str, Any]) -> None:
             RuntimeWarning,
             stacklevel=2,
         )
+
+
+def _apply_backward_compatibility(config: MutableMapping[str, Any]) -> None:
+    """Apply backward compatibility rules for legacy config fields.
+    
+    Ensures old configs continue to work with new video/plot control fields.
+    Specifically handles the legacy 'animate' field:
+    - If 'animate' is True and 'animate_density' is not set, set animate_density=True
+    - New explicit fields (animate_traj, animate_density) always override 'animate'
+    """
+    outputs = config.get("outputs", {})
+    
+    # Backward compatibility: if animate=True but animate_density not set, enable animate_density
+    if outputs.get("animate", False) and "animate_density" not in outputs:
+        outputs["animate_density"] = True
 
 
 def load_config(path: str | Path, overrides: Iterable[tuple[str, Any]] | None = None) -> Dict[str, Any]:
@@ -293,7 +322,8 @@ def load_config(path: str | Path, overrides: Iterable[tuple[str, Any]] | None = 
        defaults using :func:`_deep_update`.
     3. Apply any dotted-key overrides supplied by the CLI via
        :func:`_set_by_dotted_key`.
-    4. Run :func:`_validate` to perform sanity checks.
+    4. Apply backward compatibility rules via :func:`_apply_backward_compatibility`.
+    5. Run :func:`_validate` to perform sanity checks.
 
     Parameters
     ----------
@@ -325,6 +355,7 @@ def load_config(path: str | Path, overrides: Iterable[tuple[str, Any]] | None = 
         for key, value in overrides:
             _set_by_dotted_key(cfg, key, value)
 
+    _apply_backward_compatibility(cfg)
     _validate(cfg)
     return cfg
 

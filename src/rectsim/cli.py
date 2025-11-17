@@ -27,7 +27,7 @@ import argparse
 import json
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -356,12 +356,18 @@ def _run_vicsek_single(config: Dict) -> Dict:
     }
 
 
-def _run_single(config: Dict) -> Dict:
+def _run_single(
+    config: Dict,
+    *,
+    ic_id: int | None = None,
+    enable_videos: bool = True,
+    enable_order_plots: bool = True,
+) -> Dict:
     """Execute a single simulation and persist configured outputs.
 
     Steps performed
     ----------------
-    1. Create the output directory.
+    1. Create the output directory (with ic_XXX subfolder if ic_id is set).
     2. Call :func:`rectsim.dynamics.simulate` to compute trajectories.
     3. Compute time-series metrics via :func:`rectsim.metrics.compute_timeseries`.
     4. Optionally save NPZ/CSV files and produce plots (final positions,
@@ -369,6 +375,20 @@ def _run_single(config: Dict) -> Dict:
     5. Optionally compute and write density movies via
        :func:`rectsim.density.hist2d_movie`.
     6. Persist run metadata via :func:`rectsim.io.save_run_metadata`.
+
+    Parameters
+    ----------
+    config : Dict
+        The configuration dictionary for the simulation.
+    ic_id : int | None, optional
+        The initial condition ID (0-indexed). If provided, outputs are written
+        to a subdirectory `ic_{ic_id:03d}` within the base out_dir.
+    enable_videos : bool, default=True
+        Whether to generate videos for this IC. Should be gated based on
+        outputs.video_ics configuration.
+    enable_order_plots : bool, default=True
+        Whether to generate order parameter plots for this IC. Should be gated
+        based on outputs.order_params_ics configuration.
 
     Why this is separated from the integrator
     ------------------------------------------
@@ -382,7 +402,13 @@ def _run_single(config: Dict) -> Dict:
         return _run_vicsek_single(config)
 
     cfg = deepcopy(config)
-    out_dir = Path(cfg["out_dir"])
+    
+    # Determine output directory based on ic_id
+    base_out = Path(cfg["out_dir"])
+    if ic_id is None:
+        out_dir = base_out
+    else:
+        out_dir = base_out / f"ic_{ic_id:03d}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     results = simulate(cfg)
@@ -424,11 +450,21 @@ def _run_single(config: Dict) -> Dict:
 
     if cfg["outputs"].get("plots", True):
         _plot_final(out_dir, results["traj"], results["vel"], cfg)
-        _plot_order_params(out_dir, metrics_df, cfg)
+        
+        # Only plot order parameters if enabled for this IC
+        if enable_order_plots and cfg["outputs"].get("plot_order_params", True):
+            _plot_order_params(out_dir, metrics_df, cfg)
+        
         _plot_speeds(out_dir, results["vel"], results["times"], cfg)
 
     grid_cfg = cfg["outputs"].get("grid_density", {})
     if grid_cfg.get("enabled", True):
+        # Only generate density movie if videos are enabled for this IC
+        should_animate_density = (
+            enable_videos 
+            and cfg["outputs"].get("animate_density", cfg["outputs"].get("animate", False))
+        )
+        
         hist2d_movie(
             results["traj"],
             results["times"],
@@ -439,27 +475,29 @@ def _run_single(config: Dict) -> Dict:
             grid_cfg.get("bandwidth", 0.5),
             cfg["sim"]["bc"],
             out_dir,
-            animate=cfg["outputs"].get("animate", True),
+            animate=should_animate_density,
         )
-        # produce a trajectory animation as well for visual comparison
-        plot_opts = cfg.get("outputs", {}).get("plot_options", {})
-        from .density import traj_movie
+        
+        # Only generate trajectory video if enabled for this IC
+        if enable_videos and cfg["outputs"].get("animate_traj", False):
+            plot_opts = cfg.get("outputs", {}).get("plot_options", {})
+            from .density import traj_movie
 
-        try:
-            traj_movie(
-                results["traj"],
-                results.get("vel"),
-                results["times"],
-                cfg["sim"]["Lx"],
-                cfg["sim"]["Ly"],
-                out_dir,
-                fps=24,
-                marker_size=plot_opts.get("traj_marker_size", 4),
-                draw_vectors=plot_opts.get("traj_quiver", False),
-            )
-        except Exception:
-            # Do not fail the whole run if trajectory animation cannot be produced
-            pass
+            try:
+                traj_movie(
+                    results["traj"],
+                    results.get("vel"),
+                    results["times"],
+                    cfg["sim"]["Lx"],
+                    cfg["sim"]["Ly"],
+                    out_dir,
+                    fps=24,
+                    marker_size=plot_opts.get("traj_marker_size", 4),
+                    draw_vectors=plot_opts.get("traj_quiver", False),
+                )
+            except Exception:
+                # Do not fail the whole run if trajectory animation cannot be produced
+                pass
 
     save_run_metadata(out_dir, cfg, results)
 
@@ -479,6 +517,105 @@ def _run_single(config: Dict) -> Dict:
         "results": results,
         "metrics": metrics_df,
         "out_dir": out_dir,
+    }
+
+
+def run_multi_ic(
+    base_config: Dict,
+    n_ic: int,
+    seeds: List[int] | None = None,
+) -> Dict[str, Any]:
+    """Run multiple simulations with different initial conditions.
+    
+    This helper loops over IC indices, applies video_ics/order_params_ics
+    gating, and concatenates all metrics into a single CSV.
+    
+    Parameters
+    ----------
+    base_config : Dict
+        Base configuration that will be copied for each IC.
+    n_ic : int
+        Number of initial conditions to simulate.
+    seeds : List[int] | None, optional
+        List of seeds to use for each IC. If None, uses range(n_ic).
+    
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing:
+        - "base_out": Path to base output directory
+        - "metrics_all": Concatenated DataFrame with all IC metrics
+        - "ic_results": List of individual IC result dictionaries
+    """
+    import pandas as pd
+    
+    if seeds is None:
+        seeds = list(range(n_ic))
+    elif len(seeds) != n_ic:
+        raise ValueError(f"Length of seeds ({len(seeds)}) must match n_ic ({n_ic})")
+    
+    base_out = Path(base_config["out_dir"])
+    base_out.mkdir(parents=True, exist_ok=True)
+    
+    # Get gating parameters
+    video_ics = base_config["outputs"].get("video_ics", 1)
+    order_params_ics = base_config["outputs"].get("order_params_ics", 1)
+    
+    all_records = []
+    ic_results = []
+    
+    for ic_id, seed in enumerate(seeds):
+        print(f"\n{'='*60}")
+        print(f"Running IC {ic_id + 1}/{n_ic} (seed={seed})")
+        print(f"{'='*60}\n")
+        
+        # Prepare config for this IC
+        cfg = deepcopy(base_config)
+        cfg["seed"] = seed
+        
+        # Determine if this IC gets videos and order plots
+        enable_videos = (ic_id < video_ics)
+        enable_order_plots = (ic_id < order_params_ics)
+        
+        # Run the simulation
+        run_result = _run_single(
+            cfg,
+            ic_id=ic_id,
+            enable_videos=enable_videos,
+            enable_order_plots=enable_order_plots,
+        )
+        
+        # Add ic_id to metrics
+        metrics = run_result["metrics"].copy()
+        metrics["ic_id"] = ic_id
+        metrics["seed"] = seed
+        all_records.append(metrics)
+        
+        ic_results.append(run_result)
+    
+    # Concatenate all metrics
+    metrics_all = pd.concat(all_records, ignore_index=True)
+    metrics_all_path = base_out / "metrics_all.csv"
+    metrics_all.to_csv(metrics_all_path, index=False)
+    print(f"\n✓ Saved concatenated metrics to {metrics_all_path}")
+    
+    # Write summary metadata
+    summary = {
+        "n_ic": n_ic,
+        "seeds": seeds,
+        "video_ics": video_ics,
+        "order_params_ics": order_params_ics,
+        "base_config": base_config,
+    }
+    summary_path = base_out / "run.json"
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2, default=str)
+    print(f"✓ Saved experiment summary to {summary_path}\n")
+    
+    return {
+        "base_out": base_out,
+        "metrics_all": metrics_all,
+        "ic_results": ic_results,
     }
 
 

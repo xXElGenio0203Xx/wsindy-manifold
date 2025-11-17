@@ -82,6 +82,16 @@ class ROMConfig:
         Root directory containing simulation runs.
     rom_root : Path
         Root directory for ROM outputs.
+    animate_traj : bool
+        Whether to generate trajectory videos.
+    animate_density : bool
+        Whether to generate density videos.
+    video_ics : int
+        Number of ICs for which to generate videos (default 1).
+    plot_order_params : bool
+        Whether to generate order parameter plots.
+    order_params_ics : int
+        Number of ICs for which to generate order parameter plots (default 1).
     """
 
     experiment_name: str
@@ -94,6 +104,12 @@ class ROMConfig:
     latent_dim: int | None = None
     sim_root: Path = field(default_factory=lambda: Path("simulations"))
     rom_root: Path = field(default_factory=lambda: Path("rom"))
+    # Video and plot controls
+    animate_traj: bool = False
+    animate_density: bool = False
+    video_ics: int = 1
+    plot_order_params: bool = True
+    order_params_ics: int = 1
 
     def to_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
