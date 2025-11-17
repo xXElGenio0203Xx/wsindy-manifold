@@ -62,6 +62,16 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "rate": 0.1,
         },
     },
+    "ic": {
+        "type": "uniform",
+    },
+    "ensemble": {
+        "n_runs": 20,
+        "seeds": None,
+        "base_seed": 0,
+        "ic_types": ["gaussian", "uniform", "ring", "cluster"],
+        "ic_weights": None,
+    },
     "vicsek": {
         "seed": 0,
         "N": 400,

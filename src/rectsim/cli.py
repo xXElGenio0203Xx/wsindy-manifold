@@ -705,6 +705,126 @@ def _run_efrom_pipeline(config: Dict, run: Dict) -> None:
     print("EF-ROM metrics:")
     print(json.dumps(metrics_payload, indent=2))
     print(f"Artifacts written to {out_dir}")
+
+
+def cmd_ensemble(args: argparse.Namespace, overrides: List[Tuple[str, str]]) -> None:
+    """Entry point for the ``ensemble`` CLI command.
+    
+    Generates multiple simulation runs with varied initial conditions
+    and stores them in simulations/<model_id>/run_xxxx/ structure.
+    """
+    override_pairs = [(k, _convert_value(v)) for k, v in overrides]
+    config = load_config(args.config, override_pairs)
+    if getattr(args, "model", None):
+        config["model"] = args.model
+    
+    from .utils import generate_model_id
+    
+    # Generate model ID
+    model_id = generate_model_id(config)
+    print(f"Model ID: {model_id}")
+    
+    # Get ensemble configuration
+    ensemble_cfg = config.get("ensemble", {})
+    n_runs = ensemble_cfg.get("n_runs", 20)
+    seeds = ensemble_cfg.get("seeds")
+    base_seed = ensemble_cfg.get("base_seed", 0)
+    ic_types = ensemble_cfg.get("ic_types", ["gaussian", "uniform", "ring", "cluster"])
+    ic_weights = ensemble_cfg.get("ic_weights")
+    
+    # Determine seeds
+    if seeds is not None:
+        seeds = list(seeds)
+        n_runs = len(seeds)
+    else:
+        seeds = [base_seed + k for k in range(n_runs)]
+    
+    # Normalize IC weights
+    if ic_weights is None:
+        # Uniform weights
+        ic_weights = [1.0 / len(ic_types)] * len(ic_types)
+    else:
+        # Normalize to sum to 1
+        total = sum(ic_weights)
+        ic_weights = [w / total for w in ic_weights]
+    
+    print(f"Generating {n_runs} simulation runs")
+    print(f"IC types: {ic_types} with weights {ic_weights}")
+    
+    # Create base directory
+    base_dir = Path("simulations") / model_id
+    base_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create RNG for IC sampling
+    ic_rng = np.random.default_rng(base_seed)
+    
+    # Track ensemble metadata
+    ensemble_rows = []
+    
+    for k in range(n_runs):
+        run_name = f"run_{k:04d}"
+        run_dir = base_dir / run_name
+        
+        # Sample IC type
+        ic_type = ic_rng.choice(ic_types, p=ic_weights)
+        
+        # Create per-run config
+        run_config = deepcopy(config)
+        run_config["seed"] = seeds[k]
+        run_config["ic"]["type"] = ic_type
+        run_config["out_dir"] = str(run_dir)
+        
+        print(f"\n[{k+1}/{n_runs}] Running {run_name} (seed={seeds[k]}, ic={ic_type})")
+        
+        # Run simulation
+        try:
+            result = _run_single(run_config)
+            
+            # Extract final order parameters for summary
+            metrics_df = result["metrics"]
+            final_row = metrics_df.iloc[-1]
+            
+            ensemble_rows.append({
+                "run_id": run_name,
+                "seed": seeds[k],
+                "ic_type": ic_type,
+                "final_polarization": final_row["polarization"],
+                "final_speed": final_row["mean_speed"],
+                "final_angular_momentum": final_row["angular_momentum"],
+                "final_dnn": final_row["dnn"],
+            })
+            
+            print(f"  ✓ Completed {run_name}")
+            
+        except Exception as exc:
+            print(f"  ✗ Failed {run_name}: {exc}")
+            ensemble_rows.append({
+                "run_id": run_name,
+                "seed": seeds[k],
+                "ic_type": ic_type,
+                "final_polarization": np.nan,
+                "final_speed": np.nan,
+                "final_angular_momentum": np.nan,
+                "final_dnn": np.nan,
+            })
+    
+    # Save ensemble summary
+    ensemble_df = pd.DataFrame(ensemble_rows)
+    summary_path = base_dir / "ensemble_runs.csv"
+    ensemble_df.to_csv(summary_path, index=False)
+    
+    print(f"\n✓ Ensemble generation complete!")
+    print(f"  {len(ensemble_rows)} runs saved to: {base_dir}")
+    print(f"  Summary: {summary_path}")
+    print(f"\nEnsemble statistics:")
+    print(f"  Mean final polarization: {ensemble_df['final_polarization'].mean():.4f}")
+    print(f"  Mean final speed: {ensemble_df['final_speed'].mean():.4f}")
+    print(f"  IC type distribution:")
+    for ic_type in ic_types:
+        count = (ensemble_df['ic_type'] == ic_type).sum()
+        print(f"    {ic_type}: {count}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level CLI argument parser."""
 
@@ -738,6 +858,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override the model specified in the config file",
     )
 
+    ensemble = subparsers.add_parser(
+        "ensemble",
+        help="Generate ensemble of simulations with varied initial conditions",
+    )
+    ensemble.add_argument("--config", required=True, help="Path to configuration YAML")
+    ensemble.add_argument(
+        "--model",
+        choices=["social_force", "vicsek_discrete"],
+        help="Override the model specified in the config file",
+    )
+
     return parser
 
 
@@ -754,6 +885,8 @@ def main(argv: Iterable[str] | None = None) -> None:
         cmd_grid(args, overrides)
     elif args.command == "validate_all":
         cmd_validate_all(args, overrides)
+    elif args.command == "ensemble":
+        cmd_ensemble(args, overrides)
     else:  # pragma: no cover - defensive
         parser.error(f"Unknown command {args.command}")
 

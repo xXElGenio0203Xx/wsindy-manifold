@@ -322,13 +322,16 @@ def simulate_backend(config: Dict[str, Dict], rng: np.random.Generator) -> Dict[
     rcut = param_cfg["rcut_factor"] * max(lr, la)
 
     # Initialize positions
-    initial_dist = config.get("initial_distribution", "uniform")
-    if initial_dist == "uniform":
+    ic_cfg = config.get("ic", {})
+    ic_type = ic_cfg.get("type", "uniform")
+    
+    if ic_type == "uniform":
+        # Fast path for uniform (most common case)
         x0 = rng.uniform(low=[0.0, 0.0], high=[Lx, Ly], size=(N, 2))
     else:
-        # Use initial_conditions module for other distributions
-        from .initial_conditions import initialize_positions
-        x0 = initialize_positions(initial_dist, N, Lx, Ly, rng)
+        # Use IC generation module for other distributions
+        from .ic import sample_initial_positions
+        x0 = sample_initial_positions(ic_type, N, Lx, Ly, rng)
     
     # Initialize velocities
     v0_mag = alpha / beta

@@ -1,0 +1,92 @@
+# Ensemble simulation configuration for EF-ROM training
+# This config generates 20 simulation runs with varied initial conditions
+# for building a diverse training dataset for POD + MVAR models.
+
+# Model type: social_force (D'Orsogna) or vicsek_discrete
+model: social_force
+
+# Random seed for the base simulation (individual runs use base_seed + k)
+seed: 42
+
+# Simulation parameters
+sim:
+  N: 200                  # Number of particles
+  Lx: 20.0               # Domain width
+  Ly: 20.0               # Domain height
+  bc: periodic           # Boundary conditions: periodic or reflecting
+  T: 100.0               # Simulation time
+  dt: 0.01               # Time step
+  save_every: 10         # Save frame every N steps
+  integrator: rk4        # Integrator: rk4 or euler_semiimplicit
+  neighbor_rebuild: 10   # Rebuild neighbor list every N steps
+
+# D'Orsogna force parameters
+params:
+  alpha: 1.5             # Self-propulsion coefficient
+  beta: 0.5              # Speed regulation (friction)
+  Cr: 2.0                # Morse repulsion strength
+  Ca: 1.0                # Morse attraction strength
+  lr: 0.9                # Morse repulsion length scale
+  la: 1.0                # Morse attraction length scale
+  rcut_factor: 3.0       # Neighbor cutoff = rcut_factor * max(lr, la)
+  mu_t: 1.0              # Tangential friction (unused in current model)
+  
+  # Optional Vicsek-style alignment (uncomment to enable)
+  # alignment:
+  #   enabled: true
+  #   radius: 1.5
+  #   rate: 0.1
+  #   Dtheta: 0.0
+
+# Initial condition configuration
+ic:
+  type: uniform          # Default IC type (overridden by ensemble)
+
+# Ensemble generation configuration
+ensemble:
+  n_runs: 20             # Number of simulation runs to generate
+  base_seed: 42          # Starting seed (run k uses seed = base_seed + k)
+  
+  # Alternatively, provide explicit seeds:
+  # seeds: [42, 43, 44, 45, 46]  # If provided, n_runs = len(seeds)
+  
+  # IC types to sample from for each run
+  ic_types:
+    - gaussian           # Single Gaussian blob
+    - uniform            # Uniform distribution
+    - ring               # Particles arranged in a ring
+    - cluster            # Multiple Gaussian clusters (2-4 clusters)
+  
+  # Probability weights for each IC type (must sum to 1, or will be normalized)
+  # If omitted, uniform weights are used
+  ic_weights:
+    - 0.4                # 40% gaussian
+    - 0.3                # 30% uniform
+    - 0.2                # 20% ring
+    - 0.1                # 10% cluster
+
+# Output configuration
+outputs:
+  save_npz: true         # Save traj.npz with positions and velocities
+  save_csv: true         # Save metrics.csv with order parameters
+  plots: true            # Generate PNG plots
+  animate: true          # Generate density movie (MP4)
+  
+  grid_density:
+    enabled: true        # Compute KDE density on grid
+    nx: 128              # Grid resolution in x
+    ny: 128              # Grid resolution in y
+    bandwidth: 0.5       # Gaussian smoothing bandwidth
+  
+  efrom:
+    auto_run: false      # Don't run EF-ROM pipeline for each run (do it later on ensemble)
+    rank: 10             # POD rank for compression
+    order: 4             # MVAR model order
+    horizon: 20          # Forecast horizon
+  
+  plot_options:
+    traj_marker_size: 4
+    traj_quiver: false   # Don't draw velocity arrows (too cluttered)
+    traj_quiver_scale: 3.0
+    traj_quiver_width: 0.004
+    traj_quiver_alpha: 0.8
