@@ -79,7 +79,7 @@ rectsim single \
   --config configs/vicsek_morse_base.yaml \
   --seed ${SEED} \
   --out-dir ${OUTPUT_DIR} \
-  outputs.grid_density.enabled=false
+  --outputs.grid_density.enabled false
 
 EXIT_CODE=$?
 
