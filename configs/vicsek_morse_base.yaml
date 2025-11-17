@@ -16,11 +16,12 @@
 #   1. Train: python scripts/rom_mvar_train.py --config configs/vicsek_morse_base.yaml
 #   2. Eval:  python scripts/rom_mvar_eval.py --experiment vicsek_morse_base --config configs/vicsek_morse_base.yaml
 #
-# Runtime estimates (Oscar):
-#   - Per simulation: ~3-6 seconds with discrete integrator (faster than continuous!)
-#   - 50 training runs: ~3-5 minutes total
-#   - POD + MVAR fitting: ~1-2 minutes
-#   - Total training pipeline: ~6-8 minutes
+# Runtime estimates (Oscar with Slurm arrays):
+#   - Per simulation: ~1-2 minutes with discrete integrator (T=300)
+#   - 50 training runs: ~1-2 minutes total (PARALLEL via array job!)
+#   - POD + MVAR fitting: ~5-10 minutes
+#   - Evaluation: ~5 minutes
+#   - Total training pipeline: ~20-25 minutes end-to-end
 
 # ==============================================================================
 # FIXED MODEL PARAMETERS (keep constant across ensemble)
@@ -35,9 +36,9 @@ sim:
   Lx: 20.0                  # Domain width (periodic)
   Ly: 20.0                  # Domain height (periodic)
   bc: periodic              # Periodic boundary conditions
-  T: 100.0                  # Simulation time
+  T: 300.0                  # Simulation time (increased for richer dynamics)
   dt: 0.1                   # Time step (discrete updates, can be larger than continuous)
-  save_every: 10            # Save every 10 steps → 1000 snapshots total
+  save_every: 10            # Save every 10 steps → 3000 snapshots total
   integrator: euler_semiimplicit  # Options: "euler" (explicit) or "euler_semiimplicit" (more stable with forces)
   neighbor_rebuild: 1       # Rebuild neighbors every step (critical for discrete)
 
