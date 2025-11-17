@@ -64,27 +64,35 @@ echo ""
 
 # Use array task ID as seed for this simulation
 SEED=${SLURM_ARRAY_TASK_ID}
-OUTPUT_DIR="simulations/vicsek_morse_base/run_${SEED}"
+
+# Get config from environment variable (set by submit script)
+CONFIG=${CONFIG:-configs/vicsek_morse_base.yaml}
+
+# Extract experiment name to build correct output directory
+EXPERIMENT=$(basename ${CONFIG} .yaml | sed 's/vicsek_morse_//')
+if [ "${EXPERIMENT}" = "base" ]; then
+  OUTPUT_DIR="simulations/vicsek_morse_base/run_${SEED}"
+else
+  OUTPUT_DIR="simulations/vicsek_morse_${EXPERIMENT}/run_${SEED}"
+fi
 
 echo "Running simulation with seed=${SEED}"
+echo "Config: ${CONFIG}"
 echo "Output directory: ${OUTPUT_DIR}"
 echo ""
 
 # DEBUG: Show the exact command being run
 echo "DEBUG: Full command:"
-echo "rectsim single --config configs/vicsek_morse_base.yaml --seed ${SEED} --outputs.grid_density.enabled false --out_dir ${OUTPUT_DIR}"
+echo "rectsim single --config ${CONFIG} --seed ${SEED} --out_dir ${OUTPUT_DIR}"
 echo ""
 
 # Run the simulation
-# - Outputs only npz/csv (no videos, no plots)
+# - Outputs density.npz for ROM (configs have animate_density: false already)
 # - Uses discrete Vicsek with Morse forces
-# - T=300, N=200, 64x64 density grid
-# - Disable grid_density animation (requires ffmpeg)
 # - Override out_dir for this specific run
 rectsim single \
-  --config configs/vicsek_morse_base.yaml \
+  --config ${CONFIG} \
   --seed ${SEED} \
-  --outputs.grid_density.enabled false \
   --out_dir ${OUTPUT_DIR}
 
 # DEBUG: Show where files actually ended up
