@@ -75,11 +75,12 @@ echo ""
 # - Uses discrete Vicsek with Morse forces
 # - T=300, N=200, 64x64 density grid
 # - Disable grid_density animation (requires ffmpeg)
+# - Override out_dir for this specific run
 rectsim single \
   --config configs/vicsek_morse_base.yaml \
   --seed ${SEED} \
-  --out-dir ${OUTPUT_DIR} \
-  --outputs.grid_density.enabled false
+  --outputs.grid_density.enabled false \
+  --out_dir ${OUTPUT_DIR}
 
 EXIT_CODE=$?
 
