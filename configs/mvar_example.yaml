@@ -1,0 +1,60 @@
+# Example configuration for global POD + MVAR pipeline testing
+#
+# This config demonstrates the complete EF-ROM workflow:
+# 1. Generate ensemble with: rectsim ensemble --config THIS_FILE
+# 2. Train MVAR with: python scripts/run_mvar_global.py --sim_root simulations/GENERATED_MODEL_ID --out_root MVAR_outputs/test_run1
+#
+# The ensemble generates varied initial conditions for robust POD basis.
+
+# Model configuration (social_force with D'Orsogna parameters)
+model:
+  name: social_force
+  params:
+    N: 100              # Small N for fast testing
+    T: 500              # Moderate T for training/testing split
+    dt: 0.1
+    Lx: 10.0
+    Ly: 10.0
+    boundary: periodic
+    alpha: 1.5          # Repulsion strength
+    beta: 0.5           # Attraction strength
+    Cr: 2.0             # Repulsion range
+    Ca: 1.0             # Attraction range
+    lr: 0.9             # Repulsion length scale
+    la: 1.0             # Attraction length scale
+    v0: 0.5             # Desired speed
+    noise: 0.1          # Angular noise
+
+# Initial conditions (will be varied across ensemble)
+ic:
+  type: uniform         # Default, overridden by ensemble
+
+# Ensemble configuration for EF-ROM training
+ensemble:
+  n_runs: 10            # Small ensemble for testing (use 20-50 for production)
+  base_seed: 42
+  ic_types:
+    - uniform           # 40% uniform distribution
+    - gaussian          # 30% single blob
+    - ring              # 20% ring formation
+    - cluster           # 10% multi-cluster
+  ic_weights:
+    - 0.4
+    - 0.3
+    - 0.2
+    - 0.1
+
+# Density estimation (for KDE-based density fields)
+density:
+  nx: 64                # Grid resolution (64x64 for testing, 128x128 for production)
+  ny: 64
+  bandwidth: 0.5
+  t_skip: 1             # Save every timestep
+  normalize: true
+
+# Output settings
+output:
+  save_traj: true
+  save_density: true    # REQUIRED for MVAR pipeline
+  save_metrics: true
+  save_animation: false # Skip animations for faster ensemble generation
