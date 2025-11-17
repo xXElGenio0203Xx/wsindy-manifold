@@ -277,9 +277,16 @@ def _run_vicsek_single(config: Dict) -> Dict:
 
     cfg = deepcopy(config)
     
-    # Check if using old vicsek schema or new backend schema
-    if "vicsek" in cfg:
-        # OLD SCHEMA: config has "vicsek" key
+    # Check if using new backend schema (has model_config, forces, noise sections)
+    # vs old vicsek schema (only has vicsek section with flat params)
+    using_backend_schema = (
+        "model_config" in cfg or 
+        "forces" in cfg or 
+        ("noise" in cfg and "sim" in cfg)  # New schema has both
+    )
+    
+    if not using_backend_schema:
+        # OLD SCHEMA: config has "vicsek" key with flat parameters
         vicsek_cfg = deepcopy(cfg.get("vicsek", {}))
         if not vicsek_cfg:
             raise ValueError("Vicsek configuration missing under key 'vicsek'.")
