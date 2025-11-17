@@ -21,8 +21,8 @@ set -e  # Exit on error
 # ------------------------------------------------------------------------------
 REPO_DIR="/users/emaciaso/src/wsindy-manifold"
 CONDA_ENV="wsindy"
-DEFAULT_CONFIG="configs/gentle_clustering.yaml"
-DEFAULT_TEST_ARGS="--sim.N 50 --sim.T 2.0 --outputs.animate false"
+DEFAULT_CONFIG="configs/vicsek_morse_base.yaml"
+DEFAULT_TEST_ARGS="--sim.N 50 --sim.T 2.0 --outputs.animate_traj false --outputs.animate_density false"
 
 # Parse arguments
 REINSTALL=false
