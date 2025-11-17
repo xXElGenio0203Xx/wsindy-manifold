@@ -5,4 +5,4 @@
 cd /users/emaciaso/src/wsindy-manifold
 git pull
 source setup_oscar_env.sh
-rectsim single --config configs/vicsek_morse_base.yaml --sim.N 50 --sim.T 2.0 --outputs.animate_traj false --outputs.animate_density false
+rectsim single --config configs/vicsek_morse_base.yaml --sim.N 50 --sim.T 2.0 --outputs.animate_traj false --outputs.animate_density false --outputs.grid_density.enabled false
