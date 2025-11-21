@@ -114,7 +114,7 @@ class TestDiscreteVicsekDorsogna:
                 "save_every": 50,
                 "neighbor_rebuild": 5,
             },
-            "model": {"speed": 0.5},
+            "model": {"speed": 0.5, "speed_mode": "variable"},
             "params": {"R": 1.5},
             "noise": {"kind": "gaussian", "eta": 0.2},
             "forces": {

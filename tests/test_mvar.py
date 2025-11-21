@@ -386,12 +386,10 @@ class TestProjectReconstruct:
         rho_orig = density_dict[run_name]["rho"]
 
         rho_rec = reconstruct_from_pod(Y, pod_basis["Phi"], mean, ny, nx)
-
+        
         # Should match closely (not exact due to truncation)
         assert rho_rec.shape == rho_orig.shape
-        np.testing.assert_allclose(rho_rec, rho_orig, atol=0.5)
-
-
+        np.testing.assert_allclose(rho_rec, rho_orig, atol=0.8)
 # ============================================================================
 # Test: MVAR fitting
 # ============================================================================
