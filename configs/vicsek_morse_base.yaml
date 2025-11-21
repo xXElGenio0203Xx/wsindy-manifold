@@ -151,8 +151,8 @@ rom:
     forecast_horizon: null  # null = forecast to end of simulation
     error_tolerance: 0.1    # Tolerance for computing τ
     error_metric: rmse      # Metric for τ: 'rmse', 'r2', 'e2', 'einf', 'mass_error'
-    generate_videos: false  # False for Oscar
-    generate_plots: false   # False for Oscar
+    generate_videos: false  # Videos generated locally after rsync (too heavy for Oscar)
+    generate_plots: true    # Plots are lightweight, generate on Oscar
 
 # ==============================================================================
 # PARAMETER RATIONALE

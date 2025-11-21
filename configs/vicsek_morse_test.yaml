@@ -107,5 +107,5 @@ rom:
     forecast_horizon: null
     error_tolerance: 0.1
     error_metric: rmse
-    generate_videos: false
-    generate_plots: false
+    generate_videos: false  # Videos generated locally after rsync
+    generate_plots: true    # Plots are lightweight, generate on Oscar

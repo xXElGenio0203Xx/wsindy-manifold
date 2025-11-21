@@ -47,6 +47,8 @@ def create_density_video(
     density_pred: np.ndarray,
     times: np.ndarray,
     output_path: Path,
+    Lx: float = 20.0,
+    Ly: float = 20.0,
     fps: int = 10,
 ) -> None:
     """Create side-by-side comparison video of true vs predicted density.
@@ -61,6 +63,10 @@ def create_density_video(
         Time values.
     output_path : Path
         Output video path.
+    Lx : float
+        Domain width.
+    Ly : float
+        Domain height.
     fps : int
         Frames per second.
     """
@@ -68,39 +74,46 @@ def create_density_video(
     
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
-    # Set up colorbars with same scale
-    vmin = min(density_true.min(), density_pred.min())
-    vmax = max(density_true.max(), density_pred.max())
+    # Set up colorbars with same scale (use percentiles for better contrast)
+    vmin = min(np.percentile(density_true, 1), np.percentile(density_pred, 1))
+    vmax = max(np.percentile(density_true, 99), np.percentile(density_pred, 99))
     
+    # Use proper spatial extent and consistent colormap (magma like in existing code)
     im_true = axes[0].imshow(
-        density_true[0].T,
+        density_true[0],
+        extent=(0, Lx, 0, Ly),
         origin="lower",
-        cmap="viridis",
+        cmap="magma",
         vmin=vmin,
         vmax=vmax,
+        animated=True,
     )
-    axes[0].set_title("True Density")
+    axes[0].set_title("True Density", fontsize=12, fontweight="bold")
     axes[0].set_xlabel("x")
     axes[0].set_ylabel("y")
-    plt.colorbar(im_true, ax=axes[0])
+    axes[0].set_aspect("equal")
+    plt.colorbar(im_true, ax=axes[0], label="Density")
     
     im_pred = axes[1].imshow(
-        density_pred[0].T,
+        density_pred[0],
+        extent=(0, Lx, 0, Ly),
         origin="lower",
-        cmap="viridis",
+        cmap="magma",
         vmin=vmin,
         vmax=vmax,
+        animated=True,
     )
-    axes[1].set_title("MVAR Predicted")
+    axes[1].set_title("ROM/MVAR Forecast", fontsize=12, fontweight="bold")
     axes[1].set_xlabel("x")
     axes[1].set_ylabel("y")
-    plt.colorbar(im_pred, ax=axes[1])
+    axes[1].set_aspect("equal")
+    plt.colorbar(im_pred, ax=axes[1], label="Density")
     
     time_text = fig.text(0.5, 0.95, f"t = {times[0]:.2f}", ha="center", fontsize=12)
     
     def update(frame):
-        im_true.set_array(density_true[frame].T)
-        im_pred.set_array(density_pred[frame].T)
+        im_true.set_array(density_true[frame])
+        im_pred.set_array(density_pred[frame])
         time_text.set_text(f"t = {times[frame]:.2f}")
         return im_true, im_pred, time_text
     
@@ -304,6 +317,10 @@ def main():
         density_pred = pred_data["density"]
         times = true_data["times"]
         
+        # Get domain size (with defaults if not saved)
+        Lx = float(true_data.get("Lx", 20.0))
+        Ly = float(true_data.get("Ly", 20.0))
+        
         # Align lengths
         T = min(density_true.shape[0], density_pred.shape[0])
         density_true = density_true[:T]
@@ -311,6 +328,7 @@ def main():
         times = times[:T]
         
         print(f"    Density shape: {density_true.shape}")
+        print(f"    Domain: {Lx} x {Ly}")
         print(f"    Time range: {times[0]:.2f} to {times[-1]:.2f}")
         
         # Create videos directory
@@ -335,6 +353,8 @@ def main():
                     density_pred,
                     times,
                     videos_dir / "density_comparison.gif",
+                    Lx=Lx,
+                    Ly=Ly,
                     fps=args.fps,
                 )
                 print(f"    ✓ Saved to {videos_dir / 'density_comparison.gif'}")
