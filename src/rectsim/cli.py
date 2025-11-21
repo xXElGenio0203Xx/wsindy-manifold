@@ -45,8 +45,6 @@ from .metrics import (
     tolerance_horizon,
 )
 from .vicsek_discrete import simulate_vicsek
-from wsindy_manifold.efrom import efrom_train_and_forecast
-from wsindy_manifold.latent.anim import animate_heatmap_movie, animate_side_by_side
 
 
 def _parse_overrides(unknown: List[str]) -> List[Tuple[str, str]]:
@@ -564,15 +562,13 @@ def _run_single(
     save_run_metadata(out_dir, cfg, results)
 
     # Optionally run the EF-ROM latent pipeline automatically. This is
-    # controlled by the config path `outputs.efrom.auto_run` and enabled
-    # by default so users get forecasts and comparison animations after a
-    # successful simulation run.
-    efrom_cfg = cfg.get("outputs", {}).get("efrom", {})
-    if efrom_cfg.get("auto_run", True):
-        try:
-            _run_efrom_pipeline(cfg, {"results": results, "out_dir": out_dir})
-        except Exception as exc:  # do not fail the whole run on postproc errors
-            print(f"EF-ROM postprocessing failed: {exc}")
+    # Legacy EF-ROM pipeline removed - use rom_mvar_* scripts instead
+    # efrom_cfg = cfg.get("outputs", {}).get("efrom", {})
+    # if efrom_cfg.get("auto_run", True):
+    #     try:
+    #         _run_efrom_pipeline(cfg, {"results": results, "out_dir": out_dir})
+    #     except Exception as exc:
+    #         print(f"EF-ROM postprocessing failed: {exc}")
 
     return {
         "config": cfg,
@@ -781,18 +777,19 @@ def cmd_validate_all(args: argparse.Namespace, overrides: List[Tuple[str, str]])
     if config.get("model", "social_force") != "social_force":
         raise ValueError("validate_all is currently implemented only for the social_force model.")
     run = _run_single(config)
-    _run_efrom_pipeline(config, run)
+    # Legacy EF-ROM removed - use rom_mvar_* scripts instead
+    # _run_efrom_pipeline(config, run)
 
 
-def _run_efrom_pipeline(config: Dict, run: Dict) -> None:
-    """Run EF-ROM training and produce forecast animations for a single run.
+# Legacy EF-ROM pipeline removed - use rom_mvar_* scripts instead
+def _run_efrom_pipeline_DISABLED(config: Dict, run: Dict) -> None:
+    """DISABLED: Legacy EF-ROM training (use rom_mvar_* scripts instead).
 
     This helper mirrors the previous `cmd_validate_all` logic but is
     callable from other places (e.g., automatically after `_run_single`).
     It writes artifacts under `<out_dir>/efrom`.
     """
-
-    results = run["results"]
+    return  # Function disabled - legacy code removed
     traj = results["traj"]
     times = results["times"]
     sim_cfg = config["sim"]
