@@ -1,67 +1,43 @@
-# Relaxed clustering - slower movement, gentler forces
-# 400 particles with moderate clustering behavior
-
-# Domain configuration
-domain:
+seed: 42
+model: vicsek_discrete
+sim:
+  N: 400
   Lx: 40.0
   Ly: 40.0
   bc: periodic
-
-# Particle configuration
-particles:
-  N: 400
-  initial_distribution: uniform
-  initial_speed: 0.5              # SLOWER speed (was 1.2)
-  velocity_distribution: random
-
-# Model type
-model:
-  type: discrete
-  speed_mode: constant
-
-# Dynamics
-dynamics:
-  alignment:
-    enabled: true
-    radius: 3.0                   # Smaller alignment radius (was 5.0)
-    rate: 1.0
-  
-  forces:
-    enabled: true
-    Cr: 1.5                       # Gentle repulsion
-    Ca: 2.0                       # WEAK attraction (was 8.0)
-    lr: 0.8                       # Larger repulsion range
-    la: 3.0                       # Shorter attraction range (was 6.0)
-    rcut_factor: 3.0
-    mu_t: 0.3                     # Very weak force coupling (was 0.8)
-  
-  noise:
-    type: gaussian
-    eta: 0.15                     # More noise for smoother motion (was 0.05)
-    match_variance: true
-  
-  self_propulsion:
-    alpha: 1.5
-    beta: 0.5
-
-# Integration
-integration:
-  T: 10.0                         # Very short simulation
+  T: 10.0
   dt: 0.01
   save_every: 10
   neighbor_rebuild: 5
   integrator: euler
-  seed: 42
-
-# Outputs
+model_config:
+  speed: 0.5
+  speed_mode: constant
+params:
+  R: 3.0
+  alpha: 1.5
+  beta: 0.5
+noise:
+  kind: gaussian
+  eta: 0.15
+  match_variance: true
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 1.5
+    Ca: 2.0
+    lr: 0.8
+    la: 3.0
+    rcut_factor: 3.0
+    mu_t: 0.3
+ic:
+  type: uniform
 outputs:
-  run_name: relaxed_clustering
+  directory: simulations/relaxed_clustering
   order_parameters: true
-  animations: true
-  save_csv: false
-  fps: 20
-  density_resolution: 60
-  arrows:
-    enabled: true
-    scale: speed
-    scale_factor: 1.0
+  plot_order_params: true
+  animate_traj: true
+  animate_density: true
+  video_ics: 1
+  order_params_ics: 1

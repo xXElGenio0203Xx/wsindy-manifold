@@ -1,67 +1,43 @@
-# Gentle clustering - balanced forces
-# N=200, Ca=1.0, Cr=0.5, alignment ON
-
-# Domain configuration
-domain:
+seed: 42
+model: vicsek_discrete
+sim:
+  N: 200
   Lx: 20.0
   Ly: 20.0
   bc: periodic
-
-# Particle configuration
-particles:
-  N: 200
-  initial_distribution: uniform
-  initial_speed: 0.5
-  velocity_distribution: random
-
-# Model type
-model:
-  type: discrete
-  speed_mode: constant
-
-# Dynamics
-dynamics:
-  alignment:
-    enabled: true
-    radius: 2.0
-    rate: 1.0
-  
-  forces:
-    enabled: true
-    Cr: 0.5                       # Repulsion
-    Ca: 1.0                       # Attraction (C = Cr/Ca = 0.5)
-    lr: 0.5                       # Repulsion range (ℓ = lr/la = 0.5)
-    la: 1.0                       # Attraction range
-    rcut_factor: 3.0
-    mu_t: 0.5                     # Force coupling
-  
-  noise:
-    type: gaussian
-    eta: 0.3
-    match_variance: true
-  
-  self_propulsion:
-    alpha: 1.5
-    beta: 0.5
-
-# Integration
-integration:
   T: 100.0
   dt: 0.01
   save_every: 10
   neighbor_rebuild: 5
   integrator: euler
-  seed: 42
-
-# Outputs
+model_config:
+  speed: 0.5
+  speed_mode: constant
+params:
+  R: 2.0
+  alpha: 1.5
+  beta: 0.5
+noise:
+  kind: gaussian
+  eta: 0.3
+  match_variance: true
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 0.5
+    Ca: 1.0
+    lr: 0.5
+    la: 1.0
+    rcut_factor: 3.0
+    mu_t: 0.5
+ic:
+  type: uniform
 outputs:
-  run_name: gentle_clustering
+  directory: simulations/gentle_clustering
   order_parameters: true
-  animations: true
-  save_csv: false
-  fps: 20
-  density_resolution: 50
-  arrows:
-    enabled: true
-    scale: speed
-    scale_factor: 1.0
+  plot_order_params: true
+  animate_traj: true
+  animate_density: true
+  video_ics: 1
+  order_params_ics: 1

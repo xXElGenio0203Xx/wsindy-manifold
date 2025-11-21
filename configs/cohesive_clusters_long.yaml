@@ -1,37 +1,31 @@
-# Long simulation with very strong cohesive clustering
-# Many particles, very strong forces, longer time for tight clusters
-
-sim_name: "tight_clusters_long"
-
-model:
-  type: discrete
-
-domain:
-  Lx: 50.0                        # Larger domain
+seed: 789
+model: vicsek_discrete
+sim:
+  N: 300
+  Lx: 50.0
   Ly: 50.0
   bc: periodic
-
-particles:
-  N: 300                          # Many more particles (was 200)
-  v0: 1.5                         # Slower speed for tighter clustering
-  initial_distribution: two_clusters
-
-alignment:
-  R: 4.0                          # Larger alignment radius
-  eta: 0.03                       # Very low noise for very strong order
-
-forces:
-  enabled: true
-  Ca: 25.0                        # MUCH stronger attraction (was 12.0)
-  Cr: 5.0                         # Stronger repulsion to prevent collapse
-  la: 10.0                        # Much longer attraction range (was 6.0)
-  lr: 0.3                         # Very short repulsion range
-  mu_t: 1.2                       # Very strong force coupling
-
-integration:
-  T: 150.0                        # Longer simulation (was 100)
+  T: 150.0
   dt: 0.05
-  seed: 789
-
+  save_every: 10
+  neighbor_rebuild: 5
+  integrator: euler
+model_config:
+  speed: 0.5
+  speed_mode: constant
+params:
+  R: 2.0
+noise:
+  kind: gaussian
+  eta: 0.3
+  match_variance: true
+ic:
+  type: two_clusters
 outputs:
-  density_resolution: 60
+  directory: simulations/simulation
+  order_parameters: true
+  plot_order_params: true
+  animate_traj: false
+  animate_density: false
+  video_ics: 1
+  order_params_ics: 1

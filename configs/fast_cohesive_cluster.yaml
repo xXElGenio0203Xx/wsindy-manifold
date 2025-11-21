@@ -1,59 +1,31 @@
-# Fast cohesive cluster test - unified pipeline
-# Uses simulations/ folder with better video generation
-
-sim_name: "cohesive_cluster_test"
-
-model:
-  type: discrete
-
-domain:
+seed: 456
+model: vicsek_discrete
+sim:
+  N: 50
   Lx: 20.0
   Ly: 20.0
   bc: periodic
-
-particles:
-  N: 50
-  v0: 2.0
-  initial_distribution: gaussian_cluster
-
-alignment:
-  R: 3.0
-  eta: 0.05
-
-forces:
-  enabled: true
-  Ca: 15.0
-  Cr: 2.0
-  la: 8.0
-  lr: 0.5
-  mu_t: 1.0
-
-integration:
   T: 10.0
   dt: 0.05
-  seed: 456
-
+  save_every: 10
+  neighbor_rebuild: 5
+  integrator: euler
+model_config:
+  speed: 0.5
+  speed_mode: constant
+params:
+  R: 2.0
+noise:
+  kind: gaussian
+  eta: 0.3
+  match_variance: true
+ic:
+  type: gaussian_cluster
 outputs:
-  density_resolution: 50
-  
-# Time integration
-time:
-  T: 8000                 # Long simulation to see steady motion
-  dt: 0.05
-
-# KDE settings for density estimation
-kde:
-  nx: 60                  # High resolution
-  ny: 60
-  bandwidth: 0.6          # Sharp bandwidth for well-defined cluster
-
-# Output settings
-output:
-  save_trajectory: true
-  save_velocity: true
-  save_density: true
-  save_videos: true       # Enable videos
-  video_subsample: 8      # Save every 8th frame (1000 frames)
-  
-# Random seed
-seed: 456
+  directory: simulations/simulation
+  order_parameters: true
+  plot_order_params: true
+  animate_traj: false
+  animate_density: false
+  video_ics: 1
+  order_params_ics: 1

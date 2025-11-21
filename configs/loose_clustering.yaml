@@ -1,67 +1,43 @@
-# Loose clustering - prevent collapse with stronger repulsion
-# N=200, balanced forces to avoid tight packing
-
-# Domain configuration
-domain:
+seed: 42
+model: vicsek_discrete
+sim:
+  N: 200
   Lx: 20.0
   Ly: 20.0
   bc: periodic
-
-# Particle configuration
-particles:
-  N: 200
-  initial_distribution: uniform
-  initial_speed: 0.5
-  velocity_distribution: random
-
-# Model type
-model:
-  type: discrete
-  speed_mode: constant
-
-# Dynamics
-dynamics:
-  alignment:
-    enabled: true
-    radius: 2.0
-    rate: 1.0
-  
-  forces:
-    enabled: true
-    Cr: 1.0                       # STRONGER repulsion (was 0.5) to prevent collapse
-    Ca: 0.8                       # Weaker attraction (was 1.0)
-    lr: 0.8                       # LONGER repulsion range (was 0.5)
-    la: 1.5                       # Longer attraction range (was 1.0)
-    rcut_factor: 3.0
-    mu_t: 0.4                     # Weaker force coupling (was 0.5)
-  
-  noise:
-    type: gaussian
-    eta: 0.3
-    match_variance: true
-  
-  self_propulsion:
-    alpha: 1.5
-    beta: 0.5
-
-# Integration
-integration:
   T: 10.0
   dt: 0.01
   save_every: 10
   neighbor_rebuild: 5
   integrator: euler
-  seed: 42
-
-# Outputs
+model_config:
+  speed: 0.5
+  speed_mode: constant
+params:
+  R: 2.0
+  alpha: 1.5
+  beta: 0.5
+noise:
+  kind: gaussian
+  eta: 0.3
+  match_variance: true
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 1.0
+    Ca: 0.8
+    lr: 0.8
+    la: 1.5
+    rcut_factor: 3.0
+    mu_t: 0.4
+ic:
+  type: uniform
 outputs:
-  run_name: loose_clustering
+  directory: simulations/loose_clustering
   order_parameters: true
-  animations: true
-  save_csv: false
-  fps: 20
-  density_resolution: 50
-  arrows:
-    enabled: true
-    scale: speed
-    scale_factor: 1.0
+  plot_order_params: true
+  animate_traj: true
+  animate_density: true
+  video_ics: 1
+  order_params_ics: 1

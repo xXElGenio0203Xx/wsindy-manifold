@@ -1,0 +1,71 @@
+# Extreme clustering: very strong forces + alignment + reflecting boundaries
+# 400 particles for dense cluster formation - UNIFIED CONFIG FORMAT
+
+# Domain configuration
+domain:
+  Lx: 40.0
+  Ly: 40.0
+  bc: periodic                    # Periodic boundaries
+
+# Particle configuration
+particles:
+  N: 400                          # Many particles!
+  initial_distribution: uniform
+  initial_speed: 1.2              # Moderate speed for tight packing
+  velocity_distribution: random
+
+# Model type
+model:
+  type: discrete
+  speed_mode: constant
+
+# Dynamics
+dynamics:
+  # Vicsek alignment
+  alignment:
+    enabled: true                 # Vicsek alignment ON!
+    radius: 5.0                   # Large alignment radius
+    rate: 1.0
+  
+  # Morse forces
+  forces:
+    enabled: true
+    Cr: 5.0                       # Strong repulsion to prevent collapse
+    Ca: 30.0                      # EXTREMELY STRONG attraction
+    lr: 0.4                       # Very short-range repulsion
+    la: 12.0                      # Very long-range attraction
+    rcut_factor: 3.0
+    mu_t: 2.0                     # Very strong force coupling
+  
+  # Noise
+  noise:
+    type: gaussian
+    eta: 0.05                     # Very low noise for strong order
+    match_variance: true
+  
+  # Self-propulsion (for continuous models)
+  self_propulsion:
+    alpha: 1.5
+    beta: 0.5
+
+# Integration
+integration:
+  T: 150.0                        # Longer simulation
+  dt: 0.01
+  save_every: 10
+  neighbor_rebuild: 5
+  integrator: euler
+  seed: 42
+
+# Outputs
+outputs:
+  run_name: extreme_clustering
+  order_parameters: true
+  animations: true
+  save_csv: false
+  fps: 20
+  density_resolution: 80          # Higher resolution for detail
+  arrows:
+    enabled: true
+    scale: speed
+    scale_factor: 1.0

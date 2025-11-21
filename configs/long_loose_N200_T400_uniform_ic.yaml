@@ -1,66 +1,43 @@
-# Long loose clustering - UNIFORM initial conditions for testing generalization
-# Same dynamics as long_loose_N200_T400.yaml but with uniform IC instead of gaussian
-
-# Domain configuration
-domain:
+seed: 99
+model: vicsek_discrete
+sim:
+  N: 200
   Lx: 20.0
   Ly: 20.0
   bc: periodic
-
-# Particle configuration
-particles:
-  N: 200
-  initial_distribution: uniform  # Different IC
-  initial_speed: 0.5
-  velocity_distribution: random
-
-# Model type
-model:
-  type: discrete
-  speed_mode: constant
-
-# Dynamics (SAME as long_loose_N200_T400.yaml)
-dynamics:
-  alignment:
-    enabled: true
-    radius: 2.0
-    rate: 1.0
-  
-  forces:
-    enabled: true
-    Cr: 1.0                       # Stronger repulsion to prevent collapse
-    Ca: 0.8                       # Weaker attraction
-    lr: 0.8                       # Longer repulsion range
-    la: 1.5                       # Longer attraction range
-    rcut_factor: 3.0
-    mu_t: 0.4                     # Weaker force coupling
-  
-  noise:
-    type: gaussian
-    eta: 0.3
-    match_variance: true
-  
-  self_propulsion:
-    alpha: 1.5
-    beta: 0.5
-
-# Integration (SAME duration)
-integration:
-  T: 400.0                        # Same duration
+  T: 400.0
   dt: 0.01
   save_every: 10
   neighbor_rebuild: 5
   integrator: euler
-  seed: 99                        # Different seed for different IC
-
-# Outputs
+model_config:
+  speed: 0.5
+  speed_mode: constant
+params:
+  R: 2.0
+  alpha: 1.5
+  beta: 0.5
+noise:
+  kind: gaussian
+  eta: 0.3
+  match_variance: true
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 1.0
+    Ca: 0.8
+    lr: 0.8
+    la: 1.5
+    rcut_factor: 3.0
+    mu_t: 0.4
+ic:
+  type: uniform
 outputs:
-  run_name: long_loose_N200_T400_uniform_ic
+  directory: simulations/long_loose_N200_T400_uniform_ic
   order_parameters: true
-  animations: false               # Skip animations for speed
-  save_csv: false
-  fps: 20
-  density_resolution: 50
-  arrows:
-    enabled: false
-
+  plot_order_params: true
+  animate_traj: false
+  animate_density: false
+  video_ics: 1
+  order_params_ics: 1

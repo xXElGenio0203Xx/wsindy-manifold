@@ -1,20 +1,31 @@
-seed: 0
-out_dir: artifacts/latent/demo
-domain:
+seed: 42
+model: social_force
+sim:
+  N: 200
   Lx: 20.0
   Ly: 20.0
   bc: periodic
-kde:
-  nx: 128
-  ny: 128
-  hx: 0.6
-  hy: 0.6
-pod:
-  energy_keep: 0.99
-mvar:
-  w: 4
-  ridge_lambda: 1.0e-6
-train:
-  train_frac: 0.8
-paths:
-  traj_npz: outputs/single/trajectories.npz
+  T: 100.0
+  dt: 0.01
+  save_every: 10
+  neighbor_rebuild: 5
+  integrator: euler
+model_config:
+  speed: 0.5
+  speed_mode: constant
+params:
+  R: 2.0
+noise:
+  kind: gaussian
+  eta: 0.3
+  match_variance: true
+ic:
+  type: uniform
+outputs:
+  directory: simulations/simulation
+  order_parameters: true
+  plot_order_params: true
+  animate_traj: false
+  animate_density: false
+  video_ics: 1
+  order_params_ics: 1
