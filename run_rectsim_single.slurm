@@ -35,7 +35,7 @@ CONFIG="${CONFIG:-configs/gentle_clustering.yaml}"
 RECTSIM_ARGS="${RECTSIM_ARGS:---sim.N 200 --sim.T 100.0}"
 
 # Repository path
-REPO_DIR="/users/emaciaso/src/wsindy-manifold"
+REPO_DIR="/users/emaciaso/wsindy-manifold"
 
 # Conda environment name
 CONDA_ENV="wsindy"
@@ -72,7 +72,7 @@ conda activate "$CONDA_ENV"
 
 # Verify environment
 echo "✓ Python: $(which python)"
-echo "✓ Conda env: $CONDA_ENVIRONMENT"
+echo "✓ Conda env: $CONDA_ENV"
 echo ""
 
 # Change to repository directory
