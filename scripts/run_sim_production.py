@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Production simulation runner with standardized output schema.
+⚠️  DEPRECATED: Production simulation runner with standardized output schema.
+
+WARNING: This script uses legacy wsindy_manifold modules.
+USE INSTEAD: 'rectsim-single' or scripts/rom_mvar_*.py
 
 Generates outputs in simulations/<sim_name>__<run_id>/ with:
 - manifest.json
@@ -35,14 +38,20 @@ from rectsim.io_outputs import (
     create_traj_animation,
     create_density_animation
 )
-from wsindy_manifold.io import (
-    create_run_dir, save_manifest, save_arrays, save_csv,
-    create_latest_symlink
+from rectsim.standard_metrics import (
+    compute_all_metrics,
+    compute_metrics_series
 )
-from wsindy_manifold.standard_metrics import (
-    compute_order_params, check_mass_conservation
-)
-from wsindy_manifold.density import kde_density_movie
+from rectsim.density import compute_density_grid
+
+# Legacy I/O helpers - inline simplified versions
+def create_run_dir(root: str, sim_name: str, seed: int = 0):
+    """Create run directory with timestamp."""
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_dir = Path(root) / f"{sim_name}__{timestamp}_{seed}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
 
 def derive_sim_name(config: dict) -> str:

@@ -22,10 +22,18 @@ import numpy as np
 
 from rectsim.cli import _run_single
 from rectsim.config import load_config
-from rectsim.density import density_movie_kde
+from rectsim.density import compute_density_grid
 from rectsim.metrics import mean_relative_error, r2, rmse, tolerance_horizon
-from wsindy_manifold.efrom import efrom_train_and_forecast
-from wsindy_manifold.latent.anim import animate_heatmap_movie, animate_side_by_side
+
+# NOTE: This quickstart uses legacy wsindy_manifold modules.
+# For current ROM/MVAR pipeline, see: scripts/rom_mvar_*.py
+try:
+    from wsindy_manifold.efrom import efrom_train_and_forecast
+    from wsindy_manifold.latent.anim import animate_heatmap_movie, animate_side_by_side
+except ImportError:
+    print("ERROR: This example requires legacy wsindy_manifold module.")
+    print("Use scripts/rom_mvar_train.py and rom_mvar_eval.py for current pipeline.")
+    raise
 
 CONFIG = Path("examples/configs/single.yaml")
 OUTPUT = Path("outputs/quickstart")

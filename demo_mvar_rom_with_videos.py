@@ -2,10 +2,19 @@
 """
 Comprehensive MVAR-ROM demonstration with video generation.
 Shows the complete pipeline: simulation → POD → MVAR → forecast → videos
+
+NOTE: This demo uses legacy wsindy_manifold.mvar_rom module.
+      For current ROM/MVAR pipeline, use scripts/rom_mvar_*.py instead.
 """
 import numpy as np
 from pathlib import Path
-from wsindy_manifold.mvar_rom import run_mvar_rom_evaluation, MVARROMConfig
+# Legacy module - use rectsim.rom_mvar for new code
+try:
+    from wsindy_manifold.mvar_rom import run_mvar_rom_evaluation, MVARROMConfig
+except ImportError:
+    print("ERROR: This demo requires legacy wsindy_manifold module.")
+    print("Use scripts/rom_mvar_train.py and rom_mvar_eval.py instead.")
+    raise
 
 def generate_synthetic_swarm(T=600, nx=50, ny=50, n_particles=3):
     """Generate synthetic density evolution with moving particle-like blobs."""

@@ -203,7 +203,10 @@ outputs/<exp_name>/
 ### Basic Usage
 
 ```python
-from wsindy_manifold.mvar_rom import run_mvar_rom_evaluation, MVARROMConfig
+from rectsim.rom_mvar import (
+    fit_pod, restrict, fit_mvar, 
+    forecast_closed_loop, lift, evaluate
+)
 import numpy as np
 
 # Load density data (T, nx, ny)
@@ -230,7 +233,7 @@ print(f"Tolerance horizon = {results['summary']['tau_tol']} frames")
 ### Advanced: Manual Pipeline Control
 
 ```python
-from wsindy_manifold.mvar_rom import fit_pod, restrict, fit_mvar, forecast_closed_loop, lift, evaluate
+from rectsim.rom_mvar import fit_pod, restrict, fit_mvar, forecast_closed_loop, lift, evaluate
 
 # Flatten density fields
 X = densities.reshape(T, nx * ny)
@@ -260,7 +263,7 @@ frame_metrics, summary = evaluate(X_test, X_forecast, xbar, T0)
 ### Horizon Testing
 
 ```python
-from wsindy_manifold.latent.mvar import horizon_test, plot_horizon_test
+from rectsim.mvar import MVARModel, mvar_forecast
 
 # Test forecast stability at different horizons
 model, results = horizon_test(
