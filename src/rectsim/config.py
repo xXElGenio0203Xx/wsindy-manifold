@@ -191,10 +191,16 @@ def _validate(config: Mapping[str, Any]) -> None:
     """
 
     model = config.get("model", "social_force")
-    if model not in {"social_force", "vicsek_discrete"}:
-        raise ConfigError("Model must be 'social_force' or 'vicsek_discrete'.")
+    # Handle both old string format and new dict format
+    if isinstance(model, dict):
+        model_type = model.get("type", "social_force")
+    else:
+        model_type = model
+    
+    if model_type not in {"social_force", "vicsek_discrete", "discrete"}:
+        raise ConfigError("Model type must be 'social_force', 'vicsek_discrete', or 'discrete'.")
 
-    if model == "vicsek_discrete":
+    if model_type in {"vicsek_discrete", "discrete"}:
         vicsek = config.get("vicsek")
         if not isinstance(vicsek, Mapping):
             raise ConfigError("Vicsek configuration must be provided when model is 'vicsek_discrete'.")
