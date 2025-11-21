@@ -104,7 +104,9 @@ def run_prediction_and_truth(
     
     # Load ROM/MVAR model
     print(f"    Loading model from {model_dir}...")
-    pod_basis, pod_mean, pod_meta = load_pod_model(model_dir)
+    pod_model = load_pod_model(model_dir)
+    pod_basis = pod_model["pod_modes"]
+    pod_mean = pod_model["mean_mode"]
     mvar_params = load_mvar_model(model_dir)
     p = mvar_params["order"]
     
@@ -144,21 +146,23 @@ def run_prediction_and_truth(
     print("    Projecting IC to latent space...")
     rho0, _, _ = compute_density_grid(traj[0], nx, ny, Lx, Ly, bandwidth=bandwidth, bc=bc)
     rho0_flat = rho0.flatten()
-    a0 = project_to_pod(rho0_flat, pod_basis, pod_mean)
+    a0 = project_to_pod(rho0_flat, pod_mean, pod_basis)
     
     # Need p initial latent states for MVAR
     # Use first p time steps from true trajectory
     a_init = np.zeros((p, a0.shape[0]))
     for i in range(min(p, T)):
         rho_i, _, _ = compute_density_grid(traj[i], nx, ny, Lx, Ly, bandwidth=bandwidth, bc=bc)
-        a_init[i] = project_to_pod(rho_i.flatten(), pod_basis, pod_mean)
+        a_init[i] = project_to_pod(rho_i.flatten(), pod_mean, pod_basis)
     
     # Forecast with MVAR
     print("    Forecasting with MVAR...")
+    horizon = T - p
     a_forecast = forecast_mvar(
-        a_init=a_init,
-        A_coeffs=mvar_params["A"],
-        num_steps=T - p,
+        z_init=a_init,
+        A0=mvar_params["A0"],
+        A_coeffs=mvar_params["A_coeffs"],
+        horizon=horizon,
     )
     
     # Reconstruct density
