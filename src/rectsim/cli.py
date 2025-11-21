@@ -35,7 +35,7 @@ import pandas as pd
 
 from .config import load_config
 from .density import density_movie_kde, hist2d_movie
-from .dynamics import simulate
+from .dynamics import simulate, simulate_backend as simulate_backend_continuous
 from .io import save_csv, save_npz, save_run_metadata
 from .metrics import (
     compute_timeseries,
@@ -44,7 +44,14 @@ from .metrics import (
     rmse,
     tolerance_horizon,
 )
-from .vicsek_discrete import simulate_vicsek
+from .vicsek_discrete import simulate_vicsek, simulate_backend as simulate_backend_discrete
+
+# Check if imageio is available for video generation
+try:
+    import imageio
+    IMAGEIO_AVAILABLE = True
+except ImportError:
+    IMAGEIO_AVAILABLE = False
 
 
 def _parse_overrides(unknown: List[str]) -> List[Tuple[str, str]]:
@@ -471,7 +478,13 @@ def _run_single(
         out_dir = base_out / f"ic_{ic_id:03d}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    results = simulate(cfg)
+    # Use unified backend interface for consistency
+    # Create RNG from seed
+    seed = cfg.get("seed", 0)
+    rng = np.random.default_rng(seed)
+    
+    # Call simulate_backend instead of simulate
+    results = simulate_backend_continuous(cfg, rng)
 
     metrics_df = compute_timeseries(
         results["traj"],
@@ -540,24 +553,33 @@ def _run_single(
         
         # Only generate trajectory video if enabled for this IC
         if enable_videos and cfg["outputs"].get("animate_traj", False):
-            plot_opts = cfg.get("outputs", {}).get("plot_options", {})
-            from .density import traj_movie
-
-            try:
-                traj_movie(
-                    results["traj"],
-                    results.get("vel"),
-                    results["times"],
-                    cfg["sim"]["Lx"],
-                    cfg["sim"]["Ly"],
-                    out_dir,
-                    fps=24,
-                    marker_size=plot_opts.get("traj_marker_size", 4),
-                    draw_vectors=plot_opts.get("traj_quiver", False),
+            if not IMAGEIO_AVAILABLE:
+                import warnings
+                warnings.warn(
+                    "imageio is not installed. Skipping trajectory video generation. "
+                    "Install with: pip install imageio[ffmpeg]",
+                    RuntimeWarning,
+                    stacklevel=2
                 )
-            except Exception:
-                # Do not fail the whole run if trajectory animation cannot be produced
-                pass
+            else:
+                plot_opts = cfg.get("outputs", {}).get("plot_options", {})
+                from .density import traj_movie
+
+                try:
+                    traj_movie(
+                        results["traj"],
+                        results.get("vel"),
+                        results["times"],
+                        cfg["sim"]["Lx"],
+                        cfg["sim"]["Ly"],
+                        out_dir,
+                        fps=24,
+                        marker_size=plot_opts.get("traj_marker_size", 4),
+                        draw_vectors=plot_opts.get("traj_quiver", False),
+                    )
+                except Exception:
+                    # Do not fail the whole run if trajectory animation cannot be produced
+                    pass
 
     save_run_metadata(out_dir, cfg, results)
 

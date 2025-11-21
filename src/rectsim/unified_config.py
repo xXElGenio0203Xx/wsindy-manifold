@@ -55,7 +55,7 @@ DEFAULTS = {
         
         # Noise
         'noise': {
-            'type': 'gaussian',  # 'gaussian' or 'uniform'
+            'kind': 'gaussian',  # 'gaussian' or 'uniform' (changed from 'type' to 'kind')
             'eta': 0.3,  # Noise strength (radians)
             'match_variance': True,  # Match variance between noise types
             'Dtheta': 0.001,  # Rotational diffusion (continuous only)

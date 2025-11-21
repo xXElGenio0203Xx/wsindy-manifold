@@ -47,6 +47,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "integrator": "rk4",
         "neighbor_rebuild": 10,
     },
+    "model_config": {
+        "speed": 0.5,
+        "speed_mode": "constant",
+    },
     "params": {
         "alpha": 1.5,
         "beta": 0.5,
@@ -56,10 +60,29 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "la": 1.0,
         "rcut_factor": 3.0,
         "mu_t": 1.0,
+        "R": 1.0,  # Alignment radius (for Vicsek models)
         "alignment": {
             "enabled": False,
             "radius": 1.5,
             "rate": 0.1,
+        },
+    },
+    "noise": {
+        "kind": "gaussian",
+        "eta": 0.3,
+        "sigma": 0.2,
+        "match_variance": True,
+    },
+    "forces": {
+        "enabled": True,
+        "type": "morse",
+        "params": {
+            "Cr": 2.0,
+            "Ca": 1.0,
+            "lr": 0.9,
+            "la": 1.0,
+            "rcut_factor": 3.0,
+            "mu_t": 1.0,
         },
     },
     "ic": {
@@ -71,6 +94,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "base_seed": 0,
         "ic_types": ["gaussian", "uniform", "ring", "cluster"],
         "ic_weights": None,
+    },
+    "rom": {
+        "enabled": False,
+        "rank": 10,
+        "mvar_order": 4,
+        "mvar_horizon": 20,
+        "train_ratio": 0.8,
+        "val_ratio": 0.1,
     },
     "vicsek": {
         "seed": 0,
@@ -353,6 +384,21 @@ def load_config(path: str | Path, overrides: Iterable[tuple[str, Any]] | None = 
             user_cfg = yaml.safe_load(fh) or {}
         if not isinstance(user_cfg, Mapping):
             raise ConfigError("Configuration file must define a mapping.")
+        
+        # Detect OLD schema and provide clear error message
+        old_schema_keys = ["domain", "particles", "dynamics", "integration"]
+        detected_old_keys = [key for key in old_schema_keys if key in user_cfg]
+        if detected_old_keys:
+            raise ConfigError(
+                f"OLD config schema detected in {config_path}. "
+                f"Found keys: {', '.join(detected_old_keys)}.\n"
+                f"The config schema has been updated. Please migrate your config file.\n"
+                f"See MIGRATION_GUIDE.md for instructions, or use:\n"
+                f"  python migrate_config.py {config_path} {config_path.stem}_new.yaml\n"
+                f"Key changes: domain → sim, particles.N → sim.N, "
+                f"dynamics → params/forces/noise, integration → sim"
+            )
+        
         _deep_update(cfg, user_cfg)
     else:
         raise FileNotFoundError(config_path)
