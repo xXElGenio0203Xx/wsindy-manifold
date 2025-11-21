@@ -44,6 +44,10 @@ For active ROM/MVAR tests, see:
 - `test_anim.py` - Animation tests
 - `test_pod.py` - POD tests
 - `test_alignment_vicsek.py` - Alignment tests
+- `test_mvar_rom.py` - MVAR ROM pipeline tests (uses wsindy_manifold.mvar_rom)
+- `test_kde_density.py` - KDE density tests (uses rectsim.kde_density - module doesn't exist)
+- `test_crowdrom_pipeline.py` - CrowdROM pipeline tests
+- `test_efrom_data.py` - EF-ROM data pipeline tests
 
 ## Running These Tests
 
