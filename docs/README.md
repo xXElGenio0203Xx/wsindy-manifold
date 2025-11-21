@@ -1,29 +1,74 @@
 # Documentation Index
 
-This directory contains detailed technical documentation for the wsindy-manifold project.
+Technical documentation for the rectsim collective motion simulator.
 
-## Model Documentation
+---
 
-- **[VICSEK_MODELS.md](VICSEK_MODELS.md)** - Vicsek model implementation, usage, and speed comparisons
-- **[DORSOGNA_MODELS.md](DORSOGNA_MODELS.md)** - D'Orsogna model, alignment mechanisms, and comparisons with Vicsek
-- **[HYBRID_MODELS.md](HYBRID_MODELS.md)** - Combined Vicsek-D'Orsogna hybrid models
+## Core Documentation
 
-## Output & Visualization
+### Models
+- **[MODELS.md](MODELS.md)** - Complete model reference: D'Orsogna, Vicsek, and hybrid models
 
-- **[OUTPUTS_GUIDE.md](OUTPUTS_GUIDE.md)** - Simulation output format and structure
-- **[STANDARDIZED_OUTPUTS_COMPLETE.md](STANDARDIZED_OUTPUTS_COMPLETE.md)** - Complete specification of standardized outputs
-- **[ANIMATION_IMPLEMENTATION.md](ANIMATION_IMPLEMENTATION.md)** - Video generation and animation system
+### Outputs & Visualization
+- **[OUTPUTS.md](OUTPUTS.md)** - Standardized outputs, animations, and data formats
 
-## Advanced Topics
-
-- **[MVAR_ROM_IMPLEMENTATION.md](MVAR_ROM_IMPLEMENTATION.md)** - MVAR Reduced Order Model implementation details
+### Advanced Topics
+- **[MVAR_ROM_IMPLEMENTATION.md](MVAR_ROM_IMPLEMENTATION.md)** - MVAR ROM technical implementation details
 - **[CROWDROM_README.md](CROWDROM_README.md)** - CrowdROM end-to-end pipeline
+- **[GENERALIZATION_TEST_GUIDE.md](GENERALIZATION_TEST_GUIDE.md)** - Testing model generalization
 
-## Quick Links to Root Documentation
+---
 
-Main documentation in the repository root:
-- **[../README.md](../README.md)** - Main project README
-- **[../MVAR_TRAINING_STRATEGY.md](../MVAR_TRAINING_STRATEGY.md)** - MVAR training paradigm documentation
-- **[../OSCAR_WORKFLOW.md](../OSCAR_WORKFLOW.md)** - Oscar HPC cluster workflow
-- **[../OSCAR_SETUP_GUIDE.md](../OSCAR_SETUP_GUIDE.md)** - Oscar setup and usage
-- **[../GITHUB_OSCAR_SYNC.md](../GITHUB_OSCAR_SYNC.md)** - GitHub to Oscar sync workflow
+## Root Documentation
+
+Main documentation in repository root:
+
+### Getting Started
+- **[../README.md](../README.md)** - Main project README, installation, quickstart
+
+### Workflow Guides
+- **[../ROM_MVAR.md](../ROM_MVAR.md)** - ROM/MVAR pipeline guide (training, evaluation, visualization)
+- **[../OSCAR.md](../OSCAR.md)** - Oscar HPC cluster workflow (setup, SLURM, deployment)
+- **[../ENSEMBLE.md](../ENSEMBLE.md)** - Ensemble generation guide
+- **[../DEVELOPMENT.md](../DEVELOPMENT.md)** - Recent changes, patches, known issues
+
+---
+
+## Archived Documentation
+
+Previous documentation versions are preserved in **[archive/](archive/)** for historical reference:
+
+**Development & Audit** (consolidated into `DEVELOPMENT.md`):
+- CODEBASE_AUDIT_REPORT.md
+- CONFIG_SCHEMA_PATCHES.md
+- MIGRATION_GUIDE.md
+- TEST_PATCHES.md
+- COMPLETION_SUMMARY.md
+- COMPATIBILITY_VERIFICATION_REPORT.md
+- SCRIPTS_AND_MODULES_AUDIT.md
+
+**Oscar Workflow** (consolidated into `OSCAR.md`):
+- OSCAR_WORKFLOW.md
+- OSCAR_DEPLOYMENT.md
+- OSCAR_SETUP_GUIDE.md
+- OSCAR_SSH_SETUP.md
+- OSCAR_ARRAYS_GUIDE.md
+- GITHUB_OSCAR_SYNC.md
+
+**ROM/MVAR Pipeline** (consolidated into `ROM_MVAR.md`):
+- ROM_MVAR_GUIDE.md
+- ROM_EVAL_GUIDE.md
+- ROM_MVAR_IMPLEMENTATION.md
+- ROM_QUICKREF.md
+- MVAR_GUIDE.md
+- MVAR_TRAINING_STRATEGY.md
+
+**Model Documentation** (consolidated into `docs/MODELS.md`):
+- DORSOGNA_MODELS.md
+- VICSEK_MODELS.md
+- HYBRID_MODELS.md
+
+**Output Documentation** (consolidated into `docs/OUTPUTS.md`):
+- OUTPUTS_GUIDE.md
+- ANIMATION_IMPLEMENTATION.md
+- STANDARDIZED_OUTPUTS_COMPLETE.md

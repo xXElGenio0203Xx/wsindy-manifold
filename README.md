@@ -126,6 +126,18 @@ All random number generation uses a configurable seed (default `0`). The run met
 includes the full configuration and the current Git commit hash to facilitate later
 analysis or WSINDy/EF-ROM system identification.
 
+## Documentation
+
+Comprehensive documentation is available:
+
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Recent changes, patches, config schema migration
+- **[OSCAR.md](OSCAR.md)** - Oscar HPC cluster workflow (setup, SLURM, deployment)
+- **[ROM_MVAR.md](ROM_MVAR.md)** - ROM/MVAR pipeline (training, evaluation, visualization)
+- **[ENSEMBLE.md](ENSEMBLE.md)** - Ensemble generation guide
+- **[docs/MODELS.md](docs/MODELS.md)** - Model reference (D'Orsogna, Vicsek, hybrid)
+- **[docs/OUTPUTS.md](docs/OUTPUTS.md)** - Outputs, animations, data formats
+- **[docs/README.md](docs/README.md)** - Documentation index
+
 ## License
 
 MIT License. See `LICENSE` for details.
