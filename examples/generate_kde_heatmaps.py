@@ -27,6 +27,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 
+# Note: PillowWriter is used for better portability (no ffmpeg dependency).
+# For better performance in production, consider using FFMpegWriter if available.
+
 from wsindy_manifold.latent.kde import trajectories_to_density_movie, make_grid
 
 
@@ -63,8 +66,15 @@ def generate_snapshot_grid(
     T = Rho.shape[0]
     frame_indices = np.linspace(0, T - 1, n_snapshots, dtype=int)
     
-    fig, axes = plt.subplots(2, n_snapshots // 2, figsize=(15, 10))
-    axes = axes.flatten()
+    # Calculate grid dimensions to handle odd n_snapshots
+    ncols = (n_snapshots + 1) // 2
+    nrows = 2 if n_snapshots > 1 else 1
+    
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows))
+    if n_snapshots == 1:
+        axes = [axes]
+    else:
+        axes = axes.flatten()
     
     # Global colorbar limits
     vmin = Rho.min()
@@ -303,9 +313,9 @@ def main():
         
     else:
         print(f"\nLoading trajectories from: {args.input}")
-        data = np.load(args.input)
-        traj = data['traj']
-        times = data.get('times', None)
+        with np.load(args.input) as data:
+            traj = data['traj']
+            times = data.get('times', None)
         
         if times is None:
             times = np.arange(traj.shape[0])
