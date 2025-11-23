@@ -1,0 +1,63 @@
+# Quick Pipeline Test - Nice Parameters
+# Very short simulations to test the full pipeline quickly
+
+sim_name: "nice_params_test"
+
+# Model type
+model:
+  type: discrete
+  speed: 1.0
+  speed_mode: constant_with_forces
+
+# Simulation parameters - VERY SHORT FOR TESTING
+sim:
+  N: 10                           # Only 10 particles for speed
+  Lx: 30.0
+  Ly: 30.0
+  bc: periodic
+  T: 2.0                          # Very short: 2 seconds
+  dt: 0.05
+  save_every: 2
+  neighbor_rebuild: 5
+  integrator: euler
+  seed: null                      # Random seed for varied data
+
+# Alignment (Vicsek)
+params:
+  R: 3.0
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: gaussian
+  eta: 0.2
+  match_variance: true
+
+# Forces (Morse) - same as nice_parameters
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 0.3
+    Ca: 1.0
+    lr: 0.5
+    la: 2.0
+    rcut_factor: 3.0
+    mu_t: 0.3
+
+# Alignment
+alignment:
+  enabled: true
+
+# Initial distribution - will vary across runs
+initial_distribution: two_clusters
+
+# Outputs
+outputs:
+  run_name: nice_params_test
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 32          # Lower resolution for speed
+  density_bandwidth: 2.0

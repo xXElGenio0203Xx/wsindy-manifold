@@ -131,9 +131,10 @@ def simulate_single_run(args_tuple):
     xgrid = np.linspace(0, config["sim"]["Lx"], DENSITY_NX, endpoint=False) + config["sim"]["Lx"]/(2*DENSITY_NX)
     ygrid = np.linspace(0, config["sim"]["Ly"], DENSITY_NY, endpoint=False) + config["sim"]["Ly"]/(2*DENSITY_NY)
     
-    # Save density
+    # Save density with appropriate filename
+    density_filename = "density_true.npz" if is_test else "density.npz"
     np.savez(
-        run_dir / "density.npz",
+        run_dir / density_filename,
         rho=rho,
         xgrid=xgrid,
         ygrid=ygrid,
