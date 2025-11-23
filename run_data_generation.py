@@ -24,6 +24,8 @@ import pandas as pd
 import time
 import argparse
 import yaml
+from multiprocessing import Pool, cpu_count
+import os
 
 # Import rectsim modules
 from rectsim.vicsek_discrete import simulate_backend
@@ -79,6 +81,74 @@ def load_config(config_path):
     ridge_alpha = 1e-6
     
     return base_config, ic_types, density_nx, density_ny, density_bandwidth, target_energy, p_lag, ridge_alpha
+
+# =============================================================================
+# WORKER FUNCTION FOR PARALLEL SIMULATION
+# =============================================================================
+
+def simulate_single_run(args_tuple):
+    """Worker function for parallel simulation execution."""
+    i, IC_TYPES, BASE_CONFIG, TRAIN_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, is_test = args_tuple
+    
+    if is_test:
+        run_name = f"test_{i:03d}"
+        run_dir = TRAIN_DIR.parent / "test" / run_name  # TRAIN_DIR is actually base dir
+    else:
+        run_name = f"train_{i:03d}"
+        run_dir = TRAIN_DIR / run_name
+    
+    run_dir.mkdir(exist_ok=True, parents=True)
+    
+    ic_type = IC_TYPES[i % len(IC_TYPES)]
+    seed = (2000 if is_test else 1000) + i
+    
+    config = BASE_CONFIG.copy()
+    config["initial_distribution"] = ic_type
+    config["seed"] = seed
+    
+    rng = np.random.default_rng(seed)
+    result = simulate_backend(config, rng)
+    
+    # Save trajectories
+    np.savez(
+        run_dir / "trajectory.npz",
+        traj=result["traj"],
+        vel=result["vel"],
+        times=result["times"]
+    )
+    
+    # Compute KDE densities
+    rho, meta = kde_density_movie(
+        result["traj"],
+        Lx=config["sim"]["Lx"],
+        Ly=config["sim"]["Ly"],
+        nx=DENSITY_NX,
+        ny=DENSITY_NY,
+        bandwidth=DENSITY_BANDWIDTH,
+        bc=config["sim"]["bc"]
+    )
+    
+    xgrid = np.linspace(0, config["sim"]["Lx"], DENSITY_NX, endpoint=False) + config["sim"]["Lx"]/(2*DENSITY_NX)
+    ygrid = np.linspace(0, config["sim"]["Ly"], DENSITY_NY, endpoint=False) + config["sim"]["Ly"]/(2*DENSITY_NY)
+    
+    # Save density
+    np.savez(
+        run_dir / "density.npz",
+        rho=rho,
+        xgrid=xgrid,
+        ygrid=ygrid,
+        times=result["times"]
+    )
+    
+    metadata = {
+        "run_id": i,
+        "run_name": run_name,
+        "ic_type": ic_type,
+        "seed": seed,
+        "T": len(result["times"])
+    }
+    
+    return metadata, rho
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -214,61 +284,23 @@ def main():
     train_metadata = []
     train_densities = []
     
-    print(f"\nSimulating {args.n_train} training runs...")
+    # Determine number of workers
+    n_workers = int(os.environ.get('SLURM_CPUS_PER_TASK', cpu_count()))
+    print(f"\nSimulating {args.n_train} training runs using {n_workers} parallel workers...")
     
-    for i in tqdm(range(args.n_train), desc="Training sims"):
-        run_name = f"train_{i:03d}"
-        run_dir = TRAIN_DIR / run_name
-        run_dir.mkdir(exist_ok=True)
-        
-        ic_type = IC_TYPES[i % len(IC_TYPES)]
-        seed = 1000 + i
-        
-        config = BASE_CONFIG.copy()
-        config["initial_distribution"] = ic_type
-        config["seed"] = seed
-        
-        rng = np.random.default_rng(seed)
-        result = simulate_backend(config, rng)
-        
-        # Save trajectories
-        np.savez(
-            run_dir / "trajectory.npz",
-            traj=result["traj"],
-            vel=result["vel"],
-            times=result["times"]
-        )
-        
-        # Compute KDE densities
-        rho, meta = kde_density_movie(
-            result["traj"],
-            Lx=config["sim"]["Lx"],
-            Ly=config["sim"]["Ly"],
-            nx=DENSITY_NX,
-            ny=DENSITY_NY,
-            bandwidth=DENSITY_BANDWIDTH,
-            bc=config["sim"]["bc"]
-        )
-        
-        xgrid = np.linspace(0, config["sim"]["Lx"], DENSITY_NX, endpoint=False) + config["sim"]["Lx"]/(2*DENSITY_NX)
-        ygrid = np.linspace(0, config["sim"]["Ly"], DENSITY_NY, endpoint=False) + config["sim"]["Ly"]/(2*DENSITY_NY)
-        
-        # Save density
-        np.savez(
-            run_dir / "density.npz",
-            rho=rho,
-            xgrid=xgrid,
-            ygrid=ygrid,
-            times=result["times"]
-        )
-        
-        train_metadata.append({
-            "run_id": i,
-            "run_name": run_name,
-            "ic_type": ic_type,
-            "seed": seed,
-            "T": len(result["times"])
-        })
+    # Prepare arguments for parallel execution
+    train_args = [(i, IC_TYPES, BASE_CONFIG, TRAIN_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, False) 
+                  for i in range(args.n_train)]
+    
+    # Run simulations in parallel
+    with Pool(n_workers) as pool:
+        results = list(tqdm(pool.imap(simulate_single_run, train_args), 
+                           total=args.n_train, 
+                           desc="Training sims"))
+    
+    # Unpack results
+    for metadata, rho in results:
+        train_metadata.append(metadata)
         
         # Collect densities for POD
         T, ny, nx = rho.shape
@@ -412,86 +444,24 @@ def main():
     for ic, count in test_ic_distribution.items():
         print(f"   {ic}: {count} runs")
     
+    # Prepare arguments for parallel execution
+    test_args = [(i, IC_TYPES, BASE_CONFIG, TRAIN_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, True) 
+                 for i in range(args.n_test)]
+    
+    # Run test simulations in parallel
+    print(f"\nUsing {n_workers} parallel workers...")
+    with Pool(n_workers) as pool:
+        test_results = list(tqdm(pool.imap(simulate_single_run, test_args), 
+                                total=args.n_test, 
+                                desc="Test sims"))
+    
+    # Unpack test results
     test_metadata = []
     test_run_idx = 0
     
-    for ic_type in IC_TYPES:
-        n_runs = test_ic_distribution[ic_type]
-        
-        for i in range(n_runs):
-            run_name = f"test_{test_run_idx:03d}"
-            run_dir = TEST_DIR / run_name
-            run_dir.mkdir(exist_ok=True)
-            
-            seed = 2000 + test_run_idx
-            
-            config = BASE_CONFIG.copy()
-            config["initial_distribution"] = ic_type
-            config["seed"] = seed
-            
-            rng = np.random.default_rng(seed)
-            result = simulate_backend(config, rng)
-            
-            # Save trajectories
-            np.savez(
-                run_dir / "trajectory.npz",
-                traj=result["traj"],
-                vel=result["vel"],
-                times=result["times"]
-            )
-            
-            # Compute KDE densities
-            rho_true, meta = kde_density_movie(
-                result["traj"],
-                Lx=config["sim"]["Lx"],
-                Ly=config["sim"]["Ly"],
-                nx=DENSITY_NX,
-                ny=DENSITY_NY,
-                bandwidth=DENSITY_BANDWIDTH,
-                bc=config["sim"]["bc"]
-            )
-            
-            xgrid = np.linspace(0, config["sim"]["Lx"], DENSITY_NX, endpoint=False) + config["sim"]["Lx"]/(2*DENSITY_NX)
-            ygrid = np.linspace(0, config["sim"]["Ly"], DENSITY_NY, endpoint=False) + config["sim"]["Ly"]/(2*DENSITY_NY)
-            
-            # Save true density
-            np.savez(
-                run_dir / "density_true.npz",
-                rho=rho_true,
-                xgrid=xgrid,
-                ygrid=ygrid,
-                times=result["times"]
-            )
-            
-            # Compute order parameters
-            order_params_list = []
-            for t in range(len(result["times"])):
-                vel = result["vel"][t]
-                params = compute_order_params(vel, include_nematic=True)
-                params['t'] = result["times"][t]
-                order_params_list.append(params)
-            
-            df_order = pd.DataFrame(order_params_list)
-            df_order = df_order[['t', 'phi', 'mean_speed', 'speed_std', 'nematic']]
-            df_order.to_csv(run_dir / "order_params.csv", index=False)
-            
-            # Save metadata
-            with open(run_dir / "metadata.json", "w") as f:
-                json.dump({
-                    "run_id": test_run_idx,
-                    "ic_type": ic_type,
-                    "seed": seed
-                }, f, indent=2)
-            
-            test_metadata.append({
-                "run_id": test_run_idx,
-                "run_name": run_name,
-                "ic_type": ic_type,
-                "seed": seed,
-                "T": len(result["times"])
-            })
-            
-            test_run_idx += 1
+    for metadata, rho_true in test_results:
+        test_metadata.append(metadata)
+        test_run_idx += 1
     
     # Save test metadata
     with open(TEST_DIR / "metadata.json", "w") as f:
