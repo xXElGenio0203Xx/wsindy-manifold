@@ -1,0 +1,44 @@
+# Quick Oscar Test - Very Fast Run
+# Purpose: Test constant_with_forces mode on Oscar with minimal compute
+sim_name: "quick_oscar_test"
+
+# Model parameters
+model:
+  speed: 1.0
+  speed_mode: constant_with_forces  # Forces steer heading, speed stays constant
+  R_align: 1.0
+  sigma_align: 0.1
+  dt: 0.05
+
+# Simulation parameters
+sim:
+  N: 20           # Very few particles for speed
+  T: 2.0          # Only 2 seconds
+  L: 10.0
+  boundary: periodic
+  ic_type: uniform
+
+# Force parameters
+forces:
+  Ca: 1.0         # Weak attraction
+  Cr: 0.3         # Weak repulsion
+  la: 5.0
+  lr: 2.0
+  mu_t: 0.2
+
+# ROM parameters
+rom:
+  pod_modes: 10   # Minimal modes for speed
+  delay: 2
+  
+# Training/testing
+training:
+  n_train: 3      # Just 3 training simulations
+  n_test: 2       # Just 2 test simulations
+
+# Output settings
+output:
+  save_trajectory: true
+  save_density: true
+  density_resolution: 64  # Lower resolution for speed
+  density_bandwidth_factor: 25.0
