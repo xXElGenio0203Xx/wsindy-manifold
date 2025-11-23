@@ -23,10 +23,10 @@ cd ~/wsindy-manifold
 git pull origin main
 echo ""
 
-# Load environment
-echo "Activating Python environment..."
-source ~/.bashrc
-source ~/wsindy-manifold/.venv/bin/activate
+# Load modules and activate environment
+echo "Loading Python environment..."
+module load python/3.11
+source ~/wsindy_env/bin/activate
 echo "Python: $(which python)"
 echo ""
 
