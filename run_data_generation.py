@@ -540,6 +540,42 @@ def main():
     
     total_time = time.time() - pipeline_start
     
+    # Save summary JSON
+    summary_data = {
+        "experiment_name": args.experiment_name,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "configuration": {
+            "n_train": args.n_train,
+            "n_test": args.n_test,
+            "N": BASE_CONFIG["sim"]["N"],
+            "T": BASE_CONFIG["sim"]["T"],
+            "dt": BASE_CONFIG["sim"]["dt"],
+            "density_resolution": f"{DENSITY_NX}×{DENSITY_NY}",
+            "density_bandwidth": DENSITY_BANDWIDTH,
+        },
+        "rom_parameters": {
+            "pod_modes": int(R_POD),
+            "pod_energy_captured": float(actual_energy),
+            "pod_energy_threshold": float(TARGET_ENERGY),
+            "mvar_lag": int(P_LAG),
+            "mvar_train_r2": float(train_r2),
+            "ridge_alpha": float(RIDGE_ALPHA),
+        },
+        "timing": {
+            "total_seconds": float(total_time),
+            "step1_training_seconds": float(step1_time),
+            "step2_pod_mvar_seconds": float(step2_time),
+            "step3_testing_seconds": float(step3_time),
+            "step4_prediction_seconds": float(step4_time),
+        },
+        "output_directory": str(OUTPUT_DIR),
+    }
+    
+    summary_path = OUTPUT_DIR / "pipeline_summary.json"
+    with open(summary_path, 'w') as f:
+        json.dump(summary_data, f, indent=2)
+    print(f"\n✓ Pipeline summary saved: {summary_path}")
+    
     print("\n" + "="*80)
     print("DATA GENERATION COMPLETE! 🎉")
     print("="*80)
