@@ -1,5 +1,11 @@
 seed: 42
-model: vicsek_discrete
+sim_name: "relaxed_clustering"
+
+model:
+  type: discrete
+  speed: 0.5                      # Slower speed
+  speed_mode: constant
+
 sim:
   N: 400
   Lx: 40.0
@@ -10,34 +16,37 @@ sim:
   save_every: 10
   neighbor_rebuild: 5
   integrator: euler
-model_config:
-  speed: 0.5
-  speed_mode: constant
+  seed: 42
+
 params:
-  R: 3.0
+  R: 3.0                          # Smaller alignment radius
   alpha: 1.5
   beta: 0.5
+
 noise:
   kind: gaussian
-  eta: 0.15
+  eta: 0.15                       # More noise
   match_variance: true
+
 forces:
   enabled: true
   type: morse
   params:
-    Cr: 1.5
-    Ca: 2.0
-    lr: 0.8
-    la: 3.0
+    Cr: 1.5                       # Gentle repulsion
+    Ca: 2.0                       # WEAK attraction
+    lr: 0.8                       # Larger repulsion range
+    la: 3.0                       # Shorter attraction range
     rcut_factor: 3.0
-    mu_t: 0.3
-ic:
-  type: uniform
+    mu_t: 0.3                     # Very weak force coupling
+
+alignment:
+  enabled: true
+
+initial_distribution: uniform
+
 outputs:
-  directory: simulations/relaxed_clustering
+  run_name: relaxed_clustering
   order_parameters: true
-  plot_order_params: true
-  animate_traj: true
-  animate_density: true
-  video_ics: 1
-  order_params_ics: 1
+  save_npz: true
+  fps: 20
+  density_resolution: 60

@@ -1,0 +1,63 @@
+# Vicsek + Forces with Constant Speed
+# Forces steer the heading but speed stays constant at v0
+
+sim_name: "vicsek_forces_constant_speed"
+
+# Model type
+model:
+  type: discrete
+  speed: 1.0                      # Constant speed
+  speed_mode: constant_with_forces # Forces affect heading only
+
+# Simulation parameters
+sim:
+  N: 400
+  Lx: 30.0
+  Ly: 30.0
+  bc: periodic
+  T: 60.0
+  dt: 0.05
+  save_every: 5
+  neighbor_rebuild: 5
+  integrator: euler
+  seed: 42
+
+# Alignment (Vicsek)
+params:
+  R: 3.0                          # Alignment radius
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: gaussian
+  eta: 0.2
+  match_variance: true
+
+# Forces (Morse) - affect heading only
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 0.3                       # Weak repulsion
+    Ca: 1.0                       # Weak attraction
+    lr: 0.5                       # Repulsion range
+    la: 2.0                       # Attraction range
+    rcut_factor: 3.0
+    mu_t: 0.3                     # Force influence on heading
+
+# Alignment
+alignment:
+  enabled: true
+
+# Initial distribution
+initial_distribution: two_clusters
+
+# Outputs
+outputs:
+  run_name: vicsek_forces_constant_speed
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 128
+  density_bandwidth: 3.0

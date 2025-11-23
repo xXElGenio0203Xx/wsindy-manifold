@@ -4,6 +4,8 @@ outputs/
 simulations/
 mvar_outputs/
 slurm_logs/
+oscar_output/
+predictions/
 
 # Virtual environments
 .venv/

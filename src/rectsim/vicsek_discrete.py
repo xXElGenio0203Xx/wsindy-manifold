@@ -327,8 +327,9 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
         Configuration dictionary with keys:
         - sim: {N, Lx, Ly, bc, T, dt, save_every, neighbor_rebuild}
         - model: {type, speed, speed_mode}
-          - speed_mode: "constant" (default) or "variable"
-            * constant: Traditional Vicsek, fixed speed v0, forces only shift positions
+          - speed_mode: "constant" (default), "constant_with_forces", or "variable"
+            * constant: Traditional Vicsek, fixed speed v0, forces ignored
+            * constant_with_forces: Forces affect heading only, speed stays v0
             * variable: Forces affect velocity, speed can change
         - noise: {kind, eta, match_variance}
         - forces: {enabled, type, params}
@@ -348,14 +349,21 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
         
     Notes
     -----
-    The discrete Vicsek model supports two speed modes:
+    The discrete Vicsek model supports three speed modes:
     
     CONSTANT SPEED MODE (speed_mode="constant", default):
     1. Find neighbors within radius R
     2. Compute mean heading of neighbors
     3. Add angular noise
-    4. Update positions: x += dt * (v0*p + mu_t*F)
-    5. Particles maintain constant speed v0, forces only shift positions
+    4. Update positions: x += dt * v0 * p
+    5. Forces are completely ignored, pure Vicsek alignment
+    
+    CONSTANT WITH FORCES MODE (speed_mode="constant_with_forces"):
+    1. Find neighbors within radius R
+    2. Compute mean heading of neighbors + force heading
+    3. Add angular noise
+    4. Update positions: x += dt * v0 * p
+    5. Forces steer heading but speed stays constant at v0
     
     VARIABLE SPEED MODE (speed_mode="variable"):
     1. Find neighbors within radius R
@@ -364,9 +372,6 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
     4. Rotate velocities toward aligned direction (preserving speed)
     5. Update positions: x += dt * v
     6. Forces directly affect velocity magnitude and direction
-    
-    The variable speed mode allows D'Orsogna-like force interactions where
-    Morse forces change particle velocities, not just positions.
     """
     from .noise import angle_noise
     from .domain import NeighborFinder, apply_bc
@@ -395,6 +400,19 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
     noise_kind = noise_cfg.get("kind", "uniform")
     eta = noise_cfg.get("eta", 0.5)
     match_variance = noise_cfg.get("match_variance", True)
+    
+    # Determine maximum interaction radius for optimal cell list
+    # This ensures a single cell list can serve both alignment and forces
+    R_align = R
+    R_max = R_align
+    
+    if forces_cfg.get("enabled", False):
+        force_params = forces_cfg.get("params", {})
+        lr = force_params.get("lr", 0.5)
+        la = force_params.get("la", 1.5)
+        rcut_factor = force_params.get("rcut_factor", 5.0)
+        R_force = rcut_factor * max(lr, la)
+        R_max = max(R_align, R_force)
     
     # Validation
     if v0 * dt > 0.5 * R:
@@ -426,8 +444,9 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
     else:
         v = None  # Not used in constant-speed mode
     
-    # Setup neighbor finder
-    nf = NeighborFinder(Lx, Ly, R, bc)
+    # Setup neighbor finder with maximum interaction radius
+    # Cell size will be >= R_max, allowing efficient 3x3 search for both alignment and forces
+    nf = NeighborFinder(Lx, Ly, R_max, bc)
     nf.rebuild(x)
     
     # Preallocate output arrays
@@ -470,12 +489,28 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
             if idx.size == 0:  # No neighbors (shouldn't happen with self-inclusion)
                 p_bar[i] = p[i]
             else:
-                s = p[idx].sum(axis=0)
-                norm = np.linalg.norm(s)
-                if norm > 1e-12:
-                    p_bar[i] = s / norm
-                else:  # Opposing headings cancel
-                    p_bar[i] = p[i]
+                # Filter neighbors within alignment radius R_align
+                if R_align < R_max:
+                    # Need to filter by distance
+                    dists = np.linalg.norm(x[idx] - x[i], axis=1)
+                    within_R = idx[dists <= R_align]
+                    if within_R.size == 0:
+                        p_bar[i] = p[i]
+                    else:
+                        s = p[within_R].sum(axis=0)
+                        norm = np.linalg.norm(s)
+                        if norm > 1e-12:
+                            p_bar[i] = s / norm
+                        else:
+                            p_bar[i] = p[i]
+                else:
+                    # All neighbors from cell list are within R_align
+                    s = p[idx].sum(axis=0)
+                    norm = np.linalg.norm(s)
+                    if norm > 1e-12:
+                        p_bar[i] = s / norm
+                    else:  # Opposing headings cancel
+                        p_bar[i] = p[i]
         
         # Force hook: Add Morse forces if enabled
         if forces_cfg.get("enabled", False):
@@ -491,8 +526,9 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
             rcut = rcut_factor * max(lr, la)
             mu_t = force_params.get("mu_t", 0.5)  # Translational mobility
             
-            # Compute Morse forces
-            fx, fy = morse_force(x, Lx, Ly, bc, Cr, Ca, lr, la, rcut)
+            # Compute Morse forces using the shared cell list
+            # Pass the cell list from NeighborFinder to avoid rebuilding
+            fx, fy = morse_force(x, Lx, Ly, bc, Cr, Ca, lr, la, rcut, cell_list=nf._cell_list)
             F = np.column_stack([fx, fy])
         else:
             F = np.zeros_like(p)  # No forces
@@ -502,7 +538,8 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
         
         if speed_mode == "constant":
             # CONSTANT SPEED MODE (traditional Vicsek)
-            # Headings align, forces only affect position
+            # Particles move at EXACTLY constant speed v0
+            # Forces are IGNORED to maintain constant speed
             
             # Add angular noise and rotate headings
             phi = angle_noise(rng, noise_kind, eta, size=N, match_variance=match_variance)
@@ -515,18 +552,62 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
                 sin_phi * p_bar[:, 0] + cos_phi * p_bar[:, 1]
             ])
             
-            # Update positions: x_{t+1} = x_t + dt * (v0*p + mu_t*F)
-            # Note: Forces add to position, but particles maintain constant speed v0
-            x = x + dt * (v0 * p + mu_t * F)
+            # Update positions: x_{t+1} = x_t + dt * v0 * p
+            # NOTE: Forces are ignored in constant speed mode to maintain |velocity| = v0
+            x = x + dt * v0 * p
             x, flips = apply_bc(x, Lx, Ly, bc)
             
             # Flip headings on reflection
             if np.any(flips):
                 p[flips] *= -1.0
             
-            # Velocity for output: In constant speed mode, particles always move at v0
-            # The force term shifts positions but doesn't change the particle velocity
-            v_output = v0 * p  # Pure self-propulsion velocity (constant magnitude)
+            # Velocity for output: In constant speed mode, all particles move at exactly v0
+            v_output = v0 * p  # Constant magnitude v0
+            
+        elif speed_mode == "constant_with_forces":
+            # CONSTANT SPEED WITH FORCES MODE
+            # Forces affect heading direction but speed stays constant at v0
+            
+            # Combine alignment heading with force-induced heading
+            if forces_cfg.get("enabled", False) and np.any(F):
+                # Normalize force to get force-induced heading
+                F_norm = np.linalg.norm(F, axis=1, keepdims=True)
+                F_heading = np.zeros_like(F)
+                nonzero = F_norm[:, 0] > 1e-12
+                F_heading[nonzero] = F[nonzero] / F_norm[nonzero]
+                
+                # Combine alignment and force headings (weighted average)
+                # mu_t controls the influence of forces
+                combined_heading = p_bar + mu_t * F_heading
+                
+                # Normalize to get unit heading
+                combined_norm = np.linalg.norm(combined_heading, axis=1, keepdims=True)
+                p_bar = np.zeros_like(combined_heading)
+                nonzero = combined_norm[:, 0] > 1e-12
+                p_bar[nonzero] = combined_heading[nonzero] / combined_norm[nonzero]
+            
+            # Add angular noise and rotate headings
+            phi = angle_noise(rng, noise_kind, eta, size=N, match_variance=match_variance)
+            cos_phi = np.cos(phi)
+            sin_phi = np.sin(phi)
+            
+            # Rotation: p_new = R(phi) @ p_bar
+            p = np.column_stack([
+                cos_phi * p_bar[:, 0] - sin_phi * p_bar[:, 1],
+                sin_phi * p_bar[:, 0] + cos_phi * p_bar[:, 1]
+            ])
+            
+            # Update positions: x_{t+1} = x_t + dt * v0 * p
+            # Forces affect DIRECTION but not SPEED (speed = v0 always)
+            x = x + dt * v0 * p
+            x, flips = apply_bc(x, Lx, Ly, bc)
+            
+            # Flip headings on reflection
+            if np.any(flips):
+                p[flips] *= -1.0
+            
+            # Velocity for output: Constant speed v0 in heading direction
+            v_output = v0 * p
             
         else:
             # VARIABLE SPEED MODE (like D'Orsogna but discrete)

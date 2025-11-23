@@ -73,11 +73,13 @@ def kde_density_movie(
     
     for t in range(T):
         # 2D histogram
+        # histogram2d returns hist[i,j] where i is x-bins, j is y-bins
+        # But for images, we need [row, col] = [y, x] indexing
         hist, _, _ = np.histogram2d(
-            traj[t, :, 0],  # x coordinates
-            traj[t, :, 1],  # y coordinates
-            bins=[x_edges, y_edges],
-            range=[[0.0, Lx], [0.0, Ly]]
+            traj[t, :, 1],  # y coordinates (rows)
+            traj[t, :, 0],  # x coordinates (columns)
+            bins=[y_edges, x_edges],
+            range=[[0.0, Ly], [0.0, Lx]]
         )
         
         # Normalize to density (particles per unit area)
@@ -87,8 +89,8 @@ def kde_density_movie(
         if bandwidth > 0:
             density = gaussian_filter(density, sigma=bandwidth, mode=mode)
         
-        # Store (transposed for image convention: y as first axis)
-        rho[t] = density.T
+        # Store directly (already in [y, x] = [row, col] format for images)
+        rho[t] = density
     
     # Metadata
     meta = {
@@ -689,11 +691,20 @@ def trajectory_video(
         T = max_frames
     
     # Compute velocities from positions (finite differences)
+    # Handle periodic boundaries to avoid spurious large velocities
     vel = np.zeros_like(traj)
     if T > 1:
         dt = times[1] - times[0] if len(times) > 1 else 1.0
         for t in range(T - 1):
-            vel[t] = (traj[t + 1] - traj[t]) / dt
+            disp = traj[t + 1] - traj[t]
+            
+            # Wrap displacements for periodic boundaries (minimum image convention)
+            disp[:, 0] = np.where(disp[:, 0] > Lx/2, disp[:, 0] - Lx, disp[:, 0])
+            disp[:, 0] = np.where(disp[:, 0] < -Lx/2, disp[:, 0] + Lx, disp[:, 0])
+            disp[:, 1] = np.where(disp[:, 1] > Ly/2, disp[:, 1] - Ly, disp[:, 1])
+            disp[:, 1] = np.where(disp[:, 1] < -Ly/2, disp[:, 1] + Ly, disp[:, 1])
+            
+            vel[t] = disp / dt
         vel[-1] = vel[-2]  # Copy last velocity
     
     # Create figure with colorbar
@@ -735,7 +746,7 @@ def trajectory_video(
             scale=quiver_scale,  # Controls arrow length
             width=quiver_width,
             alpha=quiver_alpha,
-            color='black',  # Black arrows on colored particles
+            color='orange',  # Orange arrows on colored particles
             edgecolors='white',
             linewidth=0.5
         )

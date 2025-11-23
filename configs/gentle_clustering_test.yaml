@@ -1,0 +1,65 @@
+# Gentle clustering - balanced forces
+# N=200, Ca=2.0, Cr=0.5, alignment ON, variable speed
+
+sim_name: "gentle_clustering_test"
+
+# Model type
+model:
+  type: discrete
+  speed: 0.2                      # Very slow speed for calm dynamics
+  speed_mode: variable            # Variable speed mode to allow forces to affect dynamics
+
+# Simulation parameters
+sim:
+  N: 50
+  Lx: 20.0
+  Ly: 20.0
+  bc: periodic
+  T: 5.0
+  dt: 0.05
+  save_every: 5
+  neighbor_rebuild: 5
+  integrator: euler
+  seed: 42
+
+# Alignment (Vicsek)
+params:
+  R: 2.0                          # Alignment radius
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: gaussian
+  eta: 0.2
+  match_variance: true
+
+# Forces (Morse)
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 0.5                       # Repulsion
+    Ca: 1.0                       # Very gentle attraction (C = Cr/Ca = 0.5)
+    lr: 0.5                       # Repulsion range (ℓ = lr/la = 0.25)
+    la: 2.0                       # Attraction range
+    rcut_factor: 3.0
+    mu_t: 0.5                     # Force coupling
+
+# Alignment
+alignment:
+  enabled: true
+
+# Initial distribution
+initial_distribution: gaussian_cluster
+
+# Outputs
+outputs:
+  run_name: gentle_clustering_test
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 64  # Use 64 for pipeline (faster)
+  density_bandwidth: 3.0  # Smoothing bandwidth in pixels
+  fps: 20
+  density_resolution: 128  # Higher resolution for smooth visualization

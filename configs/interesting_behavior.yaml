@@ -1,0 +1,50 @@
+# Interesting Behavior: Gentle clustering with moderate speed
+# Configuration for observing cluster formation and evolution
+
+sim_name: "interesting_behavior"
+
+model:
+  type: discrete
+  speed: 2.0                      # Moderate motion speed
+  speed_mode: constant            # Forces affect velocity
+
+sim:
+  N: 200
+  Lx: 20.0
+  Ly: 20.0
+  bc: periodic
+  T: 100.0                        # Long simulation for cluster evolution
+  dt: 0.1                         # Stable timestep
+  save_every: 10                  # 3000 steps → 300 snapshots
+  neighbor_rebuild: 1
+  integrator: euler_semiimplicit
+  seed: 42
+
+params:
+  R: 2.0                          # Local alignment radius
+
+noise:
+  kind: gaussian
+  eta: 0.25                       # Moderate noise - clusters persist
+  match_variance: true
+
+forces:
+  enabled: true
+  type: morse
+  params:
+    Ca: 1.0                       # Attraction strength
+    Cr: 0.6                       # Repulsion (Cr/Ca = 0.6 → not too sticky)
+    la: 1.0                       # Attraction range
+    lr: 0.5                       # Repulsion range (lr/la = 0.5)
+    rcut_factor: 3.0
+    mu_t: 0.4                     # Softer coupling → smoother motion
+
+alignment:
+  enabled: true
+
+initial_distribution: uniform
+
+outputs:
+  run_name: interesting_behavior
+  save_npz: true
+  order_parameters: true

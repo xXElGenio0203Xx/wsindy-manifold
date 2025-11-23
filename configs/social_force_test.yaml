@@ -1,0 +1,62 @@
+# Test configuration for visualizing social force dynamics
+# Short simulation with social_force model (D'Orsogna parameters)
+
+sim_name: "social_force_test"
+
+# Model configuration
+model:
+  type: discrete
+  speed: 0.5                      # Desired speed
+  speed_mode: variable            # Allow speed changes from forces
+
+# Simulation parameters
+sim:
+  N: 100                          # Small N for fast visualization
+  Lx: 10.0
+  Ly: 10.0
+  bc: periodic
+  T: 10.0                         # Short: 10s
+  dt: 0.05                        # Reasonable timestep
+  save_every: 5                   # Save every 5 steps
+  neighbor_rebuild: 5
+  integrator: euler_semiimplicit  # Better for force-driven systems
+  seed: 42
+
+# Alignment (Vicsek-like)
+params:
+  R: 1.5                          # Alignment radius
+  alpha: 1.5                      # Repulsion strength
+  beta: 0.5                       # Attraction strength
+
+# Noise
+noise:
+  kind: gaussian
+  eta: 0.1                        # Low angular noise
+  match_variance: true
+
+# Forces (D'Orsogna-style Morse)
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 2.0                       # Repulsion strength
+    Ca: 1.0                       # Attraction strength
+    lr: 0.9                       # Repulsion length scale
+    la: 1.0                       # Attraction length scale
+    rcut_factor: 3.0
+    mu_t: 1.0                     # Force coupling strength
+
+# Alignment
+alignment:
+  enabled: true
+
+# Initial distribution
+initial_distribution: gaussian_cluster
+
+# Outputs
+outputs:
+  run_name: social_force_test
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 64
