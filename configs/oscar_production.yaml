@@ -11,7 +11,7 @@ model:
 
 # Simulation parameters
 sim:
-  N: 200
+  N: 400
   Lx: 30.0
   Ly: 30.0
   bc: periodic

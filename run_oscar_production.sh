@@ -1,15 +1,16 @@
 #!/bin/bash
 #SBATCH --job-name=vicsek_production
-#SBATCH --time=24:00:00
+#SBATCH --time=02:00:00
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #SBATCH --output=slurm_logs/production_%j.out
 #SBATCH --error=slurm_logs/production_%j.err
 
 # Oscar Production Run Script
 # Vicsek + Forces with constant speed mode
-# N=200, T=50s, large ensemble
+# N=400, T=50s, 200 train + 50 test
+# Expected runtime: ~40-50 minutes
 
 echo "=========================================="
 echo "Oscar Production Run"
@@ -17,9 +18,9 @@ echo "=========================================="
 echo "Start time: $(date)"
 echo ""
 
-# Load conda environment
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate wsindy
+# Load Python module and activate environment
+module load python/3.11
+source ~/wsindy_env/bin/activate
 
 # Navigate to project directory
 cd ~/wsindy-manifold
