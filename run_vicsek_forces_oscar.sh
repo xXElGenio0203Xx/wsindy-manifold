@@ -19,13 +19,16 @@ echo ""
 
 # Pull latest code from GitHub
 echo "Pulling latest code from GitHub..."
+cd ~/wsindy-manifold
 git pull origin main
 echo ""
 
 # Load environment
+echo "Activating Python environment..."
 source ~/.bashrc
-cd ~/wsindy-manifold
-source .venv/bin/activate
+source ~/wsindy-manifold/.venv/bin/activate
+echo "Python: $(which python)"
+echo ""
 
 # Create log directory
 mkdir -p slurm_logs
