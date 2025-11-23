@@ -1,0 +1,63 @@
+# Nice Parameters - Production Run on Oscar
+# Full-scale simulation with nice physics parameters
+
+sim_name: "nice_params_production"
+
+# Model type
+model:
+  type: discrete
+  speed: 1.0
+  speed_mode: constant_with_forces
+
+# Simulation parameters - PRODUCTION SCALE
+sim:
+  N: 200                          # 200 particles for good dynamics
+  Lx: 30.0
+  Ly: 30.0
+  bc: periodic
+  T: 30.0                         # 30 seconds duration
+  dt: 0.05
+  save_every: 5
+  neighbor_rebuild: 5
+  integrator: euler
+  seed: null                      # Random seed for varied data
+
+# Alignment (Vicsek)
+params:
+  R: 3.0
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: gaussian
+  eta: 0.2
+  match_variance: true
+
+# Forces (Morse) - Nice balanced parameters
+forces:
+  enabled: true
+  type: morse
+  params:
+    Cr: 0.3                       # Weak repulsion
+    Ca: 1.0                       # Moderate attraction
+    lr: 0.5                       # Repulsion range
+    la: 2.0                       # Attraction range
+    rcut_factor: 3.0
+    mu_t: 0.3                     # Force influence on heading
+
+# Alignment
+alignment:
+  enabled: true
+
+# Initial distribution - will cycle through all types
+initial_distribution: uniform
+
+# Outputs
+outputs:
+  run_name: nice_params_production
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 64          # Good resolution for N=200
+  density_bandwidth: 2.5
