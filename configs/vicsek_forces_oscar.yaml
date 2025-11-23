@@ -61,3 +61,9 @@ outputs:
   fps: 20
   density_resolution: 64
   density_bandwidth: 2.5
+
+# ROM-MVAR parameters
+rom:
+  pod_energy: 0.995              # POD energy threshold (99.5%)
+  mvar_lag: 4                    # MVAR time lag order
+  ridge_alpha: 1.0e-6            # Ridge regression regularization

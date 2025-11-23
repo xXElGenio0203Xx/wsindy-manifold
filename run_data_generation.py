@@ -75,10 +75,11 @@ def load_config(config_path):
     # IC types (default to stratified sampling)
     ic_types = ["uniform", "gaussian_cluster", "ring", "two_clusters"]
     
-    # POD/MVAR parameters
-    target_energy = 0.995
-    p_lag = 4
-    ridge_alpha = 1e-6
+    # POD/MVAR parameters (from config or defaults)
+    rom_config = config.get('rom', {})
+    target_energy = rom_config.get('pod_energy', 0.995)
+    p_lag = rom_config.get('mvar_lag', 4)
+    ridge_alpha = rom_config.get('ridge_alpha', 1e-6)
     
     return base_config, ic_types, density_nx, density_ny, density_bandwidth, target_energy, p_lag, ridge_alpha
 
