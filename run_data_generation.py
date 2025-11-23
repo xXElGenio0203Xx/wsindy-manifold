@@ -189,7 +189,13 @@ def fit_mvar(Y, p, alpha=1e-6):
     Y_pred = X @ A
     ss_res = np.sum((Y_target - Y_pred)**2)
     ss_tot = np.sum((Y_target - Y_target.mean(axis=0))**2)
-    r2 = 1 - ss_res / ss_tot
+    
+    # Handle edge case where ss_tot is zero (no variance in data)
+    if ss_tot < 1e-10:
+        r2 = 1.0 if ss_res < 1e-10 else 0.0
+    else:
+        r2 = 1 - ss_res / ss_tot
+    
     rmse = np.sqrt(np.mean((Y_target - Y_pred)**2))
     
     return A_matrices, r2, rmse
