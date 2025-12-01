@@ -1,0 +1,69 @@
+# Gaussians Test Configuration
+# ================================
+# Training: Gaussian ICs with SAME center, VARYING variances
+# Testing: Gaussian ICs with DIFFERENT centers, fixed variance
+# Goal: Test if ROM-MVAR can learn variance dynamics and generalize to position shifts
+
+sim:
+  N: 50                    # Small for quick local testing
+  Lx: 30.0
+  Ly: 30.0
+  bc: periodic
+  T: 5.0                   # Very short for testing (5 seconds)
+  dt: 0.05
+  save_every: 5            # Save every 0.25s
+  neighbor_rebuild: 5
+
+model:
+  speed: 1.0
+  speed_mode: constant_with_forces
+
+params:
+  R: 3.0                   # Vicsek alignment radius
+  alpha: 1.5               # Alignment strength
+  beta: 0.5                # Turning rate
+
+noise:
+  kind: gaussian
+  eta: 0.2                 # Moderate noise
+
+forces:
+  enabled: true
+  type: morse
+  Cr: 0.3                  # Repulsion strength
+  Ca: 1.0                  # Attraction strength  
+  lr: 0.5                  # Repulsion range
+  la: 2.0                  # Attraction range
+  mu_t: 0.3                # Friction coefficient
+
+# Initial condition will be set programmatically
+initial_distribution: gaussian_cluster  # Base type, will be customized
+
+outputs:
+  density_resolution: 64
+  density_bandwidth: 2.5
+
+rom:
+  pod_energy: 0.995
+  mvar_lag: 4
+  ridge_alpha: 1.0e-6
+
+# Custom training IC parameters (Gaussian with varying variance)
+train_ic:
+  type: gaussian_varying_variance
+  center_x: 15.0           # Fixed center (middle of 30x30 domain)
+  center_y: 15.0
+  variances: [0.5, 1.0, 2.0, 3.0, 4.0]  # 5 different variances to learn from
+  n_samples_per_variance: 3  # 3 samples per variance = 15 total training runs
+
+# Custom test IC parameters (Gaussian with different centers)
+test_ic:
+  type: gaussian_varying_center
+  variance: 2.0            # Fixed moderate variance
+  centers:                 # 6 different positions to test generalization
+    - [10.0, 10.0]         # Lower-left quadrant
+    - [20.0, 10.0]         # Lower-right quadrant
+    - [10.0, 20.0]         # Upper-left quadrant
+    - [20.0, 20.0]         # Upper-right quadrant
+    - [15.0, 7.5]          # Bottom center
+    - [15.0, 22.5]         # Top center

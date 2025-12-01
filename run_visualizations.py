@@ -33,9 +33,6 @@ from rectsim.legacy_functions import (
     plot_errors_timeseries
 )
 
-# IC types
-IC_TYPES = ["uniform", "gaussian_cluster", "ring", "two_clusters"]
-
 
 def main():
     parser = argparse.ArgumentParser(description="Visualization Pipeline (Light Computation)")
@@ -125,6 +122,9 @@ def main():
     
     N_TRAIN = len(train_metadata)
     M_TEST = len(test_metadata)
+    
+    # Dynamically detect IC types from test metadata
+    IC_TYPES = sorted(set(meta["ic_type"] for meta in test_metadata))
     
     print(f"\n✓ Loaded data:")
     print(f"   Training: {N_TRAIN} runs")
@@ -278,16 +278,22 @@ def main():
     pd.DataFrame(ic_metrics.values()).to_csv(OUTPUT_DIR / "metrics_by_ic_type.csv", index=False)
     
     # =============================================================================
-    # STEP 3: VISUALIZATIONS FOR BEST RUNS
+    # STEP 3: VISUALIZATIONS FOR BEST RUNS (TOP 4 BY R²)
     # =============================================================================
     
     print("\n" + "="*80)
     print("STEP 3: Generating Visualizations for Best Runs")
     print("="*80)
     
-    print("\nGenerating videos and plots for best run per IC type...")
+    # Select top 4 runs by R² across all IC types
+    top_4_runs = metrics_df.nlargest(4, 'r2')
+    top_4_ic_types = top_4_runs['ic_type'].tolist()
     
-    for ic_type in tqdm(IC_TYPES, desc="IC types"):
+    print(f"\nGenerating videos and plots for top 4 runs by R²:")
+    for idx, row in top_4_runs.iterrows():
+        print(f"   {row['run_name']}: {row['ic_type']} (R² = {row['r2']:.4f})")
+    
+    for ic_type in tqdm(top_4_ic_types, desc="IC types"):
         ic_stats = ic_metrics.get(ic_type)
         if ic_stats is None:
             continue
@@ -398,7 +404,7 @@ def main():
             plt.savefig(ic_output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
             plt.close()
     
-    print(f"\n✓ Generated visualizations for {len(IC_TYPES)} IC types")
+    print(f"\n✓ Generated visualizations for top 4 runs")
     
     # =============================================================================
     # STEP 4: SUMMARY PLOTS
@@ -598,10 +604,9 @@ def main():
     best_run_r2 = metrics_df["r2"].max()
     print(f"   • Best run: {best_run_name} (R²={best_run_r2:.4f})")
     
-    print(f"\n🎬 Best Runs by IC ({BEST_RUNS_DIR.name}/):")
-    for ic in IC_TYPES:
-        if ic in ic_metrics:
-            print(f"   • {ic}/ - traj_truth.mp4, density_truth_vs_pred.mp4, plots")
+    print(f"\n🎬 Top 4 Runs by R² ({BEST_RUNS_DIR.name}/):")
+    for idx, row in top_4_runs.iterrows():
+        print(f"   • {row['ic_type']}/ - {row['run_name']} (R²={row['r2']:.4f})")
     
     print(f"\n📊 Summary Plots ({PLOTS_DIR.name}/):")
     print(f"   • POD singular values + energy spectrum")

@@ -1,0 +1,138 @@
+# ============================================================================
+# GAUSSIANS OSCAR EXPERIMENT
+# ============================================================================
+# Production-scale experiment testing ROM-MVAR generalization:
+#   TRAINING: Gaussian ICs with SAME center, VARYING variances (learn spread dynamics)
+#   TESTING: Gaussian ICs with DIFFERENT centers, FIXED variance (test translation)
+#
+# Hypothesis: ROM-MVAR should learn variance dynamics and generalize to spatial shifts
+# ============================================================================
+
+# Simulation parameters
+sim:
+  N: 400                    # Number of particles
+  Lx: 30.0                  # Domain width
+  Ly: 30.0                  # Domain height
+  bc: "periodic"            # Boundary conditions
+  T: 100.0                  # Simulation time (100 seconds for production)
+  dt: 0.05                  # Time step
+  save_every: 1             # Save every frame
+  neighbor_rebuild: 5       # Rebuild neighbor list frequency
+
+# Vicsek model (alignment)
+model:
+  speed: 1.0
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 3.0                    # Alignment radius
+  alpha: 1.5                # Alignment strength
+  beta: 0.5                 # Velocity relaxation
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.2                  # Noise strength
+
+# Morse potential (cohesion + repulsion)
+forces:
+  enabled: true
+  type: "morse"
+  Cr: 0.3                   # Repulsion strength
+  Ca: 1.0                   # Attraction strength
+  lr: 0.5                   # Repulsion length scale
+  la: 1.5                   # Attraction length scale
+  mu_t: 0.3                 # Friction coefficient
+  rcut_factor: 5.0          # Force cutoff radius factor
+
+# Density field computation
+outputs:
+  density_resolution: 64    # Grid resolution (64x64)
+  density_bandwidth: 2.0    # KDE bandwidth
+
+# ============================================================================
+# TRAINING INITIAL CONDITIONS (Varying Variance, Same Center)
+# ============================================================================
+train_ic:
+  type: "gaussian_varying_variance"
+  center_x: 15.0            # Fixed center x-coordinate (domain center)
+  center_y: 15.0            # Fixed center y-coordinate (domain center)
+  
+  # Variance schedule: From tight clusters to wide distributions
+  variances: [0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
+  
+  # Samples per variance: 20 runs × 10 variances = 200 training runs
+  n_samples_per_variance: 20
+
+# ============================================================================
+# TESTING INITIAL CONDITIONS (Varying Center, Fixed Variance)
+# ============================================================================
+test_ic:
+  type: "gaussian_varying_center"
+  variance: 2.0             # Fixed variance σ²=2.0 → σ≈1.41 (mid-range)
+  
+  # Test centers: Grid covering different regions
+  centers:
+    # Corner regions (4 corners)
+    - [7.5, 7.5]    # Lower-left
+    - [22.5, 7.5]   # Lower-right
+    - [7.5, 22.5]   # Upper-left
+    - [22.5, 22.5]  # Upper-right
+    
+    # Edge centers (12 positions)
+    - [5.0, 15.0]   # Left edge
+    - [10.0, 15.0]
+    - [20.0, 15.0]
+    - [25.0, 15.0]  # Right edge
+    - [15.0, 5.0]   # Bottom edge
+    - [15.0, 10.0]
+    - [15.0, 20.0]
+    - [15.0, 25.0]  # Top edge
+    
+    # Diagonal positions (8 positions)
+    - [10.0, 10.0]
+    - [12.5, 12.5]
+    - [17.5, 17.5]
+    - [20.0, 20.0]
+    - [10.0, 20.0]
+    - [12.5, 17.5]
+    - [17.5, 12.5]
+    - [20.0, 10.0]
+    
+    # Off-center grid (26 positions)
+    - [6.0, 9.0]
+    - [9.0, 6.0]
+    - [21.0, 9.0]
+    - [24.0, 6.0]
+    - [6.0, 21.0]
+    - [9.0, 24.0]
+    - [21.0, 24.0]
+    - [24.0, 21.0]
+    - [7.5, 13.0]
+    - [7.5, 17.0]
+    - [13.0, 7.5]
+    - [17.0, 7.5]
+    - [22.5, 13.0]
+    - [22.5, 17.0]
+    - [13.0, 22.5]
+    - [17.0, 22.5]
+    - [11.0, 13.0]
+    - [11.0, 17.0]
+    - [13.0, 11.0]
+    - [13.0, 19.0]
+    - [17.0, 11.0]
+    - [17.0, 19.0]
+    - [19.0, 13.0]
+    - [19.0, 17.0]
+    - [8.0, 15.0]
+    - [22.0, 15.0]
+    - [15.0, 8.0]
+    - [15.0, 22.0]
+
+# ============================================================================
+# ROM CONFIGURATION
+# ============================================================================
+rom:
+  pod_energy: 0.995         # Target energy for POD truncation (99.5%)
+  mvar_lag: 4               # MVAR lag parameter
+  ridge_alpha: 1.0e-6       # Ridge regularization parameter

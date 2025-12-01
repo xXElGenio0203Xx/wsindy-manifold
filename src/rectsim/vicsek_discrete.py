@@ -432,7 +432,9 @@ def simulate_backend(config: dict, rng: np.random.Generator) -> dict:
     else:
         # Use initial_conditions module for other distributions
         from .initial_conditions import initialize_positions
-        x = initialize_positions(initial_dist, N, Lx, Ly, rng)
+        # Pass any custom IC parameters from config
+        ic_params = config.get("ic_params", {})
+        x = initialize_positions(initial_dist, N, Lx, Ly, rng, **ic_params)
     
     # Initialize headings (velocities)
     theta = rng.uniform(0.0, 2.0 * np.pi, size=N)
