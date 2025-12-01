@@ -37,6 +37,9 @@ module load ffmpeg/7.0-xny2fb2
 # Source the conda environment
 source ~/wsindy_env/bin/activate
 
+# Install required packages (if not already installed)
+pip install -q scikit-learn
+
 echo "Python environment:"
 which python
 python --version
