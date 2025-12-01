@@ -193,60 +193,71 @@ def main():
     # =============================================================================
     
     print("\n" + "="*80)
-    print("STEP 1: Generating Training Ensemble (Varying Variance)")
+    print("STEP 1: Checking for Existing Training Data")
     print("="*80)
     
-    center_x = train_ic_config['center_x']
-    center_y = train_ic_config['center_y']
-    variances = train_ic_config['variances']
-    n_samples_per_variance = train_ic_config['n_samples_per_variance']
-    
-    print(f"\nTraining ICs:")
-    print(f"   Fixed center: ({center_x}, {center_y})")
-    print(f"   Variances: {variances}")
-    print(f"   Samples per variance: {n_samples_per_variance}")
-    
-    train_runs = []
-    train_idx = 0
-    for variance in variances:
-        for sample in range(n_samples_per_variance):
-            seed = 1000 + train_idx
-            train_runs.append((center_x, center_y, variance, seed))
-            train_idx += 1
-    
-    n_train = len(train_runs)
-    print(f"   Total training runs: {n_train}")
-    
+    # Check if training data already exists
     TRAIN_DIR = OUTPUT_DIR / "train"
-    TRAIN_DIR.mkdir(parents=True, exist_ok=True)
+    existing_train_runs = []
+    if TRAIN_DIR.exists():
+        existing_train_runs = sorted([d for d in TRAIN_DIR.iterdir() if d.is_dir() and d.name.startswith("train_")])
+        print(f"\nFound {len(existing_train_runs)} existing training runs")
     
-    n_workers = min(cpu_count(), 16)
-    print(f"\nUsing {n_workers} parallel workers...")
-    
-    train_args = [(i, run_params, BASE_CONFIG, OUTPUT_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, False) 
-                  for i, run_params in enumerate(train_runs)]
-    
-    train_start = time.time()
-    
-    with Pool(n_workers) as pool:
-        train_metadata = list(tqdm(
-            pool.imap(simulate_single_run, train_args),
-            total=n_train,
-            desc="Training sims"
-        ))
-    
-    train_time = time.time() - train_start
-    
-    # Save training metadata
-    with open(TRAIN_DIR / "metadata.json", "w") as f:
-        json.dump(train_metadata, f, indent=2)
-    
-    # Save index mapping
-    train_df = pd.DataFrame(train_metadata)
-    train_df.to_csv(TRAIN_DIR / "index_mapping.csv", index=False)
-    
-    print(f"\n✓ Generated {n_train} training runs")
-    print(f"   Time: {train_time/60:.1f}m")
+    if len(existing_train_runs) >= 190:  # At least most of training data exists
+        print("✓ Using existing training data (skipping generation)")
+        train_runs = []  # Empty list to skip generation
+    else:
+        print(f"Generating training data...")
+        center_x = train_ic_config.get('center_x', train_ic_config['center'][0])
+        center_y = train_ic_config.get('center_y', train_ic_config['center'][1])
+        variances = train_ic_config['variances']
+        n_samples_per_variance = train_ic_config['n_samples_per_variance']
+        
+        print(f"\nTraining ICs:")
+        print(f"   Fixed center: ({center_x}, {center_y})")
+        print(f"   Variances: {variances}")
+        print(f"   Samples per variance: {n_samples_per_variance}")
+        
+        train_runs = []
+        train_idx = 0
+        for variance in variances:
+            for sample in range(n_samples_per_variance):
+                seed = 1000 + train_idx
+                train_runs.append((center_x, center_y, variance, seed))
+                train_idx += 1
+        
+        n_train = len(train_runs)
+        print(f"   Total training runs: {n_train}")
+        
+        TRAIN_DIR.mkdir(parents=True, exist_ok=True)
+        
+        n_workers = min(cpu_count(), 16)
+        print(f"\nUsing {n_workers} parallel workers...")
+        
+        train_args = [(i, run_params, BASE_CONFIG, OUTPUT_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, False) 
+                      for i, run_params in enumerate(train_runs)]
+        
+        train_start = time.time()
+        
+        with Pool(n_workers) as pool:
+            train_metadata = list(tqdm(
+                pool.imap(simulate_single_run, train_args),
+                total=n_train,
+                desc="Training sims"
+            ))
+        
+        train_time = time.time() - train_start
+        
+        # Save training metadata
+        with open(TRAIN_DIR / "metadata.json", "w") as f:
+            json.dump(train_metadata, f, indent=2)
+        
+        # Save index mapping
+        train_df = pd.DataFrame(train_metadata)
+        train_df.to_csv(TRAIN_DIR / "index_mapping.csv", index=False)
+        
+        print(f"\n✓ Generated {n_train} training runs")
+        print(f"   Time: {train_time/60:.1f}m")
     
     # =============================================================================
     # STEP 2: Build POD Basis and Train MVAR
@@ -256,108 +267,156 @@ def main():
     print("STEP 2: Global POD and MVAR Training")
     print("="*80)
     
-    # Load all training densities
-    print("\nLoading training densities...")
-    all_rho = []
-    for meta in tqdm(train_metadata, desc="Loading"):
-        run_dir = TRAIN_DIR / meta["run_name"]
-        density_data = np.load(run_dir / "density.npz")
-        rho = density_data["rho"]
-        all_rho.append(rho)
-    
-    # Stack into snapshot matrix
-    all_rho = np.array(all_rho)
-    M, T, ny, nx = all_rho.shape
-    X_all = all_rho.reshape(M * T, ny * nx)
-    
-    print(f"\n✓ Snapshot matrix shape: ({M*T}, {ny*nx})")
-    
-    # Compute POD
-    print("\nComputing global POD...")
-    X_mean = X_all.mean(axis=0)
-    X_centered = X_all - X_mean
-    
-    U, S, Vt = np.linalg.svd(X_centered.T, full_matrices=False)
-    
-    # Determine number of modes
-    total_energy = np.sum(S**2)
-    cumulative_energy = np.cumsum(S**2) / total_energy
-    R_POD = np.searchsorted(cumulative_energy, TARGET_ENERGY) + 1
-    
-    U_r = U[:, :R_POD]
-    energy_captured = cumulative_energy[R_POD - 1]
-    
-    print(f"✓ R_POD = {R_POD} modes ({energy_captured:.4f} energy)")
-    
-    # Project to latent space
-    X_latent = X_centered @ U_r
-    print(f"✓ Latent training data shape: ({M*T}, {R_POD})")
-    
-    # Train MVAR
-    print(f"\nTraining global MVAR (p={P_LAG})...")
-    from sklearn.linear_model import Ridge
-    
-    # Build MVAR design matrix
-    p = P_LAG
-    n = M * T - p
-    r = R_POD
-    
-    Y = X_latent[p:, :]
-    Phi = np.zeros((n, p * r))
-    for lag in range(p):
-        Phi[:, lag*r:(lag+1)*r] = X_latent[p-lag-1:n+p-lag-1, :]
-    
-    # Fit Ridge regression
-    model = Ridge(alpha=RIDGE_ALPHA, fit_intercept=False)
-    model.fit(Phi, Y)
-    A_flat = model.coef_
-    A_matrices = A_flat.reshape(r, p, r).transpose(1, 0, 2)
-    
-    # Compute training metrics
-    Y_pred = Phi @ A_flat.T
-    ss_res = np.sum((Y - Y_pred) ** 2)
-    ss_tot = np.sum((Y - Y.mean(axis=0)) ** 2)
-    train_r2 = 1 - ss_res / ss_tot if ss_tot > 1e-10 else (1.0 if ss_res < 1e-10 else 0.0)
-    train_rmse = np.sqrt(np.mean((Y - Y_pred) ** 2))
-    
-    print(f"✓ MVAR trained: {r}D latent, lag={p}")
-    print(f"   Training R²: {train_r2:.4f}")
-    print(f"   Training RMSE: {train_rmse:.4f}")
-    
-    # Save models
+    # Check if POD/MVAR models already exist
     MVAR_DIR = OUTPUT_DIR / "mvar"
-    MVAR_DIR.mkdir(parents=True, exist_ok=True)
+    pod_basis_file = MVAR_DIR / "pod_basis.npz"
+    mvar_model_file = MVAR_DIR / "mvar_model.npz"
     
-    np.save(MVAR_DIR / "X_train_mean.npy", X_mean)
-    
-    np.savez_compressed(
-        MVAR_DIR / "pod_basis.npz",
-        U=U_r,
-        singular_values=S[:R_POD],
-        all_singular_values=S,
-        total_energy=total_energy,
-        explained_energy=cumulative_energy[R_POD-1] * total_energy,
-        energy_ratio=energy_captured,
-        cumulative_ratio=cumulative_energy
-    )
-    
-    np.savez_compressed(
-        MVAR_DIR / "mvar_model.npz",
-        A_matrices=A_matrices,
-        p=p,
-        r=r,
-        alpha=RIDGE_ALPHA,
-        train_r2=train_r2,
-        train_rmse=train_rmse
-    )
-    
-    # Save latent trajectories
-    latent_dict = {}
-    for i, meta in enumerate(train_metadata):
-        run_latent = X_latent[i*T:(i+1)*T, :]
-        latent_dict[meta["run_name"]] = run_latent
-    
-    np.savez_compressed(MVAR_DIR / "latent_trajectories.npz", **latent_dict)
+    if pod_basis_file.exists() and mvar_model_file.exists():
+        print("\n✓ POD and MVAR models already exist (skipping training)")
+        print(f"   Loading from: {MVAR_DIR}")
+        
+        # Load existing models
+        pod_data = np.load(pod_basis_file)
+        U_r = pod_data["U"]
+        R_POD = U_r.shape[1]
+        energy_captured = pod_data["energy_ratio"]
+        
+        mvar_data = np.load(mvar_model_file)
+        A_matrices = mvar_data["A_matrices"]
+        P_LAG = A_matrices.shape[0]
+        
+        X_mean = np.load(MVAR_DIR / "X_train_mean.npy")
+        
+        print(f"✓ Loaded POD: {R_POD} modes ({energy_captured:.4f} energy)")
+        print(f"✓ Loaded MVAR: {R_POD}D latent, lag={P_LAG}")
+        
+    else:
+        # Load training metadata if not already loaded
+        if 'train_metadata' not in locals():
+            metadata_file = TRAIN_DIR / "metadata.json"
+            if metadata_file.exists():
+                with open(metadata_file, "r") as f:
+                    train_metadata = json.load(f)
+                print(f"✓ Loaded metadata for {len(train_metadata)} training runs")
+            else:
+                # Reconstruct metadata from existing directories
+                print("Reconstructing metadata from existing training runs...")
+                train_metadata = []
+                for train_dir in sorted(existing_train_runs):
+                    run_name = train_dir.name
+                    train_metadata.append({"run_name": run_name})
+                print(f"✓ Reconstructed metadata for {len(train_metadata)} runs")
+        
+        # Load all training densities
+        print("\nLoading training densities...")
+        all_rho = []
+        skipped = 0
+        for meta in tqdm(train_metadata, desc="Loading"):
+            run_dir = TRAIN_DIR / meta["run_name"]
+            density_file = run_dir / "density.npz"
+            if not density_file.exists():
+                skipped += 1
+                continue
+            density_data = np.load(density_file)
+            rho = density_data["rho"]
+            all_rho.append(rho)
+        
+        if skipped > 0:
+            print(f"⚠ Skipped {skipped} incomplete runs (using {len(all_rho)} runs)")
+        
+        # Stack into snapshot matrix
+        all_rho = np.array(all_rho)
+        M, T, ny, nx = all_rho.shape
+        X_all = all_rho.reshape(M * T, ny * nx)
+        
+        print(f"\n✓ Snapshot matrix shape: ({M*T}, {ny*nx})")
+        
+        # Compute POD
+        print("\nComputing global POD...")
+        X_mean = X_all.mean(axis=0)
+        X_centered = X_all - X_mean
+        
+        U, S, Vt = np.linalg.svd(X_centered.T, full_matrices=False)
+        
+        # Determine number of modes
+        total_energy = np.sum(S**2)
+        cumulative_energy = np.cumsum(S**2) / total_energy
+        R_POD = np.searchsorted(cumulative_energy, TARGET_ENERGY) + 1
+        
+        U_r = U[:, :R_POD]
+        energy_captured = cumulative_energy[R_POD - 1]
+        
+        print(f"✓ R_POD = {R_POD} modes ({energy_captured:.4f} energy)")
+        
+        # Project to latent space
+        X_latent = X_centered @ U_r
+        print(f"✓ Latent training data shape: ({M*T}, {R_POD})")
+        
+        # Train MVAR
+        print(f"\nTraining global MVAR (p={P_LAG})...")
+        from sklearn.linear_model import Ridge
+        
+        # Build MVAR design matrix
+        p = P_LAG
+        n = M * T - p
+        r = R_POD
+        
+        Y = X_latent[p:, :]
+        Phi = np.zeros((n, p * r))
+        for lag in range(p):
+            Phi[:, lag*r:(lag+1)*r] = X_latent[p-lag-1:n+p-lag-1, :]
+        
+        # Fit Ridge regression
+        model = Ridge(alpha=RIDGE_ALPHA, fit_intercept=False)
+        model.fit(Phi, Y)
+        A_flat = model.coef_
+        A_matrices = A_flat.reshape(r, p, r).transpose(1, 0, 2)
+        
+        # Compute training metrics
+        Y_pred = Phi @ A_flat.T
+        ss_res = np.sum((Y - Y_pred) ** 2)
+        ss_tot = np.sum((Y - Y.mean(axis=0)) ** 2)
+        train_r2 = 1 - ss_res / ss_tot if ss_tot > 1e-10 else (1.0 if ss_res < 1e-10 else 0.0)
+        train_rmse = np.sqrt(np.mean((Y - Y_pred) ** 2))
+        
+        print(f"✓ MVAR trained: {r}D latent, lag={p}")
+        print(f"   Training R²: {train_r2:.4f}")
+        print(f"   Training RMSE: {train_rmse:.4f}")
+        
+        # Save models
+        MVAR_DIR.mkdir(parents=True, exist_ok=True)
+        
+        np.save(MVAR_DIR / "X_train_mean.npy", X_mean)
+        
+        np.savez_compressed(
+            MVAR_DIR / "pod_basis.npz",
+            U=U_r,
+            singular_values=S[:R_POD],
+            all_singular_values=S,
+            total_energy=total_energy,
+            explained_energy=cumulative_energy[R_POD-1] * total_energy,
+            energy_ratio=energy_captured,
+            cumulative_ratio=cumulative_energy
+        )
+        
+        np.savez_compressed(
+            MVAR_DIR / "mvar_model.npz",
+            A_matrices=A_matrices,
+            p=p,
+            r=r,
+            alpha=RIDGE_ALPHA,
+            train_r2=train_r2,
+            train_rmse=train_rmse
+        )
+        
+        # Save latent trajectories
+        latent_dict = {}
+        for i, meta in enumerate(train_metadata):
+            run_latent = X_latent[i*T:(i+1)*T, :]
+            latent_dict[meta["run_name"]] = run_latent
+        
+        np.savez_compressed(MVAR_DIR / "latent_trajectories.npz", **latent_dict)
     
     pod_mvar_time = time.time() - train_start - train_time
     print(f"   Time: {pod_mvar_time/60:.1f}m")
