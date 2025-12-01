@@ -10,7 +10,7 @@
 
 # Simulation parameters
 sim:
-  N: 400                    # Number of particles
+  N: 300                    # Number of particles (reduced for speed)
   Lx: 30.0                  # Domain width
   Ly: 30.0                  # Domain height
   bc: "periodic"            # Boundary conditions

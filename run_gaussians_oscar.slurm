@@ -2,7 +2,7 @@
 #SBATCH --job-name=gaussians_oscar
 #SBATCH --output=slurm_logs/gaussians_oscar_%j.out
 #SBATCH --error=slurm_logs/gaussians_oscar_%j.err
-#SBATCH --time=12:00:00
+#SBATCH --time=18:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
