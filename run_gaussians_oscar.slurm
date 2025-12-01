@@ -31,8 +31,8 @@ echo "Start time: $(date)"
 echo ""
 
 # Load modules and activate environment
-module load python/3.11.0
-module load ffmpeg/4.2.2
+module load python/3.11.0s-ixrhc3q
+module load ffmpeg/7.0-xny2fb2
 
 # Source the conda environment
 source ~/wsindy_env/bin/activate
