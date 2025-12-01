@@ -2,10 +2,10 @@
 #SBATCH --job-name=gaussians_oscar
 #SBATCH --output=slurm_logs/gaussians_oscar_%j.out
 #SBATCH --error=slurm_logs/gaussians_oscar_%j.err
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=64G
 #SBATCH --partition=batch
 
 # ============================================================================
@@ -17,7 +17,7 @@
 #   3. Generate 50 test runs (varying center, fixed variance)
 #   4. Generate ROM-MVAR predictions for test runs
 #
-# Expected runtime: ~2-3 hours
+# Expected runtime: ~7-8 hours with T=100s per simulation
 # ============================================================================
 
 echo "=========================================="
@@ -53,7 +53,7 @@ echo "Starting Gaussians Pipeline"
 echo "=========================================="
 echo "Configuration: configs/gaussians_oscar.yaml"
 echo "Training runs: 200 (10 variances × 20 samples)"
-echo "Test runs: 50 (50 different centers)"
+echo "Test runs: 48 (48 different centers)"
 echo ""
 
 # Run the pipeline
