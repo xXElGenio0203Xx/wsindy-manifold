@@ -425,7 +425,6 @@ def main():
         pod_mvar_time = time.time() - train_start - train_time
     
     if pod_mvar_time > 0:
-    if pod_mvar_time > 0:
         print(f"   Time: {pod_mvar_time/60:.1f}m")
     
     # =============================================================================
