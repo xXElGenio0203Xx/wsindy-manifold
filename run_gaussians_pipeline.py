@@ -435,6 +435,9 @@ def main():
     print("STEP 3: Generating Test Ensemble (Varying Center)")
     print("="*80)
     
+    # Ensure n_workers is defined (may not be if training was skipped)
+    n_workers = min(cpu_count(), 16)
+    
     test_variance = test_ic_config['variance']
     test_centers = test_ic_config['centers']
     
