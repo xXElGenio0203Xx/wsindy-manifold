@@ -206,6 +206,8 @@ def main():
     if len(existing_train_runs) >= 190:  # At least most of training data exists
         print("✓ Using existing training data (skipping generation)")
         train_runs = []  # Empty list to skip generation
+        train_time = 0.0  # No training time since skipped
+        train_start = time.time()  # Mark start for subsequent timing
     else:
         print(f"Generating training data...")
         center_x = train_ic_config.get('center_x', train_ic_config['center'][0])
@@ -290,6 +292,8 @@ def main():
         
         print(f"✓ Loaded POD: {R_POD} modes ({energy_captured:.4f} energy)")
         print(f"✓ Loaded MVAR: {R_POD}D latent, lag={P_LAG}")
+        
+        pod_mvar_time = 0.0  # No time since models were loaded
         
     else:
         # Load training metadata if not already loaded
@@ -417,9 +421,12 @@ def main():
             latent_dict[meta["run_name"]] = run_latent
         
         np.savez_compressed(MVAR_DIR / "latent_trajectories.npz", **latent_dict)
+        
+        pod_mvar_time = time.time() - train_start - train_time
     
-    pod_mvar_time = time.time() - train_start - train_time
-    print(f"   Time: {pod_mvar_time/60:.1f}m")
+    if pod_mvar_time > 0:
+    if pod_mvar_time > 0:
+        print(f"   Time: {pod_mvar_time/60:.1f}m")
     
     # =============================================================================
     # STEP 3: Generate Test Data (Varying Center, Fixed Variance)
