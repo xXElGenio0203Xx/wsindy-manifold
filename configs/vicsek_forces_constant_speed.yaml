@@ -15,7 +15,7 @@ sim:
   Lx: 30.0
   Ly: 30.0
   bc: periodic
-  T: 60.0
+  T: 20.0
   dt: 0.05
   save_every: 5
   neighbor_rebuild: 5
@@ -51,7 +51,7 @@ alignment:
   enabled: true
 
 # Initial distribution
-initial_distribution: two_clusters
+initial_distribution: uniform
 
 # Outputs
 outputs:
