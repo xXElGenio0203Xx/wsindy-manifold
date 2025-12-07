@@ -1,0 +1,210 @@
+# ============================================================================
+# ROBUST ROM-MVAR v1 - Comprehensive Training for Generalization
+# ============================================================================
+# Goals:
+#   1. Stable predictions (strong ridge regularization)
+#   2. Spatial generalization (5×5 position grid)
+#   3. Distribution generalization (Gaussian, uniform, ring, two-cluster)
+#
+# Strategy:
+#   - Total: 400 training runs
+#   - 50% Gaussian (200 runs) - varied positions & variances
+#   - 25% Uniform (100 runs) - varied positions
+#   - 12.5% Ring (50 runs) - varied radii & positions
+#   - 12.5% Two-cluster (50 runs) - varied separation & positions
+#
+# Optimizations for speed:
+#   - T: 1s (initial test, will increase to 50s after verification)
+#   - Domain: 15×15 (half of original 30×30)
+#   - N: 150 (half of original 300)
+# ============================================================================
+
+# Simulation parameters (OPTIMIZED FOR SPEED)
+sim:
+  N: 150                    # Reduced from 300 (50% fewer particles)
+  Lx: 15.0                  # Reduced from 30.0 (half domain)
+  Ly: 15.0                  # Reduced from 30.0 (half domain)
+  bc: "periodic"            # Boundary conditions
+  T: 1.0                    # TEST RUN: 1s (will change to 50s after verification)
+  dt: 0.05                  # Time step
+  save_every: 1             # Save every frame
+  neighbor_rebuild: 5       # Rebuild neighbor list frequency
+
+# Vicsek model (alignment)
+model:
+  speed: 2.0
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 3.0                    # Alignment radius (kept same for consistency)
+  alpha: 1.5                # Alignment strength
+  beta: 0.5                 # Velocity relaxation
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.2                  # Noise strength
+
+# Morse potential (cohesion + repulsion)
+forces:
+  enabled: true
+  type: "morse"
+  Cr: 0.3                   # Repulsion strength
+  Ca: 1.0                   # Attraction strength
+  lr: 0.5                   # Repulsion length scale
+  la: 1.5                   # Attraction length scale
+  mu_t: 0.3                 # Friction coefficient
+  rcut_factor: 5.0          # Force cutoff radius factor
+
+# Density field computation
+outputs:
+  density_resolution: 64    # Grid resolution (64x64)
+  density_bandwidth: 2.0    # KDE bandwidth
+
+# ============================================================================
+# TRAINING: Mixed Distributions with Spatial Coverage (400 runs)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN DISTRIBUTIONS (200 runs = 50%)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 200
+    
+    # 5×5 spatial grid
+    positions_x: [3.75, 7.5, 11.25, 15.0, 18.75]  # Scaled to new domain
+    positions_y: [3.75, 7.5, 11.25, 15.0, 18.75]
+    # Note: Positions wrap due to periodic BC, so using [2.5, 5.5, ..., 12.5] pattern
+    
+    # 4 variances per position
+    variances: [0.5, 1.0, 2.0, 3.0]
+    
+    # Calculation: 5×5 positions × 4 variances × 2 samples = 200 runs
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM DISTRIBUTIONS (100 runs = 25%)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 100
+    
+    # Sample uniform at different random seeds
+    # 100 different random realizations
+    n_samples: 100
+  
+  # -------------------------------------------------------------------------
+  # RING DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 50
+    
+    # 5 different radii
+    radii: [2.0, 3.0, 4.0, 5.0, 6.0]  # Scaled to new domain
+    
+    # 2 different widths per radius
+    widths: [0.3, 0.6]
+    
+    # Calculation: 5 radii × 2 widths × 5 samples = 50 runs
+    n_samples_per_config: 5
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 50
+    
+    # 5 different separations
+    separations: [3.0, 4.5, 6.0, 7.5, 9.0]  # Scaled to new domain
+    
+    # 2 different cluster sizes
+    sigmas: [0.8, 1.5]
+    
+    # Calculation: 5 separations × 2 sigmas × 5 samples = 50 runs
+    n_samples_per_config: 5
+
+# ============================================================================
+# TESTING: Diverse set covering all distribution types (40 runs)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN TEST (20 runs) - Held-out positions and variances
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 20
+    
+    # Test on interpolated positions (between training grid)
+    test_positions_x: [5.5, 9.0, 13.0, 16.5]
+    test_positions_y: [5.5, 9.0, 13.0, 16.5]
+    
+    # Test variance (not in training set)
+    test_variances: [1.5]
+    
+    # 4×4 positions × 1 variance × 1 sample = 16 runs
+    # Plus 4 extrapolation tests (corners)
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM TEST (5 runs)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 5
+  
+  # -------------------------------------------------------------------------
+  # RING TEST (8 runs) - Interpolated and extrapolated radii
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 8
+    
+    # Interpolation: radii between training values
+    test_radii: [2.5, 3.5, 4.5, 5.5]
+    test_widths: [0.45]
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER TEST (7 runs)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    
+    # Test on interpolated separations
+    test_separations: [3.75, 5.25, 6.75, 8.25]
+    test_sigmas: [1.1]
+    # 4 separations × 1 sigma × 1 sample = 4 runs
+    
+    # Plus 3 extrapolation tests
+    extrapolation_separations: [2.0, 10.5, 12.0]
+    extrapolation_sigma: [1.1]
+
+# ============================================================================
+# ROM CONFIGURATION - STRONG REGULARIZATION FOR STABILITY
+# ============================================================================
+rom:
+  pod_energy: 0.995         # Target energy for POD truncation (99.5%)
+  mvar_lag: 4               # MVAR lag parameter
+  ridge_alpha: 0.01         # STRONG REGULARIZATION (increased from 1e-6)
+                            # This prevents eigenvalues > 1 (unstable dynamics)
+
+# ============================================================================
+# EXPECTED RESULTS
+# ============================================================================
+# Training time (T=1s test): ~20 minutes (400 runs × 3s each)
+# Training time (T=50s full): ~8-10 hours (400 runs × ~75s each)
+#
+# Expected improvements:
+#   1. Stable predictions: max|λ| < 1 (vs 1.276 before)
+#   2. Spatial generalization: R² > 0.7 for new positions
+#   3. Distribution generalization: R² > 0.5 for all IC types
+#   4. Overall test R²: 0.6-0.8 (vs -0.018 before)
