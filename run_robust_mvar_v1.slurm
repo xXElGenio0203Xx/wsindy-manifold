@@ -2,7 +2,7 @@
 #SBATCH --job-name=robust_mvar_v1_full
 #SBATCH --output=slurm_logs/robust_mvar_v1_%j.out
 #SBATCH --error=slurm_logs/robust_mvar_v1_%j.err
-#SBATCH --time=18:00:00
+#SBATCH --time=36:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
