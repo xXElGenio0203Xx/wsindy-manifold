@@ -25,7 +25,7 @@ sim:
   Lx: 15.0                  # Reduced from 30.0 (half domain)
   Ly: 15.0                  # Reduced from 30.0 (half domain)
   bc: "periodic"            # Boundary conditions
-  T: 1.0                    # TEST RUN: 1s (will change to 50s after verification)
+  T: 50.0                   # Full production run (50 seconds)
   dt: 0.05                  # Time step
   save_every: 1             # Save every frame
   neighbor_rebuild: 5       # Rebuild neighbor list frequency
@@ -194,7 +194,7 @@ test_ic:
 rom:
   pod_energy: 0.995         # Target energy for POD truncation (99.5%)
   mvar_lag: 4               # MVAR lag parameter
-  ridge_alpha: 0.01         # STRONG REGULARIZATION (increased from 1e-6)
+  ridge_alpha: 0.05         # VERY STRONG REGULARIZATION (5× stronger for stability)
                             # This prevents eigenvalues > 1 (unstable dynamics)
 
 # ============================================================================
