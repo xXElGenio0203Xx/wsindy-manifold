@@ -287,6 +287,8 @@ def main():
         mvar_data = np.load(mvar_model_file)
         A_matrices = mvar_data["A_matrices"]
         P_LAG = A_matrices.shape[0]
+        r = A_matrices.shape[1]  # Number of latent dimensions
+        p = P_LAG  # Lag for MVAR
         
         X_mean = np.load(MVAR_DIR / "X_train_mean.npy")
         
