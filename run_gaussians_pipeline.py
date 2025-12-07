@@ -434,53 +434,87 @@ def main():
     # =============================================================================
     
     print("\n" + "="*80)
-    print("STEP 3: Generating Test Ensemble (Varying Center)")
+    print("STEP 3: Checking for Existing Test Data")
     print("="*80)
     
-    # Ensure n_workers is defined (may not be if training was skipped)
-    n_workers = min(cpu_count(), 16)
+    # Check if test data already exists
+    TEST_DIR = OUTPUT_DIR / "test"
+    existing_test_runs = []
+    if TEST_DIR.exists():
+        existing_test_runs = sorted([d for d in TEST_DIR.iterdir() if d.is_dir() and d.name.startswith("test_")])
+        print(f"\nFound {len(existing_test_runs)} existing test runs")
     
     test_variance = test_ic_config['variance']
     test_centers = test_ic_config['centers']
+    n_test = len(test_centers)
     
-    print(f"\nTest ICs:")
-    print(f"   Fixed variance: {test_variance}")
-    print(f"   Centers: {test_centers}")
+    if len(existing_test_runs) >= n_test - 2:  # Allow for 1-2 missing runs
+        print("✓ Using existing test data (skipping generation)")
+        
+        # Load existing metadata
+        metadata_file = TEST_DIR / "metadata.json"
+        if metadata_file.exists():
+            with open(metadata_file, "r") as f:
+                test_metadata = json.load(f)
+            print(f"✓ Loaded metadata for {len(test_metadata)} test runs")
+        else:
+            # Reconstruct metadata from existing directories
+            print("Reconstructing metadata from existing test runs...")
+            test_metadata = []
+            for test_dir in sorted(existing_test_runs):
+                run_name = test_dir.name
+                test_metadata.append({"run_name": run_name})
+            print(f"✓ Reconstructed metadata for {len(test_metadata)} runs")
+        
+        test_time = 0.0
+        test_start = time.time()
+        
+    else:
+        print(f"Generating test data...")
+        
+        # Ensure n_workers is defined (may not be if training was skipped)
+        n_workers = min(cpu_count(), 16)
+        
+        print(f"\nTest ICs:")
+        print(f"   Fixed variance: {test_variance}")
+        print(f"   Centers: {test_centers}")
+        
+        test_runs = []
+        test_idx = 0
+        for center in test_centers:
+            center_x, center_y = center
+            seed = 2000 + test_idx
+            test_runs.append((center_x, center_y, test_variance, seed))
+            test_idx += 1
+        
+        print(f"   Total test runs: {n_test}")
+        
+        TEST_DIR.mkdir(parents=True, exist_ok=True)
+        
+        test_args = [(i, run_params, BASE_CONFIG, OUTPUT_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, True) 
+                     for i, run_params in enumerate(test_runs)]
+        
+        test_start = time.time()
+        
+        with Pool(n_workers) as pool:
+            test_metadata = list(tqdm(
+                pool.imap(simulate_single_run, test_args),
+                total=n_test,
+                desc="Test sims"
+            ))
+        
+        test_time = time.time() - test_start
+        
+        # Save test metadata
+        with open(TEST_DIR / "metadata.json", "w") as f:
+            json.dump(test_metadata, f, indent=2)
+        
+        print(f"\n✓ Generated {n_test} test runs")
+        print(f"   Time: {test_time/60:.1f}m")
     
-    test_runs = []
-    test_idx = 0
-    for center in test_centers:
-        center_x, center_y = center
-        seed = 2000 + test_idx
-        test_runs.append((center_x, center_y, test_variance, seed))
-        test_idx += 1
-    
-    n_test = len(test_runs)
-    print(f"   Total test runs: {n_test}")
-    
-    TEST_DIR = OUTPUT_DIR / "test"
-    TEST_DIR.mkdir(parents=True, exist_ok=True)
-    
-    test_args = [(i, run_params, BASE_CONFIG, OUTPUT_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, True) 
-                 for i, run_params in enumerate(test_runs)]
-    
-    test_start = time.time()
-    
-    with Pool(n_workers) as pool:
-        test_metadata = list(tqdm(
-            pool.imap(simulate_single_run, test_args),
-            total=n_test,
-            desc="Test sims"
-        ))
-    
-    test_time = time.time() - test_start
-    
-    # Save test metadata
-    with open(TEST_DIR / "metadata.json", "w") as f:
-        json.dump(test_metadata, f, indent=2)
-    
-    print(f"\n✓ Generated {n_test} test runs")
-    print(f"   Time: {test_time/60:.1f}m")
+    # Print summary even if skipped
+    if test_time == 0:
+        print(f"\n✓ Using {len(test_metadata)} existing test runs")
     
     # =============================================================================
     # STEP 4: Generate Predictions
