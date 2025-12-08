@@ -68,48 +68,127 @@ outputs:
   density_bandwidth: 2.0
 
 # ============================================================================
-# TRAINING: Same mixed distributions as robust_v1
+# TRAINING: Same mixed distributions as robust_v1 (400 runs)
 # ============================================================================
 train_ic:
   type: "mixed_comprehensive"
   
-  # Gaussian clusters (200 runs = 50% of training)
-  gaussian_cluster:
-    count: 200
-    positions:
-      # 5×5 spatial grid for translation invariance
-      x_values: [3.75, 7.5, 11.25, 15.0, 18.75]
-      y_values: [3.75, 7.5, 11.25, 15.0, 18.75]
-      samples_per_position: 2
+  # -------------------------------------------------------------------------
+  # GAUSSIAN DISTRIBUTIONS (200 runs = 50%)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 200
+    
+    # 5×5 spatial grid
+    positions_x: [3.75, 7.5, 11.25, 15.0, 18.75]
+    positions_y: [3.75, 7.5, 11.25, 15.0, 18.75]
+    
+    # 4 variances per position
     variances: [0.5, 1.0, 2.0, 3.0]
     
-  # Uniform distribution (100 runs = 25% of training)
+    # Calculation: 5×5 positions × 4 variances × 2 samples = 200 runs
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM DISTRIBUTIONS (100 runs = 25%)
+  # -------------------------------------------------------------------------
   uniform:
-    count: 100
-    seeds: [100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
-            110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
-            120, 121, 122, 123, 124, 125, 126, 127, 128, 129,
-            130, 131, 132, 133, 134, 135, 136, 137, 138, 139,
-            140, 141, 142, 143, 144, 145, 146, 147, 148, 149,
-            150, 151, 152, 153, 154, 155, 156, 157, 158, 159,
-            160, 161, 162, 163, 164, 165, 166, 167, 168, 169,
-            170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
-            180, 181, 182, 183, 184, 185, 186, 187, 188, 189,
-            190, 191, 192, 193, 194, 195, 196, 197, 198, 199]
+    enabled: true
+    n_runs: 100
     
-  # Ring distribution (50 runs = 12.5% of training)
+    # Sample uniform at different random seeds
+    n_samples: 100
+  
+  # -------------------------------------------------------------------------
+  # RING DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
   ring:
-    count: 50
-    radii: [2.0, 3.0, 4.0, 5.0, 6.0]
-    widths: [0.3, 0.6]
-    samples_per_config: 5
+    enabled: true
+    n_runs: 50
     
-  # Two clusters (50 runs = 12.5% of training)
+    # 5 different radii
+    radii: [2.0, 3.0, 4.0, 5.0, 6.0]
+    
+    # 2 different widths per radius
+    widths: [0.3, 0.6]
+    
+    # Calculation: 5 radii × 2 widths × 5 samples = 50 runs
+    n_samples_per_config: 5
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
   two_clusters:
-    count: 50
+    enabled: true
+    n_runs: 50
+    
+    # 5 different separations
     separations: [3.0, 4.5, 6.0, 7.5, 9.0]
+    
+    # 2 different cluster sizes
     sigmas: [0.8, 1.5]
-    samples_per_config: 5
+    
+    # Calculation: 5 separations × 2 sigmas × 5 samples = 50 runs
+    n_samples_per_config: 5
+
+# ============================================================================
+# TESTING: Same as robust_v1 (40 runs)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN TEST (20 runs)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 20
+    
+    # Test on interpolated positions (between training grid)
+    test_positions_x: [5.5, 9.0, 13.0, 16.5]
+    test_positions_y: [5.5, 9.0, 13.0, 16.5]
+    
+    # Test variance (not in training set)
+    test_variances: [1.5]
+    
+    # Plus 4 extrapolation tests (corners)
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM TEST (5 runs)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 5
+  
+  # -------------------------------------------------------------------------
+  # RING TEST (8 runs)
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 8
+    
+    # Interpolation: radii between training values
+    test_radii: [2.5, 3.5, 4.5, 5.5]
+    test_widths: [0.45]
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER TEST (7 runs)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    
+    # Test on interpolated separations
+    test_separations: [3.75, 5.25, 6.75, 8.25]
+    test_sigmas: [1.1]
+    
+    # Plus 3 extrapolation tests
+    extrapolation_separations: [2.0, 10.5, 12.0]
+    extrapolation_sigma: [1.1]
 
 # ============================================================================
 # ROM SETTINGS: REDUCED COMPLEXITY + VERY STRONG REGULARIZATION
@@ -120,43 +199,6 @@ rom:
   ridge_alpha: 0.5          # VERY STRONG: 10× stronger than v1
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
-# ============================================================================
-# TEST: Same as robust_v1
-# ============================================================================
-test_ic:
-  # Gaussian interpolation (10 runs)
-  gaussian_cluster_interp:
-    count: 10
-    positions:
-      x_values: [5.0, 10.0, 15.0]
-      y_values: [5.0, 10.0, 15.0]
-    variances: [1.5, 2.5]
-    
-  # Gaussian extrapolation (10 runs)
-  gaussian_cluster_extrap:
-    count: 10
-    positions:
-      x_values: [2.0, 13.0]
-      y_values: [2.0, 13.0]
-    variances: [0.3, 4.0]
-    
-  # Uniform (5 runs)
-  uniform:
-    count: 5
-    seeds: [500, 501, 502, 503, 504]
-    
-  # Ring (8 runs)
-  ring:
-    count: 8
-    radii: [2.5, 3.5, 4.5, 5.5]
-    widths: [0.4, 0.5]
-    
-  # Two clusters (7 runs)
-  two_clusters:
-    count: 7
-    separations: [4.0, 5.5, 7.0]
-    sigmas: [1.0, 1.2]
-
 # ============================================================================
 # EXPECTED RESULTS (with reduced complexity + strong regularization)
 # ============================================================================
