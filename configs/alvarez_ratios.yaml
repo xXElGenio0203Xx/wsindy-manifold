@@ -1,29 +1,30 @@
 # ============================================================================
-# ALVAREZ RATIOS CONFIGURATION - OPTIMIZED
+# ALVAREZ RATIOS CONFIGURATION - RATIO 0.10 TARGET
 # ============================================================================
-# Balanced approach: maintain Alvarez methodology with practical POD quality
+# Optimized for Alvarez band with strong regularization and full temporal sampling
 #
 # CONFIGURATION:
-#   - Training: 400 runs × T=25s
-#   - ROM time step: Δt_ROM = 0.25s (subsample every 5 frames from dt=0.05)
-#   - Spatial grid: 48×48 = 2304 dimensions (reduced from 64×64)
+#   - Training: 400 runs × T=10s (reduced for faster iteration)
+#   - ROM time step: Δt_ROM = 0.05s (NO subsampling, capture all dynamics)
+#   - Spatial grid: 48×48 = 2304 dimensions
 #   - POD dimension: d = 40 (moderate latent space)
-#   - MVAR lag: w = 8 (short lag)
-#   - T_ROM per run: 25/0.25 = 100 steps
-#   - Windows per run: 100 - 8 = 92
-#   - Total MVAR samples: 400 × 92 = 36,800
-#   - MVAR params: 40² × 8 = 12,800
-#   - Ratio params/data: 12,800/36,800 ≈ 0.348
+#   - MVAR lag: w = 4 (very short lag with dense temporal data)
+#   - T_ROM per run: 10/0.05 = 200 steps
+#   - Windows per run: 200 - 4 = 196
+#   - Total MVAR samples: 400 × 196 = 78,400
+#   - MVAR params: 40² × 4 = 6,400
+#   - Ratio params/data: 6,400/78,400 = 0.0816 ✓ (IN ALVAREZ BAND!)
 #
 # METHODOLOGY:
 #   - Moderate latent dimension (d=40) for 48×48 grid
-#   - Short lag (w=8) prevents overfitting
-#   - Long trajectories (T=25s) capture dynamics
+#   - Very short lag (w=4) with NO temporal subsampling
+#   - Shorter trajectories (T=10s) for faster testing
+#   - All timesteps captured (subsample=1)
 #   - All sliding windows (dense sampling)
-#   - Temporal subsampling (Δt_ROM = 0.25s)
 #   - Spectral stabilization (ρ_max = 0.98)
-#   - Moderate regularization (ridge α = 0.05)
-#   - Expected POD energy: ~60-70% (vs 31.5% with d=25 on 64×64)
+#   - STRONG regularization (ridge α = 0.5) to prevent overfitting
+#   - Expected POD energy: ~60-70%
+#   - Expected generalization: much better with strong regularization
 # ============================================================================
 
 # Model
@@ -38,7 +39,7 @@ sim:
   Lx: 15.0
   Ly: 15.0
   bc: "periodic"
-  T: 25.0                   # 25 seconds → 100 ROM steps
+  T: 10.0                   # 10 seconds → 200 ROM steps
   dt: 0.05                  # Micro timestep: 0.05s
   save_every: 1
   neighbor_rebuild: 5
@@ -187,15 +188,15 @@ density:
 
 rom:
   # ROM temporal subsampling
-  subsample: 5              # Subsample by 5 → Δt_ROM = 0.25s
+  subsample: 1              # No subsampling → Δt_ROM = 0.05s (capture all dynamics)
   
   # POD parameters (moderate latent space for 48x48 grid)
   pod_energy: 0.97          # Informational only (ignored when fixed_d set)
   fixed_d: 40               # FIXED: d = 40 (moderate latent for 48x48=2304 dims)
   
-  # MVAR parameters (short lag, dense sampling)
-  mvar_lag: 8               # w = 8 (short lag, Alvarez-style)
-  ridge_alpha: 0.05         # Moderate regularization
+  # MVAR parameters (very short lag, dense sampling, strong regularization)
+  mvar_lag: 4               # w = 4 (very short lag for fast dynamics)
+  ridge_alpha: 0.5          # Strong regularization to prevent overfitting
   
   # Companion matrix stabilization (Step 5)
   eigenvalue_threshold: 0.98  # Scale spectral radius to ≤0.98
@@ -203,20 +204,24 @@ rom:
 # ============================================================================
 # NOTES
 # ============================================================================
-# Configuration optimized for practical POD quality:
-#   - Reduced spatial grid: 48×48 (2304 dims, was 4096)
-#   - Moderate latent dimension: d = 40 (was 25)
-#   - Short lag: w = 8
-#   - Long trajectories: T = 25s → T_ROM = 100 steps
-#   - Windows per run: 92
-#   - Total samples: 36,800
-#   - Parameters: 12,800
-#   - Ratio: 0.348 (above strict Alvarez band, but necessary for POD quality)
+# Configuration targeting ratio 0.10 with strong regularization:
+#   - Reduced spatial grid: 48×48 (2304 dims)
+#   - Moderate latent dimension: d = 40
+#   - Very short lag: w = 4 (was 8)
+#   - Shorter trajectories: T = 10s (was 25s) → T_ROM = 200 steps
+#   - NO temporal subsampling: subsample = 1 (captures all dynamics)
+#   - Windows per run: 196 (vs 92 with subsample=5)
+#   - Total samples: 78,400 (vs 36,800)
+#   - Parameters: 6,400 (40² × 4)
+#   - Ratio: 0.0816 ✓ (IN ALVAREZ 0.06-0.14 BAND!)
+#   - Strong regularization: α = 0.5 (was 0.05)
 #
-# Trade-offs:
-#   ✓ Better POD energy capture (~60-70% vs 31.5%)
-#   ✓ Faster computation (48² vs 64² = 1.78× speedup)
-#   ✓ Still reasonable param/data ratio (0.348)
-#   ⚠ Slightly coarser spatial resolution
-#   ⚠ Higher than strict Alvarez 0.06-0.14 band
+# Improvements:
+#   ✓ Ratio 0.0816 in strict Alvarez band
+#   ✓ 2× more training samples (78,400 vs 36,800)
+#   ✓ Half the parameters (6,400 vs 12,800)
+#   ✓ No temporal subsampling loss
+#   ✓ Strong regularization prevents overfitting
+#   ✓ Faster runtime (10s vs 25s trajectories)
+#   ✓ Good POD energy (~60-70%)
 # ============================================================================
