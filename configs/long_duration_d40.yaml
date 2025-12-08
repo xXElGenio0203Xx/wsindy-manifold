@@ -91,15 +91,16 @@ train_ic:
   ring:
     enabled: true
     n_runs: 50
-    radii: [3.0, 4.0, 5.0, 6.0, 7.0]
-    n_samples_per_radius: 10
+    radii: [2.0, 3.0, 4.0, 5.0, 6.0]
+    widths: [0.3, 0.6]
+    n_samples_per_config: 5
   
   # Two clusters (50 runs = 12.5%)
   two_clusters:
     enabled: true
     n_runs: 50
-    separations: [5.0, 7.0, 9.0, 11.0, 13.0]
-    variances: [1.0, 2.0]
+    separations: [3.0, 4.5, 6.0, 7.5, 9.0]
+    sigmas: [0.8, 1.5]
     n_samples_per_config: 5
   
   # Uniform distributions (100 runs = 25%)
@@ -112,27 +113,39 @@ train_ic:
 # TEST: Stratified by IC type (40 runs)
 # ============================================================================
 test_ic:
-  type: "stratified"
-  total_runs: 40
+  type: "mixed_test_comprehensive"
   
-  ic_types:
-    - type: "gaussian_cluster"
-      n_runs: 10
-      center: [7.5, 7.5]
-      sigma_range: [1.0, 3.0]
-    
-    - type: "ring"
-      n_runs: 10
-      radius_range: [3.0, 7.0]
-      thickness: 0.5
-    
-    - type: "two_clusters"
-      n_runs: 10
-      separation_range: [6.0, 12.0]
-      sigma: 1.5
-    
-    - type: "uniform"
-      n_runs: 10
+  # Gaussian test (20 runs)
+  gaussian:
+    enabled: true
+    n_runs: 20
+    test_positions_x: [5.5, 9.0, 13.0, 16.5]
+    test_positions_y: [5.5, 9.0, 13.0, 16.5]
+    test_variances: [1.5]
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+  
+  # Uniform test (5 runs)
+  uniform:
+    enabled: true
+    n_runs: 5
+  
+  # Ring test (8 runs)
+  ring:
+    enabled: true
+    n_runs: 8
+    test_radii: [2.5, 3.5, 4.5, 5.5]
+    test_widths: [0.45]
+    n_samples_per_config: 2
+  
+  # Two-cluster test (7 runs)
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [3.75, 5.25, 6.75, 8.25]
+    test_sigmas: [1.1]
+    extrapolation_separations: [2.0, 10.5, 12.0]
+    extrapolation_sigma: [1.1]
 
 # Density estimation
 density:
