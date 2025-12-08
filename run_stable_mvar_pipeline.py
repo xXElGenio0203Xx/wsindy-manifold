@@ -934,7 +934,7 @@ def main():
     print(f"\nResults:")
     print(f"  Training: {n_train} runs (mixed distributions)")
     print(f"  POD: {R_POD} modes ({energy_captured:.4f} energy)")
-    print(f"  MVAR: R²={train_r2:.4f}, max|λ|={max_eig:.4f}")
+    print(f"  MVAR: R²={train_r2:.4f}, ρ={rho_after:.4f}")
     print(f"  Test: {n_test} runs (mixed distributions)")
     print(f"  Prediction R²: {mean_r2:.4f} ± {std_r2:.4f}")
     
