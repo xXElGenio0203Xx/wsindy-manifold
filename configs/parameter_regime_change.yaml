@@ -32,7 +32,7 @@ sim:
   Lx: 15.0
   Ly: 15.0
   bc: "periodic"
-  T: 1.0                    # START: 1s for quick test (will scale to 50s)
+  T: 5.0                    # 5 seconds (scaling up from 1s test)
   dt: 0.05                  # Micro timestep: 0.05s
   save_every: 1
   neighbor_rebuild: 5
@@ -205,8 +205,8 @@ rom:
   pod_energy: 0.97          # Informational only; fixed_d overrides
   fixed_d: 25               # HARD CAP: d = 25 modes (compact latent space)
   
-  # MVAR: Modest lag with moderate regularization
-  mvar_lag: 2               # w = 2 (SHORT for T=1s test, will be 5 at T=50s)
+  # MVAR: Longer lag with moderate regularization
+  mvar_lag: 20              # w = 20 (longer temporal memory)
   ridge_alpha: 0.05         # Moderate ridge regularization
   
   # Spectral stabilization
@@ -216,17 +216,20 @@ rom:
   rom_subsample: 5          # Use every 5th frame → Δt_ROM = 0.25s
   
 # ============================================================================
-# EXPECTED RESULTS (Alvarez-style ROM, T=1s test with w=2)
+# EXPECTED RESULTS (T=5s, w=20, d=25)
 # ============================================================================
-# Micro timesteps: T=1s / dt=0.05s = 20 frames
-# ROM timesteps: 20 / 5 = 4 frames @ Δt_ROM=0.25s
+# Micro timesteps: T=5s / dt=0.05s = 100 frames
+# ROM timesteps: 100 / 5 = 20 frames @ Δt_ROM=0.25s
 # POD: FIXED d=25 modes (hard cap)
-# MVAR: lag=2 (SHORT for test), params = 25² × 2 = 1,250
-# Training samples: 400 runs × (4-2) frames = 800
-# Ratio params/data: 1,250 / 800 ≈ 1.6
-#
-# NOTE: At T=50s with w=5, ratio will be: 3,125 / 78,000 ≈ 0.04 (Alvarez-like!)
-# This T=1s, w=2 test verifies the pipeline works before scaling
+# MVAR: lag=20, params = 25² × 20 = 12,500
+# Training samples: 400 runs × (20-20) frames = 0 (PROBLEM!)
+# Need at least 21 ROM frames, so T ≥ 5.25s
+# 
+# Actually at T=5s: 21 ROM frames (includes t=0)
+# Training samples: 400 runs × (21-20) = 400 samples
+# Ratio params/data: 12,500 / 400 = 31.25 (highly overparameterized!)
+# 
+# NOTE: Will need longer T or smaller w for better ratio
 # ============================================================================
 # Note: Runtime will be significantly longer (~20-30 minutes)
 # ============================================================================
