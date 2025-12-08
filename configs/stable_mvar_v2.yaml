@@ -194,17 +194,19 @@ test_ic:
 # ROM SETTINGS: REDUCED COMPLEXITY + VERY STRONG REGULARIZATION
 # ============================================================================
 rom:
-  pod_energy: 0.99          # REDUCED: 99% vs 99.5% → fewer modes
+  pod_energy: 0.975         # REDUCED: 97.5% (fewer modes experiment)
   mvar_lag: 10              # INCREASED: lag=10 (testing longer memory)
   ridge_alpha: 0.5          # VERY STRONG: 10× stronger than v1
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (T=2s, lag=10 experiment)
+# EXPECTED RESULTS (T=2s, lag=10, POD=97.5% experiment)
 # ============================================================================
-# POD: ~80-100 modes (99% energy, T=2s)
-# MVAR: lag=10 (more parameters, longer memory)
-# Training R²: ~0.93-0.95 (strong α may limit fit)
+# POD: ~60-80 modes (97.5% energy vs 99%, fewer modes)
+# MVAR: lag=10, fewer parameters than 99% POD
+# Training R²: May decrease due to less POD representation
 # Max eigenvalue: < 0.95 (STABLE by design)
-# Test R²: Comparing vs lag=2 baseline (R²=0.166)
+# Test R²: Testing if fewer modes helps or hurts
+# Hypothesis: Fewer modes = less overfitting, potentially better generalization
+# Previous: POD=99% → r=190, R²=0.235
 # ============================================================================
