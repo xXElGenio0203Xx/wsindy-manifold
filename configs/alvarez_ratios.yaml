@@ -1,27 +1,29 @@
 # ============================================================================
-# ALVAREZ RATIOS CONFIGURATION - EXACT TARGET
+# ALVAREZ RATIOS CONFIGURATION - OPTIMIZED
 # ============================================================================
-# Matches Alvarez et al. parameter/data ratios (0.06-0.14)
+# Balanced approach: maintain Alvarez methodology with practical POD quality
 #
 # CONFIGURATION:
 #   - Training: 400 runs × T=25s
 #   - ROM time step: Δt_ROM = 0.25s (subsample every 5 frames from dt=0.05)
-#   - POD dimension: d = 25 (fixed, small latent space)
+#   - Spatial grid: 48×48 = 2304 dimensions (reduced from 64×64)
+#   - POD dimension: d = 40 (moderate latent space)
 #   - MVAR lag: w = 8 (short lag)
 #   - T_ROM per run: 25/0.25 = 100 steps
 #   - Windows per run: 100 - 8 = 92
 #   - Total MVAR samples: 400 × 92 = 36,800
-#   - MVAR params: 25² × 8 = 5,000
-#   - Ratio params/data: 5,000/36,800 ≈ 0.136 ✓ (IN ALVAREZ BAND!)
+#   - MVAR params: 40² × 8 = 12,800
+#   - Ratio params/data: 12,800/36,800 ≈ 0.348
 #
-# ALVAREZ METHODOLOGY:
-#   - Small fixed latent dimension (d=25)
-#   - Short lag (w=8)
-#   - Long trajectories (T=25s)
+# METHODOLOGY:
+#   - Moderate latent dimension (d=40) for 48×48 grid
+#   - Short lag (w=8) prevents overfitting
+#   - Long trajectories (T=25s) capture dynamics
 #   - All sliding windows (dense sampling)
 #   - Temporal subsampling (Δt_ROM = 0.25s)
 #   - Spectral stabilization (ρ_max = 0.98)
 #   - Moderate regularization (ridge α = 0.05)
+#   - Expected POD energy: ~60-70% (vs 31.5% with d=25 on 64×64)
 # ============================================================================
 
 # Model
@@ -75,7 +77,7 @@ outputs:
   order_parameters: true
   save_npz: true
   fps: 20
-  density_resolution: 64
+  density_resolution: 48
   density_bandwidth: 2.0
 
 # ============================================================================
@@ -174,8 +176,8 @@ test_ic:
 # ============================================================================
 density:
   enabled: true
-  nx: 64
-  ny: 64
+  nx: 48
+  ny: 48
   method: "kde"
   bandwidth: 2.0
 
@@ -187,9 +189,9 @@ rom:
   # ROM temporal subsampling
   subsample: 5              # Subsample by 5 → Δt_ROM = 0.25s
   
-  # POD parameters (fixed small latent space)
+  # POD parameters (moderate latent space for 48x48 grid)
   pod_energy: 0.97          # Informational only (ignored when fixed_d set)
-  fixed_d: 25               # FIXED: d = 25 (small latent space)
+  fixed_d: 40               # FIXED: d = 40 (moderate latent for 48x48=2304 dims)
   
   # MVAR parameters (short lag, dense sampling)
   mvar_lag: 8               # w = 8 (short lag, Alvarez-style)
@@ -201,19 +203,20 @@ rom:
 # ============================================================================
 # NOTES
 # ============================================================================
-# This configuration is designed to match Alvarez et al. ratios:
-#   - Small fixed latent dimension: d = 25
+# Configuration optimized for practical POD quality:
+#   - Reduced spatial grid: 48×48 (2304 dims, was 4096)
+#   - Moderate latent dimension: d = 40 (was 25)
 #   - Short lag: w = 8
 #   - Long trajectories: T = 25s → T_ROM = 100 steps
 #   - Windows per run: 92
 #   - Total samples: 36,800
-#   - Parameters: 5,000
-#   - Ratio: 0.136 (target: 0.06-0.14) ✓
+#   - Parameters: 12,800
+#   - Ratio: 0.348 (above strict Alvarez band, but necessary for POD quality)
 #
-# Expected improvements:
-#   - Better parameter/data ratio than previous runs
-#   - Longer trajectories capture more temporal dynamics
-#   - Short lag prevents overfitting
-#   - All sliding windows maximize training data
-#   - Spectral stabilization ensures no explosions
+# Trade-offs:
+#   ✓ Better POD energy capture (~60-70% vs 31.5%)
+#   ✓ Faster computation (48² vs 64² = 1.78× speedup)
+#   ✓ Still reasonable param/data ratio (0.348)
+#   ⚠ Slightly coarser spatial resolution
+#   ⚠ Higher than strict Alvarez 0.06-0.14 band
 # ============================================================================
