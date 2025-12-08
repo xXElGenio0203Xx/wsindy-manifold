@@ -25,7 +25,7 @@ sim:
   Lx: 15.0                  # Half domain
   Ly: 15.0                  # Half domain
   bc: "periodic"
-  T: 3.0                    # INCREASED: 3s (longer trajectories for more training data)
+  T: 5.0                    # 5 seconds for more training data
   dt: 0.05
   save_every: 1
   neighbor_rebuild: 5
@@ -64,7 +64,7 @@ outputs:
   order_parameters: true
   save_npz: true
   fps: 20
-  density_resolution: 64    # Reduced from 128
+  density_resolution: 32    # Reduced to 32x32 grid
   density_bandwidth: 2.0
 
 # ============================================================================
@@ -191,22 +191,40 @@ test_ic:
     extrapolation_sigma: [1.1]
 
 # ============================================================================
-# ROM SETTINGS: REDUCED COMPLEXITY + VERY STRONG REGULARIZATION
+# DENSITY ESTIMATION
+# ============================================================================
+density:
+  enabled: true
+  nx: 32
+  ny: 32
+  method: "kde"
+  bandwidth: 2.0
+
+# ============================================================================
+# ROM SETTINGS: HIGH ENERGY POD + ALL SNAPSHOTS + MODERATE LAG
 # ============================================================================
 rom:
-  pod_energy: 0.85          # REDUCED: 85% energy (even fewer modes)
-  mvar_lag: 25              # INCREASED: lag=25 (even longer memory)
-  ridge_alpha: 0.4          # INCREASED: ridge=0.4 (more regularization)
+  subsample: 1              # Use all snapshots (no temporal subsampling)
+  pod_energy: 0.99          # 99% energy capture (high quality POD)
+  mvar_lag: 12              # Moderate lag window
+  ridge_alpha: 0.4          # Strong regularization
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (POD=85%, T=3s, lag=25, ridge=0.4)
+# EXPECTED RESULTS (32x32 grid, POD=99%, T=5s, w=12, subsample=1, α=0.4)
 # ============================================================================
-# POD: ~50-55 modes (85% energy, very compact)
-# MVAR: lag=25, ~62,500-75,625 parameters (25 × r × r)
-# Longer trajectories (3s) provide more training samples per run
-# Hypothesis: lag=25 + stronger regularization improves on lag=20 results
-# Previous results:
-#   - POD=87.5%, lag=20, α=0.3: R²=0.404 (current best)
-#   - POD=97.5%, lag=14, α=0.3: R²=0.304
+# Grid: 32×32 = 1024 dimensions (reduced from 64×64 = 4096)
+# POD: ~25-30 modes at 99% energy (much smaller space)
+# Timesteps: 5s / 0.05s = 100 steps per run
+# Windows per run: 100 - 12 = 88
+# Total samples: 400 × 88 = 35,200
+# Parameters: ~25² × 12 ≈ 7,500 (if d≈25)
+# Ratio: ~0.21 (reasonable)
+# 
+# Advantages:
+#   - Smaller grid → much better POD compression
+#   - 99% energy → high quality basis
+#   - All snapshots → no temporal information loss
+#   - Moderate lag (12) → good temporal memory
+#   - Strong regularization (0.4) → prevent overfitting
 # ============================================================================
