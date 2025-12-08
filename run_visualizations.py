@@ -205,7 +205,19 @@ def main():
         
         rho_true = true_data["rho"]
         rho_pred = pred_data["rho"]
-        times = true_data["times"]
+        times_true = true_data["times"]
+        times_pred = pred_data["times"]
+        
+        # Align timesteps (pred may be subsampled)
+        T_pred = rho_pred.shape[0]
+        if rho_true.shape[0] != T_pred:
+            # Use fixed subsample=5 (matches Oscar ROM_SUBSAMPLE)
+            # This ensures we get frames [0, 5, 10, ...] not [0, 4, 8, ...]
+            ROM_SUBSAMPLE = 5
+            rho_true = rho_true[::ROM_SUBSAMPLE][:T_pred]
+            times = times_pred
+        else:
+            times = times_true
         
         # Flatten for metrics
         T, ny, nx = rho_true.shape
@@ -225,13 +237,21 @@ def main():
         
         # Load trajectory for later use
         traj_data = np.load(run_dir / "trajectory.npz")
+        traj = traj_data["traj"]
+        traj_times = traj_data["times"]
+        
+        # Subsample trajectory to match density timesteps
+        if traj.shape[0] != T_pred:
+            ROM_SUBSAMPLE = 5
+            traj = traj[::ROM_SUBSAMPLE][:T_pred]
+            traj_times = traj_times[::ROM_SUBSAMPLE][:T_pred]
         
         # Store for visualization
         test_predictions[run_name] = {
             "rho_true": rho_true,
             "rho_pred": rho_pred,
             "times": times,
-            "traj": traj_data["traj"],
+            "traj": traj,
             "ic_type": meta[ic_key],
             "frame_metrics": frame_metrics
         }

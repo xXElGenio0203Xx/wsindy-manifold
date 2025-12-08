@@ -1,0 +1,149 @@
+# ============================================================================
+# LONG DURATION ROM-MVAR WITH d=40
+# ============================================================================
+# Testing longer trajectories with slightly larger POD dimension
+#
+# CONFIGURATION:
+#   - Training: 400 runs × T=20s
+#   - ROM time step: Δt_ROM = 0.25s (subsample every 5 frames from dt=0.05)
+#   - POD dimension: d = 40 (fixed, hard cap)
+#   - MVAR lag: w = 20
+#   - MVAR params: 40² × 20 = 32,000
+#   - ROM samples: 400 × (20 / 0.25) = 400 × 80 = 32,000
+#   - Ratio params/data ≈ 32000/32000 = 1.0 (balanced)
+#
+# IMPROVEMENTS OVER parameter_regime_change:
+#   - Longer trajectories (20s vs 5s) for better temporal dynamics
+#   - Larger POD (d=40 vs d=25) for richer latent space
+#   - Same MVAR lag (w=20) - proven effective
+#   - Balanced params/data ratio
+# ============================================================================
+
+# Model
+model:
+  type: discrete
+  speed: 2.0
+  speed_mode: constant_with_forces
+
+# Simulation parameters
+sim:
+  N: 150
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+  T: 20.0                   # 20 seconds - 4x longer than before
+  dt: 0.05                  # Micro timestep: 0.05s
+  save_every: 1
+  neighbor_rebuild: 5
+  integrator: "euler"
+
+# Vicsek alignment
+params:
+  R: 3.0
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.2
+
+# Morse potential (optional)
+morse:
+  enabled: false
+  C_a: 0.0
+  l_a: 0.0
+  C_r: 0.0
+  l_r: 0.0
+
+# Initial conditions
+initial_conditions:
+  ensemble:
+    enabled: true
+    training_runs: 400      # 400 training runs
+    test_runs: 40           # 40 test runs
+    
+    # IC types and weights (must sum to 1.0)
+    types:
+      - type: "gaussian_cluster"
+        weight: 0.5          # 50% of training data
+      - type: "ring"
+        weight: 0.125        # 12.5%
+      - type: "two_clusters"
+        weight: 0.125        # 12.5%
+      - type: "uniform"
+        weight: 0.25         # 25%
+    
+    # Stratified test set (equal representation)
+    test_stratified: true
+    test_per_type: 10        # 10 test runs per IC type
+  
+  # Fallback for single runs
+  single:
+    type: "gaussian_cluster"
+    params:
+      center: [7.5, 7.5]
+      sigma: 2.0
+
+# Density estimation
+density:
+  enabled: true
+  nx: 64
+  ny: 64
+  method: "kde"
+  bandwidth: 2.0
+
+# ROM configuration
+rom:
+  enabled: true
+  method: "pod"
+  
+  # POD parameters
+  pod:
+    energy_threshold: 0.995   # Will be overridden by fixed_d
+    fixed_d: 40               # FIXED: Use exactly 40 modes
+    centering: true
+    use_svd: true
+  
+  # ROM temporal subsampling
+  rom_subsample: 5            # Subsample by 5 → Δt_ROM = 0.25s
+  
+# MVAR configuration
+mvar:
+  enabled: true
+  
+  # MVAR parameters
+  mvar_lag: 20                # Lag order w=20 (proven effective)
+  ridge_alpha: 0.05           # Ridge regularization
+  
+  # Companion matrix stabilization (Alvarez Step 5)
+  eigenvalue_threshold: 0.98  # Scale spectral radius to ≤0.98
+  
+  # Forecasting
+  forecast:
+    enabled: true
+    test_runs: 40             # Forecast all 40 test runs
+
+# Output configuration
+output:
+  base_dir: "oscar_output"
+  save_pod_basis: true
+  save_mvar_model: true
+  save_predictions: true
+  save_metrics: true
+  save_animations: false      # Skip on cluster
+
+# Computational settings
+computational:
+  use_gpu: false
+  n_jobs: 1
+  random_seed: 42
+  verbose: true
+
+# Metadata
+metadata:
+  experiment_name: "long_duration_d40"
+  description: "20s trajectories with POD d=40, MVAR w=20, companion stabilization"
+  version: "2.0"
+  author: "Maria"
+  date: "2025-12-08"
