@@ -588,7 +588,7 @@ def main():
     X_minus = np.vstack(X_minus_list)  # shape (N, d*w)
     N_samples = X_plus.shape[0]
     
-    print(f"   Dataset size: N={N_samples} samples (from {M} runs × ~{T-w} timesteps each)")
+    print(f"   Dataset size: N={N_samples} samples (from {M} runs × ~{T_rom-w} timesteps each)")
     
     # Fit ridge regression (Step 4.3)
     print(f"   Fitting ridge regression with α={RIDGE_ALPHA}...")
