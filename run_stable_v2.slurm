@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=stable_mvar_v2
+#SBATCH --job-name=stable_v2_test
 #SBATCH --output=slurm_logs/stable_mvar_v2_%j.out
 #SBATCH --error=slurm_logs/stable_mvar_v2_%j.err
-#SBATCH --time=36:00:00
+#SBATCH --time=01:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G

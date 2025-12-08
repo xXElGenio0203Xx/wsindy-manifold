@@ -123,8 +123,9 @@ def main():
     N_TRAIN = len(train_metadata)
     M_TEST = len(test_metadata)
     
-    # Dynamically detect IC types from test metadata
-    IC_TYPES = sorted(set(meta["ic_type"] for meta in test_metadata))
+    # Dynamically detect IC types from test metadata (handle both "ic_type" and "distribution")
+    ic_key = "distribution" if "distribution" in test_metadata[0] else "ic_type"
+    IC_TYPES = sorted(set(meta[ic_key] for meta in test_metadata))
     
     print(f"\n✓ Loaded data:")
     print(f"   Training: {N_TRAIN} runs")
@@ -220,7 +221,7 @@ def main():
             frame_metrics
         )
         summary["run_name"] = run_name
-        summary["ic_type"] = meta["ic_type"]
+        summary["ic_type"] = meta[ic_key]
         
         # Load trajectory for later use
         traj_data = np.load(run_dir / "trajectory.npz")
@@ -231,7 +232,7 @@ def main():
             "rho_pred": rho_pred,
             "times": times,
             "traj": traj_data["traj"],
-            "ic_type": meta["ic_type"],
+            "ic_type": meta[ic_key],
             "frame_metrics": frame_metrics
         }
         
@@ -517,7 +518,7 @@ def main():
             "ensemble": {
                 "n_simulations": int(N_TRAIN),
                 "ic_distribution": {
-                    ic: sum(1 for m in train_metadata if m["ic_type"] == ic)
+                    ic: sum(1 for m in train_metadata if m.get(ic_key, m.get("ic_type")) == ic)
                     for ic in IC_TYPES
                 }
             },

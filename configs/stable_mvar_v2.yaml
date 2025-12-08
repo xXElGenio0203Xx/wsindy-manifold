@@ -25,7 +25,7 @@ sim:
   Lx: 15.0                  # Half domain
   Ly: 15.0                  # Half domain
   bc: "periodic"
-  T: 50.0                   # Full trajectories
+  T: 1.0                    # TEST RUN: 1s (change to 50s after verification)
   dt: 0.05
   save_every: 1
   neighbor_rebuild: 5
