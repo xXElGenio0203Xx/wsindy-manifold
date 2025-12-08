@@ -793,6 +793,8 @@ def main():
     PRED_DIR.mkdir(parents=True, exist_ok=True)
     
     all_r2 = []
+    all_r2_latent = []
+    all_r2_pod = []
     all_mass_violations = []
     
     for meta in tqdm(test_metadata, desc="Predictions"):
@@ -852,11 +854,38 @@ def main():
         max_mass_violation = np.max(rel_mass_error)
         all_mass_violations.append(max_mass_violation)
         
-        # Compute R²
-        ss_res = np.sum((rho_true - rho_pred) ** 2)
-        ss_tot = np.sum((rho_true - rho_true.mean()) ** 2)
-        r2 = 1 - ss_res / ss_tot if ss_tot > 1e-10 else (1.0 if ss_res < 1e-10 else 0.0)
-        all_r2.append(r2)
+        # =================================================================
+        # COMPUTE MULTIPLE R² METRICS
+        # =================================================================
+        
+        # 1. R² in reconstructed (physical) space
+        ss_res_phys = np.sum((rho_true - rho_pred) ** 2)
+        ss_tot_phys = np.sum((rho_true - rho_true.mean()) ** 2)
+        r2_reconstructed = 1 - ss_res_phys / ss_tot_phys if ss_tot_phys > 1e-10 else (1.0 if ss_res_phys < 1e-10 else 0.0)
+        all_r2.append(r2_reconstructed)
+        
+        # 2. R² in latent space (ROM forecasting accuracy)
+        ss_res_latent = np.sum((x_latent - x_pred) ** 2)
+        ss_tot_latent = np.sum((x_latent - x_latent.mean(axis=0)) ** 2)
+        r2_latent = 1 - ss_res_latent / ss_tot_latent if ss_tot_latent > 1e-10 else (1.0 if ss_res_latent < 1e-10 else 0.0)
+        
+        # 3. POD reconstruction error (how well POD captures true density)
+        rho_pod_recon_flat = x_latent @ U_r.T + X_mean
+        rho_pod_recon = rho_pod_recon_flat.reshape(T_test, ygrid.shape[0], xgrid.shape[0])
+        ss_res_pod = np.sum((rho_true - rho_pod_recon) ** 2)
+        ss_tot_pod = np.sum((rho_true - rho_true.mean()) ** 2)
+        r2_pod = 1 - ss_res_pod / ss_tot_pod if ss_tot_pod > 1e-10 else (1.0 if ss_res_pod < 1e-10 else 0.0)
+        
+        # Relative reconstruction error (normalized RMSE)
+        rmse_recon = np.sqrt(np.mean((rho_true - rho_pred) ** 2))
+        rmse_pod = np.sqrt(np.mean((rho_true - rho_pod_recon) ** 2))
+        rms_true = np.sqrt(np.mean(rho_true ** 2))
+        rel_error_recon = rmse_recon / rms_true if rms_true > 1e-10 else 0.0
+        rel_error_pod = rmse_pod / rms_true if rms_true > 1e-10 else 0.0
+        
+        # Store metrics for all runs
+        all_r2_latent.append(r2_latent)
+        all_r2_pod.append(r2_pod)
         
         # Compute order parameters from density (spatial std as proxy)
         order_spatial_true = np.array([np.std(rho_true[t]) for t in range(T_test)])
@@ -895,6 +924,21 @@ def main():
         })
         order_df.to_csv(run_dir / "order_params_density.csv", index=False)
         
+        # Save per-run metrics
+        metrics_dict = {
+            'run_name': run_name,
+            'r2_reconstructed': r2_reconstructed,
+            'r2_latent': r2_latent,
+            'r2_pod': r2_pod,
+            'rmse_recon': rmse_recon,
+            'rmse_pod': rmse_pod,
+            'rel_error_recon': rel_error_recon,
+            'rel_error_pod': rel_error_pod,
+            'max_mass_violation': max_mass_violation
+        }
+        with open(run_dir / "metrics_summary.json", 'w') as f:
+            json.dump(metrics_dict, f, indent=2)
+        
         # Save predictions
         np.savez_compressed(
             run_dir / "density_pred.npz",
@@ -907,12 +951,20 @@ def main():
     pred_time = time.time() - test_start - test_time
     mean_r2 = np.mean(all_r2)
     std_r2 = np.std(all_r2)
+    mean_r2_latent = np.mean(all_r2_latent)
+    std_r2_latent = np.std(all_r2_latent)
+    mean_r2_pod = np.mean(all_r2_pod)
+    std_r2_pod = np.std(all_r2_pod)
     mean_mass_violation = np.mean(all_mass_violations)
     max_mass_violation_overall = np.max(all_mass_violations)
     
     print(f"\n✓ Generated {n_test} predictions")
-    print(f"   Mean R²: {mean_r2:.4f} ± {std_r2:.4f}")
-    print(f"   Range: [{np.min(all_r2):.4f}, {np.max(all_r2):.4f}]")
+    print(f"   R² (reconstructed): {mean_r2:.4f} ± {std_r2:.4f}")
+    print(f"     Range: [{np.min(all_r2):.4f}, {np.max(all_r2):.4f}]")
+    print(f"   R² (latent space): {mean_r2_latent:.4f} ± {std_r2_latent:.4f}")
+    print(f"     Range: [{np.min(all_r2_latent):.4f}, {np.max(all_r2_latent):.4f}]")
+    print(f"   R² (POD reconstruction): {mean_r2_pod:.4f} ± {std_r2_pod:.4f}")
+    print(f"     Range: [{np.min(all_r2_pod):.4f}, {np.max(all_r2_pod):.4f}]")
     print(f"   Mass conservation:")
     print(f"     Mean violation: {mean_mass_violation*100:.4f}%")
     print(f"     Max violation: {max_mass_violation_overall*100:.4f}%")
@@ -936,12 +988,94 @@ def main():
     print(f"  POD: {R_POD} modes ({energy_captured:.4f} energy)")
     print(f"  MVAR: R²={train_r2:.4f}, ρ={rho_after:.4f}")
     print(f"  Test: {n_test} runs (mixed distributions)")
-    print(f"  Prediction R²: {mean_r2:.4f} ± {std_r2:.4f}")
+    print(f"  Prediction Metrics:")
+    print(f"    R² (reconstructed): {mean_r2:.4f} ± {std_r2:.4f}")
+    print(f"    R² (latent space): {mean_r2_latent:.4f} ± {std_r2_latent:.4f}")
+    print(f"    R² (POD reconstruction): {mean_r2_pod:.4f} ± {std_r2_pod:.4f}")
     
     print(f"\nOutput:")
     print(f"  Data: {OUTPUT_DIR}")
     print(f"  Predictions: {PRED_DIR}")
     
+    # Save comprehensive summary JSON
+    summary_data = {
+        "experiment": args.experiment_name,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "configuration": {
+            "n_particles": BASE_CONFIG['sim']['N'],
+            "domain": {
+                "Lx": BASE_CONFIG['sim']['Lx'],
+                "Ly": BASE_CONFIG['sim']['Ly']
+            },
+            "trajectory_length": BASE_CONFIG['sim']['T'],
+            "dt": BASE_CONFIG['sim']['dt'],
+            "rom_subsample": ROM_SUBSAMPLE,
+            "dt_rom": BASE_CONFIG['sim']['dt'] * ROM_SUBSAMPLE
+        },
+        "training": {
+            "n_runs": n_train,
+            "n_frames_per_run": len(np.arange(0, BASE_CONFIG['sim']['T'], BASE_CONFIG['sim']['dt'])),
+            "n_frames_rom_per_run": len(np.arange(0, BASE_CONFIG['sim']['T'], BASE_CONFIG['sim']['dt'])) // ROM_SUBSAMPLE
+        },
+        "pod": {
+            "n_modes": int(R_POD),
+            "energy_captured": float(energy_captured),
+            "r2_reconstruction": {
+                "mean": float(mean_r2_pod),
+                "std": float(std_r2_pod),
+                "min": float(np.min(all_r2_pod)),
+                "max": float(np.max(all_r2_pod))
+            }
+        },
+        "mvar": {
+            "lag_order": int(w),
+            "latent_dimension": int(d),
+            "n_parameters": int(d * d * w),
+            "ridge_alpha": float(ridge_alpha),
+            "training_r2": float(train_r2),
+            "spectral_radius_before": float(rho_before),
+            "spectral_radius_after": float(rho_after),
+            "eigenvalue_threshold": float(rom_config.get('eigenvalue_threshold', 0.98))
+        },
+        "testing": {
+            "n_runs": int(n_test),
+            "r2_reconstructed": {
+                "mean": float(mean_r2),
+                "std": float(std_r2),
+                "min": float(np.min(all_r2)),
+                "max": float(np.max(all_r2))
+            },
+            "r2_latent": {
+                "mean": float(mean_r2_latent),
+                "std": float(std_r2_latent),
+                "min": float(np.min(all_r2_latent)),
+                "max": float(np.max(all_r2_latent))
+            },
+            "r2_pod_reconstruction": {
+                "mean": float(mean_r2_pod),
+                "std": float(std_r2_pod),
+                "min": float(np.min(all_r2_pod)),
+                "max": float(np.max(all_r2_pod))
+            },
+            "mass_conservation": {
+                "mean_violation_percent": float(mean_mass_violation * 100),
+                "max_violation_percent": float(max_mass_violation_overall * 100)
+            }
+        },
+        "timing": {
+            "training_generation_min": float(train_time / 60),
+            "pod_mvar_min": float(pod_mvar_time / 60),
+            "test_generation_min": float(test_time / 60),
+            "predictions_sec": float(pred_time),
+            "total_min": float(total_time / 60)
+        }
+    }
+    
+    summary_path = OUTPUT_DIR / "pipeline_summary.json"
+    with open(summary_path, 'w') as f:
+        json.dump(summary_data, f, indent=2)
+    
+    print(f"  Summary: {summary_path}")
     print("\n✅ Ready for visualization!")
 
 if __name__ == "__main__":

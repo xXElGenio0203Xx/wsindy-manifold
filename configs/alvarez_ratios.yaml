@@ -183,19 +183,20 @@ density:
 # ROM-MVAR CONFIGURATION - ALVAREZ RATIOS
 # ============================================================================
 
-# ROM temporal subsampling
-rom_subsample: 5            # Subsample by 5 → Δt_ROM = 0.25s
-
-# POD parameters (fixed small latent space)
-pod_target_energy: 0.97     # Informational only
-fixed_d: 25                 # FIXED: d = 25 (small latent space)
-
-# MVAR parameters (short lag, dense sampling)
-mvar_lag: 8                 # w = 8 (short lag, Alvarez-style)
-ridge_alpha: 0.05           # Moderate regularization
-
-# Companion matrix stabilization (Step 5)
-eigenvalue_threshold: 0.98  # Scale spectral radius to ≤0.98
+rom:
+  # ROM temporal subsampling
+  subsample: 5              # Subsample by 5 → Δt_ROM = 0.25s
+  
+  # POD parameters (fixed small latent space)
+  pod_energy: 0.97          # Informational only (ignored when fixed_d set)
+  fixed_d: 25               # FIXED: d = 25 (small latent space)
+  
+  # MVAR parameters (short lag, dense sampling)
+  mvar_lag: 8               # w = 8 (short lag, Alvarez-style)
+  ridge_alpha: 0.05         # Moderate regularization
+  
+  # Companion matrix stabilization (Step 5)
+  eigenvalue_threshold: 0.98  # Scale spectral radius to ≤0.98
 
 # ============================================================================
 # NOTES
