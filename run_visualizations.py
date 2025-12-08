@@ -373,36 +373,73 @@ def main():
         plt.savefig(ic_output_dir / "error_hist.png", dpi=200)
         plt.close()
         
-        # 5. Order parameters plot
-        order_params_path = run_dir / "order_params.csv"
+        # 5. Order parameters plot (from density)
+        order_params_path = run_dir / "order_params_density.csv"
         if order_params_path.exists():
             df_order = pd.read_csv(order_params_path)
             
             fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
             
-            axes[0].plot(df_order['t'], df_order['phi'], 'b-', linewidth=2)
+            # Spatial order (std of density)
+            axes[0].plot(df_order['t'], df_order['order_true'], 'b-', linewidth=2, label='True', alpha=0.8)
+            axes[0].plot(df_order['t'], df_order['order_pred'], 'r--', linewidth=2, label='Predicted', alpha=0.8)
+            axes[0].set_ylabel('Spatial Order\n(Density Std)', fontsize=12, fontweight='bold')
+            axes[0].grid(True, alpha=0.3)
+            axes[0].legend(loc='best', fontsize=10)
+            axes[0].set_title(f'Order Parameters (Density-Based) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
+                             fontsize=14, fontweight='bold')
+            
+            # Mass conservation
+            axes[1].plot(df_order['t'], df_order['mass_true'], 'b-', linewidth=2, label='True', alpha=0.8)
+            axes[1].plot(df_order['t'], df_order['mass_pred'], 'g--', linewidth=2, label='Predicted (Corrected)', alpha=0.8)
+            axes[1].set_ylabel('Total Mass', fontsize=12, fontweight='bold')
+            axes[1].grid(True, alpha=0.3)
+            axes[1].legend(loc='best', fontsize=10)
+            
+            # Mass error
+            axes[2].semilogy(df_order['t'], df_order['mass_error_rel'] * 100, 'r-', linewidth=2)
+            axes[2].set_ylabel('Mass Error (%)', fontsize=12, fontweight='bold')
+            axes[2].set_xlabel('Time (s)', fontsize=12)
+            axes[2].grid(True, alpha=0.3)
+            max_err = df_order['mass_error_rel'].max() * 100
+            axes[2].axhline(max_err, color='k', linestyle='--', alpha=0.5,
+                           label=f'Max: {max_err:.2e}%')
+            axes[2].legend(loc='best', fontsize=10)
+            
+            plt.tight_layout()
+            plt.savefig(ic_output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
+            plt.close()
+        
+        # 6. Original order parameters (from particle trajectories if available)
+        order_params_traj_path = run_dir / "order_params.csv"
+        if order_params_traj_path.exists():
+            df_order_traj = pd.read_csv(order_params_traj_path)
+            
+            fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            
+            axes[0].plot(df_order_traj['t'], df_order_traj['phi'], 'b-', linewidth=2)
             axes[0].set_ylabel('Polarization Φ', fontsize=12, fontweight='bold')
             axes[0].grid(True, alpha=0.3)
             axes[0].set_ylim([0, 1.05])
-            median_phi = df_order['phi'].iloc[-len(df_order)//4:].median()
+            median_phi = df_order_traj['phi'].iloc[-len(df_order_traj)//4:].median()
             axes[0].axhline(median_phi, color='r', linestyle='--', alpha=0.5,
                            label=f'Final median: {median_phi:.3f}')
             axes[0].legend(loc='best', fontsize=10)
-            axes[0].set_title(f'Order Parameters - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
+            axes[0].set_title(f'Order Parameters (Particles) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
                              fontsize=14, fontweight='bold')
             
-            axes[1].plot(df_order['t'], df_order['mean_speed'], 'g-', linewidth=2)
+            axes[1].plot(df_order_traj['t'], df_order_traj['mean_speed'], 'g-', linewidth=2)
             axes[1].set_ylabel('Mean Speed', fontsize=12, fontweight='bold')
             axes[1].grid(True, alpha=0.3)
             
-            axes[2].plot(df_order['t'], df_order['nematic'], 'm-', linewidth=2)
+            axes[2].plot(df_order_traj['t'], df_order_traj['nematic'], 'm-', linewidth=2)
             axes[2].set_ylabel('Nematic Order Q', fontsize=12, fontweight='bold')
             axes[2].set_xlabel('Time (s)', fontsize=12)
             axes[2].grid(True, alpha=0.3)
             axes[2].set_ylim([-0.05, 1.05])
             
             plt.tight_layout()
-            plt.savefig(ic_output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
+            plt.savefig(ic_output_dir / "order_parameters_particles.png", dpi=150, bbox_inches='tight')
             plt.close()
     
     print(f"\n✓ Generated visualizations for top 4 runs")

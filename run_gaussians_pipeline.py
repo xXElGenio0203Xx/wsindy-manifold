@@ -616,10 +616,8 @@ def main():
     print(f"  Total: {total_time/60:.1f}m")
     
     print(f"\nResults:")
-    print(f"  Training: {n_train} runs (varying variance)")
+    print(f"  Training: {len(test_metadata)} test runs")
     print(f"  POD: {R_POD} modes ({energy_captured:.4f} energy)")
-    print(f"  MVAR: R²={train_r2:.4f} (training)")
-    print(f"  Test: {n_test} runs (varying center)")
     print(f"  Prediction R²: {mean_r2:.4f} ± {std_r2:.4f}")
     
     print(f"\nOutput:")

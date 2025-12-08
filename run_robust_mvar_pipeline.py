@@ -565,6 +565,7 @@ def main():
     PRED_DIR.mkdir(parents=True, exist_ok=True)
     
     all_r2 = []
+    all_mass_violations = []
     
     for meta in tqdm(test_metadata, desc="Predictions"):
         run_name = meta["run_name"]
@@ -575,8 +576,14 @@ def main():
         rho_true = density_data['rho']
         xgrid = density_data['xgrid']
         ygrid = density_data['ygrid']
+        times = density_data['times']
         
         T_test = rho_true.shape[0]
+        
+        # Compute cell area for mass integration
+        dx = xgrid[1] - xgrid[0] if len(xgrid) > 1 else 1.0
+        dy = ygrid[1] - ygrid[0] if len(ygrid) > 1 else 1.0
+        cell_area = dx * dy
         
         # Flatten and project to latent space
         rho_flat = rho_true.reshape(T_test, -1)
@@ -596,11 +603,43 @@ def main():
         rho_pred_flat = x_pred @ U_r.T + X_mean
         rho_pred = rho_pred_flat.reshape(T_test, ygrid.shape[0], xgrid.shape[0])
         
+        # ENFORCE MASS CONSERVATION
+        # Compute initial mass from true density
+        mass_true_initial = np.sum(rho_true[0]) * cell_area
+        
+        # Rescale each predicted timestep to conserve mass
+        for t in range(T_test):
+            mass_pred_t = np.sum(rho_pred[t]) * cell_area
+            if mass_pred_t > 1e-10:  # Avoid division by zero
+                rho_pred[t] *= (mass_true_initial / mass_pred_t)
+        
+        # Compute mass conservation violation (after correction)
+        mass_true_t = np.sum(rho_true, axis=(1, 2)) * cell_area
+        mass_pred_t = np.sum(rho_pred, axis=(1, 2)) * cell_area
+        rel_mass_error = np.abs(mass_pred_t - mass_true_initial) / mass_true_initial
+        max_mass_violation = np.max(rel_mass_error)
+        all_mass_violations.append(max_mass_violation)
+        
         # Compute R²
         ss_res = np.sum((rho_true - rho_pred) ** 2)
         ss_tot = np.sum((rho_true - rho_true.mean()) ** 2)
         r2 = 1 - ss_res / ss_tot if ss_tot > 1e-10 else (1.0 if ss_res < 1e-10 else 0.0)
         all_r2.append(r2)
+        
+        # Compute order parameters from density (spatial std as proxy)
+        order_true = np.array([np.std(rho_true[t]) for t in range(T_test)])
+        order_pred = np.array([np.std(rho_pred[t]) for t in range(T_test)])
+        
+        # Save order parameters
+        order_df = pd.DataFrame({
+            't': times,
+            'order_true': order_true,
+            'order_pred': order_pred,
+            'mass_true': mass_true_t,
+            'mass_pred': mass_pred_t,
+            'mass_error_rel': rel_mass_error
+        })
+        order_df.to_csv(run_dir / "order_params_density.csv", index=False)
         
         # Save predictions
         np.savez_compressed(
@@ -608,16 +647,21 @@ def main():
             rho=rho_pred,
             xgrid=xgrid,
             ygrid=ygrid,
-            times=density_data['times']
+            times=times
         )
     
     pred_time = time.time() - test_start - test_time
     mean_r2 = np.mean(all_r2)
     std_r2 = np.std(all_r2)
+    mean_mass_violation = np.mean(all_mass_violations)
+    max_mass_violation_overall = np.max(all_mass_violations)
     
     print(f"\n✓ Generated {n_test} predictions")
     print(f"   Mean R²: {mean_r2:.4f} ± {std_r2:.4f}")
     print(f"   Range: [{np.min(all_r2):.4f}, {np.max(all_r2):.4f}]")
+    print(f"   Mass conservation:")
+    print(f"     Mean violation: {mean_mass_violation*100:.4f}%")
+    print(f"     Max violation: {max_mass_violation_overall*100:.4f}%")
     print(f"   Time: {pred_time:.1f}s")
     
     # Summary

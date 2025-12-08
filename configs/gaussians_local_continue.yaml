@@ -1,0 +1,96 @@
+# ============================================================================
+# Gaussians Local Continue - Complete the Oscar Experiment Locally
+# ============================================================================
+# This config uses existing training data from Oscar and generates a reduced
+# test set locally (12 instead of 48 positions)
+# ============================================================================
+
+# System parameters
+system:
+  N: 400                    # Number of particles
+  Lx: 30.0                  # Domain width
+  Ly: 30.0                  # Domain height
+
+# Model parameters (must match training!)
+model:
+  speed: 1.0
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 3.0                    # Interaction radius
+  alpha: 1.5                # Alignment strength
+  beta: 0.5                 # Velocity relaxation
+
+# Noise parameters
+noise:
+  kind: "gaussian"
+  eta: 0.2                  # Noise magnitude
+
+# Force parameters
+forces:
+  enabled: true
+  type: "morse"
+  Cr: 0.3                   # Repulsion strength
+  Ca: 1.0                   # Attraction strength  
+  lr: 0.5                   # Repulsion range
+  la: 1.5                   # Attraction range
+  mu_t: 0.3                 # Friction coefficient
+  rcut_factor: 5.0          # Cutoff distance factor
+
+# Simulation parameters
+simulation:
+  T: 100.0                  # Simulation time (match Oscar)
+  dt: 0.05                  # Time step
+  save_every: 1             # Save every timestep
+
+# Output parameters
+outputs:
+  save_positions: true
+  save_velocities: true
+  save_density: true
+  density_resolution: 64
+  density_bandwidth: 2.0
+
+# ============================================================================
+# TRAINING IC - SKIP (use existing Oscar data)
+# ============================================================================
+train_ic:
+  type: "gaussian_varying_variance"
+  center: [15.0, 15.0]
+  variances: [0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
+  n_samples_per_variance: 20
+
+# ============================================================================
+# TESTING INITIAL CONDITIONS - REDUCED SET (12 positions)
+# ============================================================================
+test_ic:
+  type: "gaussian_varying_center"
+  variance: 2.0             # Fixed variance
+  
+  # Reduced test centers: Key positions covering main regions
+  centers:
+    # 4 corners
+    - [7.5, 7.5]    # Lower-left
+    - [22.5, 7.5]   # Lower-right
+    - [7.5, 22.5]   # Upper-left
+    - [22.5, 22.5]  # Upper-right
+    
+    # 4 edge centers (critical boundary tests)
+    - [5.0, 15.0]   # Left edge
+    - [25.0, 15.0]  # Right edge
+    - [15.0, 5.0]   # Bottom edge
+    - [15.0, 25.0]  # Top edge
+    
+    # 4 diagonal positions (including near training center)
+    - [12.5, 12.5]  # Near training center
+    - [17.5, 17.5]  # Near training center (best performer expected)
+    - [10.0, 20.0]  # Off-diagonal
+    - [20.0, 10.0]  # Off-diagonal
+
+# ============================================================================
+# ROM CONFIGURATION (same as Oscar)
+# ============================================================================
+rom:
+  pod_energy: 0.995         # Target energy for POD truncation (99.5%)
+  mvar_lag: 4               # MVAR lag parameter
+  ridge_alpha: 1.0e-6       # Ridge regularization parameter

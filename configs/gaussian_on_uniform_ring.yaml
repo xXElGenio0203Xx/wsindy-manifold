@@ -1,0 +1,112 @@
+# ============================================================================
+# GAUSSIAN POD+MVAR TESTED ON UNIFORM & RING DISTRIBUTIONS
+# ============================================================================
+# Use EXISTING POD+MVAR model trained on Gaussian ICs
+# Test generalization to completely different IC distributions:
+#   - Uniform: particles spread uniformly across domain
+#   - Ring: particles arranged in circular ring
+#
+# Hypothesis: POD+MVAR trained on Gaussians should FAIL on non-Gaussian ICs
+# ============================================================================
+
+# Simulation parameters (MUST MATCH training exactly!)
+sim:
+  N: 300                    # Same as training
+  Lx: 30.0                  # Same as training
+  Ly: 30.0                  # Same as training
+  bc: "periodic"            # Same as training
+  T: 100.0                  # Same as training
+  dt: 0.05                  # Same as training
+  save_every: 1             # Same as training
+  neighbor_rebuild: 5       # Same as training
+
+# Vicsek model (MUST MATCH training!)
+model:
+  speed: 1.0
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 3.0                    # Same as training
+  alpha: 1.5                # Same as training
+  beta: 0.5                 # Same as training
+
+# Noise (MUST MATCH training!)
+noise:
+  kind: "gaussian"
+  eta: 0.2                  # Same as training
+
+# Morse potential (MUST MATCH training!)
+forces:
+  enabled: true
+  type: "morse"
+  Cr: 0.3                   # Same as training
+  Ca: 1.0                   # Same as training
+  lr: 0.5                   # Same as training
+  la: 1.5                   # Same as training
+  mu_t: 0.3                 # Same as training
+  rcut_factor: 5.0          # Same as training
+
+# Density field computation (MUST MATCH training!)
+outputs:
+  density_resolution: 64    # Same as training
+  density_bandwidth: 2.0    # Same as training
+
+# ============================================================================
+# TRAINING IC - SKIP (use existing Gaussian POD+MVAR)
+# ============================================================================
+train_ic:
+  type: "skip"              # We'll skip training and load existing models
+  center_x: 15.0            # (Not used, for reference only)
+  center_y: 15.0            # (Not used, for reference only)
+  variances: [0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
+  n_samples_per_variance: 20
+
+# ============================================================================
+# TESTING INITIAL CONDITIONS - NEW DISTRIBUTIONS
+# ============================================================================
+test_ic:
+  type: "mixed_distributions"
+  
+  # Test cases: 3 uniform + 3 rings = 6 test runs
+  test_cases:
+    # UNIFORM DISTRIBUTIONS (3 samples)
+    - distribution: "uniform"
+      label: "uniform_sample_1"
+      ic_params: {}
+      
+    - distribution: "uniform"
+      label: "uniform_sample_2"
+      ic_params: {}
+      
+    - distribution: "uniform"
+      label: "uniform_sample_3"
+      ic_params: {}
+    
+    # RING DISTRIBUTIONS (3 samples with varying radii)
+    - distribution: "ring"
+      label: "ring_r6_w0.5"
+      ic_params:
+        radius: 6.0          # Small tight ring
+        width: 0.5           # Narrow
+    
+    - distribution: "ring"
+      label: "ring_r8_w1.0"
+      ic_params:
+        radius: 8.0          # Medium ring
+        width: 1.0           # Medium width
+    
+    - distribution: "ring"
+      label: "ring_r10_w1.5"
+      ic_params:
+        radius: 10.0         # Large ring
+        width: 1.5           # Wider
+
+# ============================================================================
+# ROM CONFIGURATION - Load existing models
+# ============================================================================
+rom:
+  use_existing_models: true                      # Load from gaussians_oscar
+  existing_experiment: "gaussians_oscar"         # Source experiment
+  pod_energy: 0.995         # For reference (not used)
+  mvar_lag: 4               # For reference (not used)
+  ridge_alpha: 1.0e-6       # For reference (not used)
