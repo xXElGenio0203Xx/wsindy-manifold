@@ -1,0 +1,218 @@
+# ============================================================================
+# ALVAREZ RATIOS CONFIGURATION - EXACT TARGET
+# ============================================================================
+# Matches Alvarez et al. parameter/data ratios (0.06-0.14)
+#
+# CONFIGURATION:
+#   - Training: 400 runs × T=25s
+#   - ROM time step: Δt_ROM = 0.25s (subsample every 5 frames from dt=0.05)
+#   - POD dimension: d = 25 (fixed, small latent space)
+#   - MVAR lag: w = 8 (short lag)
+#   - T_ROM per run: 25/0.25 = 100 steps
+#   - Windows per run: 100 - 8 = 92
+#   - Total MVAR samples: 400 × 92 = 36,800
+#   - MVAR params: 25² × 8 = 5,000
+#   - Ratio params/data: 5,000/36,800 ≈ 0.136 ✓ (IN ALVAREZ BAND!)
+#
+# ALVAREZ METHODOLOGY:
+#   - Small fixed latent dimension (d=25)
+#   - Short lag (w=8)
+#   - Long trajectories (T=25s)
+#   - All sliding windows (dense sampling)
+#   - Temporal subsampling (Δt_ROM = 0.25s)
+#   - Spectral stabilization (ρ_max = 0.98)
+#   - Moderate regularization (ridge α = 0.05)
+# ============================================================================
+
+# Model
+model:
+  type: discrete
+  speed: 2.0
+  speed_mode: constant_with_forces
+
+# Simulation parameters
+sim:
+  N: 150
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+  T: 25.0                   # 25 seconds → 100 ROM steps
+  dt: 0.05                  # Micro timestep: 0.05s
+  save_every: 1
+  neighbor_rebuild: 5
+  integrator: "euler"
+
+# Vicsek alignment
+params:
+  R: 3.0
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+# Morse forces
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Cr: 0.3
+    Ca: 1.0
+    lr: 0.5
+    la: 2.0
+    rcut_factor: 3.0
+    mu_t: 0.3
+
+alignment:
+  enabled: true
+
+# Outputs
+outputs:
+  run_name: "alvarez_ratios"
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 64
+  density_bandwidth: 2.0
+
+# ============================================================================
+# TRAINING: Mixed distributions (400 runs)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN DISTRIBUTIONS (200 runs = 50%)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 200
+    positions_x: [3.75, 7.5, 11.25, 15.0, 18.75]
+    positions_y: [3.75, 7.5, 11.25, 15.0, 18.75]
+    variances: [0.5, 1.0, 2.0, 3.0]
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM DISTRIBUTIONS (100 runs = 25%)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 100
+    n_samples: 100
+  
+  # -------------------------------------------------------------------------
+  # RING DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 50
+    radii: [2.0, 3.0, 4.0, 5.0, 6.0]
+    widths: [0.3, 0.6]
+    n_samples_per_config: 5
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 50
+    separations: [3.0, 4.5, 6.0, 7.5, 9.0]
+    sigmas: [0.8, 1.5]
+    n_samples_per_config: 5
+
+# ============================================================================
+# TESTING: Stratified test set (40 runs)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN TEST (20 runs)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 20
+    test_positions_x: [5.5, 9.0, 13.0, 16.5]
+    test_positions_y: [5.5, 9.0, 13.0, 16.5]
+    test_variances: [1.5]
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM TEST (5 runs)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 5
+  
+  # -------------------------------------------------------------------------
+  # RING TEST (8 runs)
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 8
+    test_radii: [2.5, 3.5, 4.5, 5.5]
+    test_widths: [0.45]
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER TEST (7 runs)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [3.75, 5.25, 6.75, 8.25]
+    test_sigmas: [1.1]
+    extrapolation_separations: [2.0, 10.5, 12.0]
+    extrapolation_sigma: [1.1]
+
+# ============================================================================
+# DENSITY ESTIMATION
+# ============================================================================
+density:
+  enabled: true
+  nx: 64
+  ny: 64
+  method: "kde"
+  bandwidth: 2.0
+
+# ============================================================================
+# ROM-MVAR CONFIGURATION - ALVAREZ RATIOS
+# ============================================================================
+
+# ROM temporal subsampling
+rom_subsample: 5            # Subsample by 5 → Δt_ROM = 0.25s
+
+# POD parameters (fixed small latent space)
+pod_target_energy: 0.97     # Informational only
+fixed_d: 25                 # FIXED: d = 25 (small latent space)
+
+# MVAR parameters (short lag, dense sampling)
+mvar_lag: 8                 # w = 8 (short lag, Alvarez-style)
+ridge_alpha: 0.05           # Moderate regularization
+
+# Companion matrix stabilization (Step 5)
+eigenvalue_threshold: 0.98  # Scale spectral radius to ≤0.98
+
+# ============================================================================
+# NOTES
+# ============================================================================
+# This configuration is designed to match Alvarez et al. ratios:
+#   - Small fixed latent dimension: d = 25
+#   - Short lag: w = 8
+#   - Long trajectories: T = 25s → T_ROM = 100 steps
+#   - Windows per run: 92
+#   - Total samples: 36,800
+#   - Parameters: 5,000
+#   - Ratio: 0.136 (target: 0.06-0.14) ✓
+#
+# Expected improvements:
+#   - Better parameter/data ratio than previous runs
+#   - Longer trajectories capture more temporal dynamics
+#   - Short lag prevents overfitting
+#   - All sliding windows maximize training data
+#   - Spectral stabilization ensures no explosions
+# ============================================================================
