@@ -36,20 +36,16 @@ pip install -q scikit-learn
 # Navigate to project directory
 cd ~/wsindy-manifold
 
+# Set config file (default or from environment)
+CONFIG_FILE="${CONFIG:-configs/stable_mvar_v2.yaml}"
+EXPERIMENT_NAME=$(basename "$CONFIG_FILE" .yaml)
+
 echo ""
 echo "========================================"
 echo "CONFIGURATION"
 echo "========================================"
-echo "Experiment: stable_mvar_v2"
-echo "Config: configs/stable_mvar_v2.yaml"
-echo ""
-echo "KEY PARAMETERS:"
-echo "  - POD energy: 99% (reduced)"
-echo "  - MVAR lag: 2 (reduced)"
-echo "  - Ridge alpha: 0.5 (very strong)"
-echo "  - Eigenvalue threshold: 0.95"
-echo "  - Training runs: 400 (mixed)"
-echo "  - Test runs: 40"
+echo "Experiment: $EXPERIMENT_NAME"
+echo "Config: $CONFIG_FILE"
 echo ""
 
 # Run the pipeline
@@ -57,8 +53,8 @@ echo "========================================"
 echo "RUNNING PIPELINE"
 echo "========================================"
 python run_stable_mvar_pipeline.py \
-    --config configs/stable_mvar_v2.yaml \
-    --experiment_name stable_mvar_v2
+    --config "$CONFIG_FILE" \
+    --experiment_name "$EXPERIMENT_NAME"
 
 EXIT_CODE=$?
 
