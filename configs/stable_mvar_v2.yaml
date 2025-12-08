@@ -194,18 +194,19 @@ test_ic:
 # ROM SETTINGS: REDUCED COMPLEXITY + VERY STRONG REGULARIZATION
 # ============================================================================
 rom:
-  pod_energy: 0.90          # REDUCED: 90% energy (fewer modes)
-  mvar_lag: 14              # BEST: lag=14
+  pod_energy: 0.875         # REDUCED: 87.5% energy (even fewer modes)
+  mvar_lag: 20              # INCREASED: lag=20 (longer memory)
   ridge_alpha: 0.3          # BEST: ridge=0.3
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (POD=90%, T=2s, lag=14, ridge=0.3)
+# EXPECTED RESULTS (POD=87.5%, T=2s, lag=20, ridge=0.3)
 # ============================================================================
-# POD: ~60-80 modes (90% energy, significant reduction from 139)
-# MVAR: lag=14, ~50,000-80,000 parameters (14 × r × r)
-# Hypothesis: Fewer modes = simpler model, may improve generalization
-# Testing if 97.5% captures too much noise vs signal
+# POD: ~50-60 modes (87.5% energy, very compact representation)
+# MVAR: lag=20, ~50,000-72,000 parameters (20 × r × r)
+# Hypothesis: Longer lag may compensate for fewer modes
+# Testing if lag=20 captures more temporal structure with simpler representation
 # Previous results:
-#   - POD=97.5%, lag=14: R²=0.304, 139 modes, 270k params (best so far)
+#   - POD=97.5%, lag=14: R²=0.304, 139 modes, 270k params (best)
+#   - POD=90%, lag=14: R²=0.291, 72 modes, 73k params (-4.3%)
 # ============================================================================
