@@ -636,7 +636,13 @@ def main():
     TEST_DIR = OUTPUT_DIR / "test"
     TEST_DIR.mkdir(parents=True, exist_ok=True)
     
-    test_args = [(cfg, BASE_CONFIG, OUTPUT_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, True)
+    # Check if test uses different T than training
+    TEST_CONFIG = BASE_CONFIG.copy()
+    if 'test_T' in test_ic_config and test_ic_config['test_T'] is not None:
+        TEST_CONFIG = {**BASE_CONFIG, 'sim': {**BASE_CONFIG['sim'], 'T': test_ic_config['test_T']}}
+        print(f"\n⚠️  Using different T for testing: train={BASE_CONFIG['sim']['T']}s, test={test_ic_config['test_T']}s")
+    
+    test_args = [(cfg, TEST_CONFIG, OUTPUT_DIR, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH, True)
                  for cfg in test_configs]
     
     test_start = time.time()

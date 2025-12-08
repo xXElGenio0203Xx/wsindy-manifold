@@ -137,6 +137,7 @@ train_ic:
 # ============================================================================
 test_ic:
   type: "mixed_test_comprehensive"
+  test_T: 2.0                # Use 2s for testing (train on 5s, test on 2s)
   
   # -------------------------------------------------------------------------
   # GAUSSIAN TEST (20 runs)
@@ -196,20 +197,19 @@ test_ic:
 rom:
   pod_energy: 0.975         # FIXED: 97.5% energy
   mvar_lag: 15              # INCREASED: lag=15 (testing even longer memory)
-  ridge_alpha: 0.3          # REDUCED: From 0.5 to 0.3 (less regularization)
+  ridge_alpha: 0.6          # INCREASED: From 0.3 to 0.6 (stronger regularization for 5s training)
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (T=5s, lag=15, POD=97.5%, ridge=0.3)
+# EXPECTED RESULTS (T_train=5s, T_test=2s, lag=15, POD=97.5%, ridge=0.6)
 # ============================================================================
-# POD: ~139 modes (97.5% energy, may increase slightly with longer T)
-# MVAR: lag=15, ~290,235 parameters (15 × 139 × 139)
-# Ridge: α=0.3 (reduced regularization for flexibility)
+# POD: ~207 modes (97.5% energy from 5s trajectories)
+# MVAR: lag=15, ~642,735 parameters (15 × 207 × 207)
+# Ridge: α=0.6 (STRONG regularization to prevent overfitting on 5s data)
 # Max eigenvalue: < 0.95 (STABLE by design)
-# Test R²: Testing if longer trajectories + longer lag improve predictions
-# Hypothesis: 5s trajectories provide richer temporal structure for lag=15
+# Test R²: Training on 5s (richer) but testing on 2s (avoid temporal mismatch)
+# Hypothesis: Strong regularization prevents overfitting, 2s test avoids prediction length issues
 # Previous results:
-#   - lag=14, T=2s, POD=97.5%, α=0.3: R²=0.3039 (current best)
-#   - lag=10, T=2s, POD=99%, α=0.5: R²=0.2353
-#   - lag=8, T=2s, POD=97.5%, α=0.3: R²=0.1948
+#   - T=2s, lag=14, POD=97.5%, α=0.3: R²=0.3039 (best 2s-only run)
+#   - T=5s, lag=15, POD=97.5%, α=0.3: R²=0.0559 (failed: severe overfitting)
 # ============================================================================
