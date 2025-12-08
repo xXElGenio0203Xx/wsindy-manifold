@@ -553,7 +553,7 @@ def main():
     
     # Project to latent space
     X_latent = X_centered @ U_r
-    print(f"✓ Latent training data shape: ({M*T}, {R_POD})")
+    print(f"✓ Latent training data shape: ({M*T_rom}, {R_POD})")
     
     # Train MVAR
     P_LAG = rom_config.get('mvar_lag', 5)  # Default to 5 for MVAR(5)
@@ -569,14 +569,13 @@ def main():
     X_minus_list = []
     X_plus_list = []
     
-    # X_latent has shape (M*T, d), we need to split by runs and build time series
-    samples_per_run = T  # number of timesteps per training run
+    # X_latent has shape (M*T_rom, d), we need to split by runs and build time series
     
     for run_idx in range(M):
-        Y_r = X_latent[run_idx * T:(run_idx + 1) * T, :]  # (T, d)
-        T_rom = Y_r.shape[0]
+        Y_r = X_latent[run_idx * T_rom:(run_idx + 1) * T_rom, :]  # (T_rom, d)
+        T_steps = Y_r.shape[0]
         
-        for t in range(w, T_rom):
+        for t in range(w, T_steps):
             # Current target y_t
             x_plus = Y_r[t]  # shape (d,)
             # Stack the last w states [y_{t-1}, ..., y_{t-w}]
