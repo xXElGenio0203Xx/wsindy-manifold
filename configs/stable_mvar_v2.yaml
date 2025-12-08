@@ -25,7 +25,7 @@ sim:
   Lx: 15.0                  # Half domain
   Ly: 15.0                  # Half domain
   bc: "periodic"
-  T: 2.0                    # TEST RUN: 2s (testing lag=10 impact)
+  T: 5.0                    # INCREASED: 5s (longer trajectories for lag=15)
   dt: 0.05
   save_every: 1
   neighbor_rebuild: 5
@@ -195,21 +195,21 @@ test_ic:
 # ============================================================================
 rom:
   pod_energy: 0.975         # FIXED: 97.5% energy
-  mvar_lag: 14              # INCREASED: lag=14 (testing longer memory)
+  mvar_lag: 15              # INCREASED: lag=15 (testing even longer memory)
   ridge_alpha: 0.3          # REDUCED: From 0.5 to 0.3 (less regularization)
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (T=2s, lag=14, POD=97.5%, ridge=0.3)
+# EXPECTED RESULTS (T=5s, lag=15, POD=97.5%, ridge=0.3)
 # ============================================================================
-# POD: ~139 modes (97.5% energy, established from previous run)
-# MVAR: lag=14, ~270,886 parameters (14 × 139 × 139)
-# Ridge: α=0.3 (reduced from 0.5 to allow more flexibility)
+# POD: ~139 modes (97.5% energy, may increase slightly with longer T)
+# MVAR: lag=15, ~290,235 parameters (15 × 139 × 139)
+# Ridge: α=0.3 (reduced regularization for flexibility)
 # Max eigenvalue: < 0.95 (STABLE by design)
-# Test R²: Testing if longer lag compensates for reduced regularization
-# Hypothesis: lag=14 may capture more temporal structure
+# Test R²: Testing if longer trajectories + longer lag improve predictions
+# Hypothesis: 5s trajectories provide richer temporal structure for lag=15
 # Previous results:
-#   - lag=10, POD=99%, α=0.5: R²=0.2353 (best so far)
-#   - lag=10, POD=97.5%, α=0.5: R²=0.2293
-#   - lag=8, POD=97.5%, α=0.3: R²=0.1948
+#   - lag=14, T=2s, POD=97.5%, α=0.3: R²=0.3039 (current best)
+#   - lag=10, T=2s, POD=99%, α=0.5: R²=0.2353
+#   - lag=8, T=2s, POD=97.5%, α=0.3: R²=0.1948
 # ============================================================================
