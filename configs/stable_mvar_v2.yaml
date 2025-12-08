@@ -194,19 +194,18 @@ test_ic:
 # ROM SETTINGS: REDUCED COMPLEXITY + VERY STRONG REGULARIZATION
 # ============================================================================
 rom:
-  pod_energy: 0.975         # FIXED: 97.5% energy
+  pod_energy: 0.90          # REDUCED: 90% energy (fewer modes)
   mvar_lag: 14              # BEST: lag=14
   ridge_alpha: 0.3          # BEST: ridge=0.3
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (BEST CONFIG: T=2s, lag=14, POD=97.5%, ridge=0.3)
+# EXPECTED RESULTS (POD=90%, T=2s, lag=14, ridge=0.3)
 # ============================================================================
-# POD: ~139 modes (97.5% energy)
-# MVAR: lag=14, ~270,886 parameters (14 × 139 × 139)
-# Ridge: α=0.3 (balanced regularization)
-# Max eigenvalue: < 0.95 (STABLE by design)
-# Test R²: ~0.304 (BEST result achieved)
-# This configuration achieved the highest R² across all experiments
-# Re-running to generate files for local analysis and visualization
+# POD: ~60-80 modes (90% energy, significant reduction from 139)
+# MVAR: lag=14, ~50,000-80,000 parameters (14 × r × r)
+# Hypothesis: Fewer modes = simpler model, may improve generalization
+# Testing if 97.5% captures too much noise vs signal
+# Previous results:
+#   - POD=97.5%, lag=14: R²=0.304, 139 modes, 270k params (best so far)
 # ============================================================================
