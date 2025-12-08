@@ -48,42 +48,91 @@ noise:
   kind: "gaussian"
   eta: 0.2
 
-# Morse potential (optional)
-morse:
-  enabled: false
-  C_a: 0.0
-  l_a: 0.0
-  C_r: 0.0
-  l_r: 0.0
+# Morse forces
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Cr: 0.3
+    Ca: 1.0
+    lr: 0.5
+    la: 2.0
+    rcut_factor: 3.0
+    mu_t: 0.3
 
-# Initial conditions
-initial_conditions:
-  ensemble:
-    enabled: true
-    training_runs: 400      # 400 training runs
-    test_runs: 40           # 40 test runs
-    
-    # IC types and weights (must sum to 1.0)
-    types:
-      - type: "gaussian_cluster"
-        weight: 0.5          # 50% of training data
-      - type: "ring"
-        weight: 0.125        # 12.5%
-      - type: "two_clusters"
-        weight: 0.125        # 12.5%
-      - type: "uniform"
-        weight: 0.25         # 25%
-    
-    # Stratified test set (equal representation)
-    test_stratified: true
-    test_per_type: 10        # 10 test runs per IC type
+alignment:
+  enabled: true
+
+# Outputs
+outputs:
+  run_name: "long_duration_d40"
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 64
+  density_bandwidth: 2.0
+
+# ============================================================================
+# TRAINING: Mixed distributions (400 runs)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
   
-  # Fallback for single runs
-  single:
-    type: "gaussian_cluster"
-    params:
+  # Gaussian cluster distributions (200 runs = 50%)
+  gaussian:
+    enabled: true
+    n_runs: 200
+    positions_x: [3.75, 7.5, 11.25, 15.0, 18.75]
+    positions_y: [3.75, 7.5, 11.25, 15.0, 18.75]
+    variances: [0.5, 1.0, 2.0, 3.0]
+    n_samples_per_config: 2
+  
+  # Ring distributions (50 runs = 12.5%)
+  ring:
+    enabled: true
+    n_runs: 50
+    radii: [3.0, 4.0, 5.0, 6.0, 7.0]
+    n_samples_per_radius: 10
+  
+  # Two clusters (50 runs = 12.5%)
+  two_clusters:
+    enabled: true
+    n_runs: 50
+    separations: [5.0, 7.0, 9.0, 11.0, 13.0]
+    variances: [1.0, 2.0]
+    n_samples_per_config: 5
+  
+  # Uniform distributions (100 runs = 25%)
+  uniform:
+    enabled: true
+    n_runs: 100
+    n_samples: 100
+
+# ============================================================================
+# TEST: Stratified by IC type (40 runs)
+# ============================================================================
+test_ic:
+  type: "stratified"
+  total_runs: 40
+  
+  ic_types:
+    - type: "gaussian_cluster"
+      n_runs: 10
       center: [7.5, 7.5]
-      sigma: 2.0
+      sigma_range: [1.0, 3.0]
+    
+    - type: "ring"
+      n_runs: 10
+      radius_range: [3.0, 7.0]
+      thickness: 0.5
+    
+    - type: "two_clusters"
+      n_runs: 10
+      separation_range: [6.0, 12.0]
+      sigma: 1.5
+    
+    - type: "uniform"
+      n_runs: 10
 
 # Density estimation
 density:
@@ -93,57 +142,20 @@ density:
   method: "kde"
   bandwidth: 2.0
 
-# ROM configuration
-rom:
-  enabled: true
-  method: "pod"
-  
-  # POD parameters
-  pod:
-    energy_threshold: 0.995   # Will be overridden by fixed_d
-    fixed_d: 40               # FIXED: Use exactly 40 modes
-    centering: true
-    use_svd: true
-  
-  # ROM temporal subsampling
-  rom_subsample: 5            # Subsample by 5 → Δt_ROM = 0.25s
-  
-# MVAR configuration
-mvar:
-  enabled: true
-  
-  # MVAR parameters
-  mvar_lag: 20                # Lag order w=20 (proven effective)
-  ridge_alpha: 0.05           # Ridge regularization
-  
-  # Companion matrix stabilization (Alvarez Step 5)
-  eigenvalue_threshold: 0.98  # Scale spectral radius to ≤0.98
-  
-  # Forecasting
-  forecast:
-    enabled: true
-    test_runs: 40             # Forecast all 40 test runs
+# ============================================================================
+# ROM-MVAR CONFIGURATION
+# ============================================================================
 
-# Output configuration
-output:
-  base_dir: "oscar_output"
-  save_pod_basis: true
-  save_mvar_model: true
-  save_predictions: true
-  save_metrics: true
-  save_animations: false      # Skip on cluster
+# ROM temporal subsampling
+rom_subsample: 5            # Subsample by 5 → Δt_ROM = 0.25s
 
-# Computational settings
-computational:
-  use_gpu: false
-  n_jobs: 1
-  random_seed: 42
-  verbose: true
+# POD parameters
+pod_target_energy: 0.995    # Will be overridden by fixed_d
+fixed_d: 40                 # FIXED: Use exactly 40 modes
 
-# Metadata
-metadata:
-  experiment_name: "long_duration_d40"
-  description: "20s trajectories with POD d=40, MVAR w=20, companion stabilization"
-  version: "2.0"
-  author: "Maria"
-  date: "2025-12-08"
+# MVAR parameters
+mvar_lag: 20                # Lag order w=20
+ridge_alpha: 0.05           # Ridge regularization
+
+# Companion matrix stabilization (Alvarez Step 5)
+eigenvalue_threshold: 0.98  # Scale spectral radius to ≤0.98
