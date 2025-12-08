@@ -25,7 +25,7 @@ sim:
   Lx: 15.0                  # Half domain
   Ly: 15.0                  # Half domain
   bc: "periodic"
-  T: 1.0                    # TEST RUN: 1s (change to 50s after verification)
+  T: 2.0                    # TEST RUN: 2s (testing lag=10 impact)
   dt: 0.05
   save_every: 1
   neighbor_rebuild: 5
@@ -195,15 +195,16 @@ test_ic:
 # ============================================================================
 rom:
   pod_energy: 0.99          # REDUCED: 99% vs 99.5% → fewer modes
-  mvar_lag: 2               # REDUCED: lag=2 vs lag=4 → simpler dynamics
+  mvar_lag: 10              # INCREASED: lag=10 (testing longer memory)
   ridge_alpha: 0.5          # VERY STRONG: 10× stronger than v1
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (with reduced complexity + strong regularization)
+# EXPECTED RESULTS (T=2s, lag=10 experiment)
 # ============================================================================
-# POD: ~40-50 modes (99% energy vs 99.5%)
-# Training R²: ~0.95-0.97 (lower due to strong α, but acceptable)
+# POD: ~80-100 modes (99% energy, T=2s)
+# MVAR: lag=10 (more parameters, longer memory)
+# Training R²: ~0.93-0.95 (strong α may limit fit)
 # Max eigenvalue: < 0.95 (STABLE by design)
-# Test R²: > 0.5 (hopefully!)
+# Test R²: Comparing vs lag=2 baseline (R²=0.166)
 # ============================================================================
