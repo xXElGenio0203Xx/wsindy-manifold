@@ -195,20 +195,21 @@ test_ic:
 # ============================================================================
 rom:
   pod_energy: 0.975         # FIXED: 97.5% energy
-  mvar_lag: 8               # REDUCED: lag=8 (from 10)
+  mvar_lag: 14              # INCREASED: lag=14 (testing longer memory)
   ridge_alpha: 0.3          # REDUCED: From 0.5 to 0.3 (less regularization)
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (T=2s, lag=8, POD=97.5%, ridge=0.3)
+# EXPECTED RESULTS (T=2s, lag=14, POD=97.5%, ridge=0.3)
 # ============================================================================
 # POD: ~139 modes (97.5% energy, established from previous run)
-# MVAR: lag=8, ~123,392 parameters (8 × 139 × 139)
+# MVAR: lag=14, ~270,886 parameters (14 × 139 × 139)
 # Ridge: α=0.3 (reduced from 0.5 to allow more flexibility)
 # Max eigenvalue: < 0.95 (STABLE by design)
-# Test R²: Testing if shorter lag + less regularization improves fit
-# Hypothesis: lag=8 may be sweet spot (less overfitting than 10, more memory than 2)
+# Test R²: Testing if longer lag compensates for reduced regularization
+# Hypothesis: lag=14 may capture more temporal structure
 # Previous results:
-#   - lag=10, POD=97.5%, α=0.5: R²=0.2293
 #   - lag=10, POD=99%, α=0.5: R²=0.2353 (best so far)
+#   - lag=10, POD=97.5%, α=0.5: R²=0.2293
+#   - lag=8, POD=97.5%, α=0.3: R²=0.1948
 # ============================================================================
