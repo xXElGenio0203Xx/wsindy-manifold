@@ -25,7 +25,7 @@ sim:
   Lx: 15.0                  # Half domain
   Ly: 15.0                  # Half domain
   bc: "periodic"
-  T: 2.0                    # BEST: 2s trajectories
+  T: 3.0                    # INCREASED: 3s (longer trajectories for more training data)
   dt: 0.05
   save_every: 1
   neighbor_rebuild: 5
@@ -194,19 +194,19 @@ test_ic:
 # ROM SETTINGS: REDUCED COMPLEXITY + VERY STRONG REGULARIZATION
 # ============================================================================
 rom:
-  pod_energy: 0.875         # REDUCED: 87.5% energy (even fewer modes)
-  mvar_lag: 20              # INCREASED: lag=20 (longer memory)
-  ridge_alpha: 0.3          # BEST: ridge=0.3
+  pod_energy: 0.85          # REDUCED: 85% energy (even fewer modes)
+  mvar_lag: 25              # INCREASED: lag=25 (even longer memory)
+  ridge_alpha: 0.4          # INCREASED: ridge=0.4 (more regularization)
   eigenvalue_threshold: 0.95  # Scale down if any |λ| > 0.95
   
 # ============================================================================
-# EXPECTED RESULTS (POD=87.5%, T=2s, lag=20, ridge=0.3)
+# EXPECTED RESULTS (POD=85%, T=3s, lag=25, ridge=0.4)
 # ============================================================================
-# POD: ~50-60 modes (87.5% energy, very compact representation)
-# MVAR: lag=20, ~50,000-72,000 parameters (20 × r × r)
-# Hypothesis: Longer lag may compensate for fewer modes
-# Testing if lag=20 captures more temporal structure with simpler representation
+# POD: ~50-55 modes (85% energy, very compact)
+# MVAR: lag=25, ~62,500-75,625 parameters (25 × r × r)
+# Longer trajectories (3s) provide more training samples per run
+# Hypothesis: lag=25 + stronger regularization improves on lag=20 results
 # Previous results:
-#   - POD=97.5%, lag=14: R²=0.304, 139 modes, 270k params (best)
-#   - POD=90%, lag=14: R²=0.291, 72 modes, 73k params (-4.3%)
+#   - POD=87.5%, lag=20, α=0.3: R²=0.404 (current best)
+#   - POD=97.5%, lag=14, α=0.3: R²=0.304
 # ============================================================================
