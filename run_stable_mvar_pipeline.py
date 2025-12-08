@@ -491,6 +491,16 @@ def main():
     print("STEP 2: Global POD and MVAR Training")
     print("="*80)
     
+    # Get ROM subsampling parameter
+    ROM_SUBSAMPLE = rom_config.get('rom_subsample', 1)  # Default: no subsampling
+    dt_micro = BASE_CONFIG['sim']['dt']
+    dt_rom = ROM_SUBSAMPLE * dt_micro
+    
+    print(f"\nROM temporal subsampling:")
+    print(f"   Micro dt: {dt_micro}s")
+    print(f"   ROM subsample: every {ROM_SUBSAMPLE} frames")
+    print(f"   ROM dt: {dt_rom}s")
+    
     # Load all training densities
     print("\nLoading training densities...")
     all_rho = []
@@ -499,14 +509,20 @@ def main():
         density_file = run_dir / "density.npz"
         density_data = np.load(density_file)
         rho = density_data["rho"]
-        all_rho.append(rho)
+        
+        # Subsample for ROM
+        rho_rom = rho[::ROM_SUBSAMPLE]
+        all_rho.append(rho_rom)
     
     # Stack into snapshot matrix
     all_rho = np.array(all_rho)
-    M, T, ny, nx = all_rho.shape
-    X_all = all_rho.reshape(M * T, ny * nx)
+    M, T_rom, ny, nx = all_rho.shape
+    X_all = all_rho.reshape(M * T_rom, ny * nx)
     
-    print(f"\n✓ Snapshot matrix shape: ({M*T}, {ny*nx})")
+    print(f"\n✓ Original frames per run: {rho.shape[0]}")
+    print(f"✓ ROM frames per run: {T_rom}")
+    print(f"✓ Spatial grid: {ny} × {nx}")
+    print(f"✓ Snapshot matrix shape: ({M*T_rom}, {ny*nx})")
     
     # Compute POD
     print("\nComputing global POD...")
@@ -517,71 +533,175 @@ def main():
     
     # Determine number of modes
     TARGET_ENERGY = rom_config.get('pod_energy', 0.995)
+    FIXED_D = rom_config.get('fixed_d', None)  # NEW: Hard cap on latent dimension
+    
     total_energy = np.sum(S**2)
     cumulative_energy = np.cumsum(S**2) / total_energy
-    R_POD = np.searchsorted(cumulative_energy, TARGET_ENERGY) + 1
+    
+    if FIXED_D is not None:
+        # Use fixed dimension (Alvarez-style small ROM)
+        R_POD = min(FIXED_D, len(S))
+        energy_captured = cumulative_energy[R_POD - 1]
+        print(f"✓ Using FIXED d={R_POD} modes (energy={energy_captured:.4f}, hard cap)")
+    else:
+        # Use energy threshold
+        R_POD = np.searchsorted(cumulative_energy, TARGET_ENERGY) + 1
+        energy_captured = cumulative_energy[R_POD - 1]
+        print(f"✓ R_POD = {R_POD} modes (energy={energy_captured:.4f}, threshold={TARGET_ENERGY})")
     
     U_r = U[:, :R_POD]
-    energy_captured = cumulative_energy[R_POD - 1]
-    
-    print(f"✓ R_POD = {R_POD} modes ({energy_captured:.4f} energy)")
     
     # Project to latent space
     X_latent = X_centered @ U_r
     print(f"✓ Latent training data shape: ({M*T}, {R_POD})")
     
     # Train MVAR
-    P_LAG = rom_config.get('mvar_lag', 4)
-    RIDGE_ALPHA = rom_config.get('ridge_alpha', 1e-6)
+    P_LAG = rom_config.get('mvar_lag', 5)  # Default to 5 for MVAR(5)
+    RIDGE_ALPHA = rom_config.get('ridge_alpha', 0.05)  # Default to 0.05
     
-    print(f"\nTraining global MVAR (p={P_LAG}, α={RIDGE_ALPHA})...")
-    from sklearn.linear_model import Ridge
+    print(f"\nTraining MVAR({P_LAG}) in latent space (d={R_POD}, α={RIDGE_ALPHA})...")
     
-    p = P_LAG
-    n = M * T - p
-    r = R_POD
+    w = P_LAG  # lag window
+    d = R_POD  # latent dimension
     
-    Y = X_latent[p:, :]
-    Phi = np.zeros((n, p * r))
-    for lag in range(p):
-        Phi[:, lag*r:(lag+1)*r] = X_latent[p-lag-1:n+p-lag-1, :]
+    # Build regression dataset (Y_minus, Y_plus) as per Step 4.2
+    print(f"   Building regression dataset...")
+    X_minus_list = []
+    X_plus_list = []
     
-    # Fit Ridge regression
-    model = Ridge(alpha=RIDGE_ALPHA, fit_intercept=False)
-    model.fit(Phi, Y)
-    A_flat = model.coef_
-    A_matrices = A_flat.reshape(r, p, r).transpose(1, 0, 2)
+    # X_latent has shape (M*T, d), we need to split by runs and build time series
+    samples_per_run = T  # number of timesteps per training run
+    
+    for run_idx in range(M):
+        Y_r = X_latent[run_idx * T:(run_idx + 1) * T, :]  # (T, d)
+        T_rom = Y_r.shape[0]
+        
+        for t in range(w, T_rom):
+            # Current target y_t
+            x_plus = Y_r[t]  # shape (d,)
+            # Stack the last w states [y_{t-1}, ..., y_{t-w}]
+            x_minus = Y_r[t-w:t][::-1].reshape(-1)  # (w, d) -> reverse -> flatten to (w*d,)
+            X_plus_list.append(x_plus)
+            X_minus_list.append(x_minus)
+    
+    # Stack over all runs
+    X_plus = np.vstack(X_plus_list)    # shape (N, d)
+    X_minus = np.vstack(X_minus_list)  # shape (N, d*w)
+    N_samples = X_plus.shape[0]
+    
+    print(f"   Dataset size: N={N_samples} samples (from {M} runs × ~{T-w} timesteps each)")
+    
+    # Fit ridge regression (Step 4.3)
+    print(f"   Fitting ridge regression with α={RIDGE_ALPHA}...")
+    Y_plus = X_plus.T    # (d, N)
+    Y_minus = X_minus.T  # (d*w, N)
+    
+    G = (Y_minus @ Y_minus.T) / N_samples      # (d*w, d*w)
+    C = (Y_plus @ Y_minus.T) / N_samples       # (d, d*w)
+    
+    A = C @ np.linalg.inv(G + RIDGE_ALPHA * np.eye(d * w))   # (d, d*w)
+    
+    # Reshape A into block matrices A_1,...,A_w (Step 4.4)
+    A_blocks = []
+    for j in range(w):
+        A_j = A[:, j*d:(j+1)*d]    # each A_j has shape (d, d)
+        A_blocks.append(A_j)
+    
+    # Convert to format expected by rest of pipeline: (w, d, d)
+    A_matrices = np.stack(A_blocks, axis=0)  # shape (w, d, d)
+    
+    print(f"   Block matrices A_1,...,A_{w} created, each shape ({d}, {d})")
+    for j in range(w):
+        norm_j = np.linalg.norm(A_blocks[j])
+        print(f"     ||A_{j+1}|| = {norm_j:.4f}")
     
     # Compute training metrics
-    Y_pred = Phi @ A_flat.T
-    ss_res = np.sum((Y - Y_pred) ** 2)
-    ss_tot = np.sum((Y - Y.mean(axis=0)) ** 2)
+    Y_pred_train = X_minus @ A.T  # (N, d)
+    ss_res = np.sum((X_plus - Y_pred_train) ** 2)
+    ss_tot = np.sum((X_plus - X_plus.mean(axis=0)) ** 2)
     train_r2 = 1 - ss_res / ss_tot if ss_tot > 1e-10 else (1.0 if ss_res < 1e-10 else 0.0)
-    train_rmse = np.sqrt(np.mean((Y - Y_pred) ** 2))
+    train_rmse = np.sqrt(np.mean((X_plus - Y_pred_train) ** 2))
     
-    # Check stability
-    max_eig = max(np.max(np.abs(np.linalg.eigvals(A_matrices[i]))) for i in range(p))
-    
-    # Eigenvalue scaling for stability (NEW)
-    eigenvalue_threshold = rom_config.get('eigenvalue_threshold', 0.95)
-    if max_eig > eigenvalue_threshold:
-        scale_factor = eigenvalue_threshold / max_eig
-        A_matrices_orig = A_matrices.copy()
-        A_matrices = A_matrices * scale_factor
-        max_eig_scaled = max(np.max(np.abs(np.linalg.eigvals(A_matrices[i]))) for i in range(p))
-        print(f"   ⚠ Max eigenvalue {max_eig:.4f} > {eigenvalue_threshold}")
-        print(f"   → Scaled matrices by {scale_factor:.4f}")
-        print(f"   → New max eigenvalue: {max_eig_scaled:.4f}")
-        max_eig = max_eig_scaled
-    
-    print(f"✓ MVAR trained: {r}D latent, lag={p}")
+    print(f"\n✓ MVAR({w}) trained: {d}D latent, {N_samples} samples")
     print(f"   Training R²: {train_r2:.4f}")
     print(f"   Training RMSE: {train_rmse:.4f}")
-    print(f"   Max |eigenvalue|: {max_eig:.4f}")
-    if max_eig < 1.0:
-        print(f"   ✓ Model is STABLE (all |λ| < 1)")
+    
+    # ===================================================================
+    # STEP 5: EIGENVALUE SCALING FOR STABILITY (COMPANION MATRIX METHOD)
+    # ===================================================================
+    print(f"\n{'='*80}")
+    print("STEP 5: Eigenvalue Scaling for Stability (Companion Matrix)")
+    print("="*80)
+    
+    # 5.1. Build companion matrix A_comp ∈ R^(dw × dw)
+    print(f"\n5.1. Building companion matrix ({d*w} × {d*w})...")
+    dw = d * w
+    A_comp = np.zeros((dw, dw))
+    
+    # Top block row: [A_1 A_2 ... A_w]
+    A_comp[:d, :] = np.hstack([A_matrices[j] for j in range(w)])  # shape (d, d*w)
+    
+    # Subdiagonal identity blocks (shift register structure)
+    for i in range(1, w):
+        A_comp[i*d:(i+1)*d, (i-1)*d:i*d] = np.eye(d)
+    
+    print(f"   ✓ Companion matrix shape: {A_comp.shape}")
+    
+    # 5.2. Eigenvalue scaling
+    print(f"\n5.2. Computing eigenvalues and scaling...")
+    rho_max = rom_config.get('eigenvalue_threshold', 0.98)
+    
+    eigvals, eigvecs = np.linalg.eig(A_comp)
+    rho_before = np.max(np.abs(eigvals))
+    print(f"   Companion spectral radius (before): {rho_before:.6f}")
+    
+    if rho_before > rho_max:
+        print(f"   ⚠ Spectral radius {rho_before:.6f} > {rho_max}")
+        print(f"   → Applying eigenvalue scaling...")
+        
+        # Global scaling: scale all eigenvalues uniformly
+        c = rho_max / rho_before
+        eigvals_scaled = c * eigvals
+        
+        # Reconstruct scaled companion matrix
+        A_comp_scaled = eigvecs @ np.diag(eigvals_scaled) @ np.linalg.inv(eigvecs)
+        A_comp_scaled = A_comp_scaled.real  # Discard tiny imaginary parts
+        
+        # Verify new spectral radius
+        eigvals_new, _ = np.linalg.eig(A_comp_scaled)
+        rho_after = np.max(np.abs(eigvals_new))
+        print(f"   → Scaling factor: {c:.6f}")
+        print(f"   ✓ Companion spectral radius (after): {rho_after:.6f}")
     else:
-        print(f"   ⚠ Model may be UNSTABLE ({max_eig:.4f} ≥ 1)")
+        print(f"   ✓ Already stable (ρ = {rho_before:.6f} ≤ {rho_max})")
+        A_comp_scaled = A_comp
+        rho_after = rho_before
+    
+    # 5.3. Extract stabilized A_j blocks from top row
+    print(f"\n5.3. Extracting stabilized A_j blocks...")
+    top_row = A_comp_scaled[:d, :]  # shape (d, d*w)
+    
+    A_matrices_stable = []
+    for j in range(w):
+        A_j_stable = top_row[:, j*d:(j+1)*d]  # (d, d)
+        A_matrices_stable.append(A_j_stable)
+    
+    # Update A_matrices with stabilized version
+    A_matrices = np.stack(A_matrices_stable, axis=0)  # (w, d, d)
+    
+    # Print block matrix norms for stabilized version
+    print(f"   Stabilized block matrix norms:")
+    for j in range(w):
+        norm_j = np.linalg.norm(A_matrices[j], 'fro')
+        print(f"      ||A_{j+1}|| = {norm_j:.4f}")
+    
+    print(f"\n✓ MVAR model spectrally stabilized")
+    print(f"   Spectral radius: {rho_before:.6f} → {rho_after:.6f}")
+    print(f"   Training R²: {train_r2:.4f}")
+    if rho_after < 1.0:
+        print(f"   ✓ Model is STABLE (ρ = {rho_after:.4f} < 1)")
+    else:
+        print(f"   ⚠ Model may be UNSTABLE (ρ = {rho_after:.4f} ≥ 1)")
     
     # Save models
     MVAR_DIR = OUTPUT_DIR / "mvar"
@@ -603,12 +723,14 @@ def main():
     np.savez_compressed(
         MVAR_DIR / "mvar_model.npz",
         A_matrices=A_matrices,
-        p=p,
-        r=r,
+        A_companion=A_comp_scaled,
+        p=w,
+        r=d,
         alpha=RIDGE_ALPHA,
         train_r2=train_r2,
         train_rmse=train_rmse,
-        max_eigenvalue=max_eig
+        rho_before=float(rho_before),
+        rho_after=float(rho_after)
     )
     
     pod_mvar_time = time.time() - train_start - train_time
@@ -680,10 +802,14 @@ def main():
         
         # Load true density
         density_data = np.load(run_dir / "density_true.npz")
-        rho_true = density_data['rho']
+        rho_true_full = density_data['rho']
         xgrid = density_data['xgrid']
         ygrid = density_data['ygrid']
-        times = density_data['times']
+        times_full = density_data['times']
+        
+        # Subsample for ROM (same as training)
+        rho_true = rho_true_full[::ROM_SUBSAMPLE]
+        times = times_full[::ROM_SUBSAMPLE]
         
         T_test = rho_true.shape[0]
         
@@ -697,12 +823,12 @@ def main():
         x_latent = (rho_flat - X_mean) @ U_r
         
         # MVAR prediction
-        x_pred = np.zeros((T_test, r))
-        x_pred[:p] = x_latent[:p]  # Use true IC
+        x_pred = np.zeros((T_test, d))
+        x_pred[:w] = x_latent[:w]  # Use true IC for first w timesteps
         
-        for t in range(p, T_test):
-            x_next = np.zeros(r)
-            for lag_idx in range(p):
+        for t in range(w, T_test):
+            x_next = np.zeros(d)
+            for lag_idx in range(w):
                 x_next += A_matrices[lag_idx] @ x_pred[t - lag_idx - 1]
             x_pred[t] = x_next
         

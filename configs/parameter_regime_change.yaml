@@ -1,0 +1,232 @@
+# ============================================================================
+# ALVAREZ-STYLE ROM-MVAR CONFIGURATION
+# ============================================================================
+# Testing Alvarez-like ratios with compact ROM and strong data-to-parameter ratio
+#
+# TARGET STRUCTURE:
+#   - Training: 400 runs × T=1s (quick test, will scale to 50s)
+#   - ROM time step: Δt_ROM = 0.25s (subsample every 5 frames from dt=0.05)
+#   - POD dimension: d = 25 (fixed, hard cap)
+#   - MVAR lag: w = 5
+#   - MVAR params: 25² × 5 = 3,125
+#   - ROM samples: 400 × (T / 0.25) = 400 × 4 = 1,600 (for T=1s test)
+#   - Ratio params/data ≈ 3125/1600 ≈ 2.0 (will be ~0.04 at T=50s)
+#
+# ALVAREZ ANALOGY:
+#   - Small latent dimension (d=25)
+#   - Short lag (w=5)
+#   - Temporal subsampling (Δt_ROM = 0.25s)
+#   - Spectral stabilization (ρ_max = 0.98)
+#   - Strong regularization (ridge α = 0.05)
+# ============================================================================
+
+# Model
+model:
+  type: discrete
+  speed: 2.0
+  speed_mode: constant_with_forces
+
+# Simulation parameters
+sim:
+  N: 150
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+  T: 1.0                    # START: 1s for quick test (will scale to 50s)
+  dt: 0.05                  # Micro timestep: 0.05s
+  save_every: 1
+  neighbor_rebuild: 5
+  integrator: "euler"
+
+# Vicsek alignment
+params:
+  R: 3.0
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+# Morse forces
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Cr: 0.3
+    Ca: 1.0
+    lr: 0.5
+    la: 2.0
+    rcut_factor: 3.0
+    mu_t: 0.3
+
+alignment:
+  enabled: true
+
+# Outputs
+outputs:
+  run_name: "stable_mvar_v2"
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 64    # Reduced from 128
+  density_bandwidth: 2.0
+
+# ============================================================================
+# TRAINING: Same mixed distributions as robust_v1 (400 runs)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN DISTRIBUTIONS (200 runs = 50%)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 200
+    
+    # 5×5 spatial grid
+    positions_x: [3.75, 7.5, 11.25, 15.0, 18.75]
+    positions_y: [3.75, 7.5, 11.25, 15.0, 18.75]
+    
+    # 4 variances per position
+    variances: [0.5, 1.0, 2.0, 3.0]
+    
+    # Calculation: 5×5 positions × 4 variances × 2 samples = 200 runs
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM DISTRIBUTIONS (100 runs = 25%)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 100
+    
+    # Sample uniform at different random seeds
+    n_samples: 100
+  
+  # -------------------------------------------------------------------------
+  # RING DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 50
+    
+    # 5 different radii
+    radii: [2.0, 3.0, 4.0, 5.0, 6.0]
+    
+    # 2 different widths per radius
+    widths: [0.3, 0.6]
+    
+    # Calculation: 5 radii × 2 widths × 5 samples = 50 runs
+    n_samples_per_config: 5
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 50
+    
+    # 5 different separations
+    separations: [3.0, 4.5, 6.0, 7.5, 9.0]
+    
+    # 2 different cluster sizes
+    sigmas: [0.8, 1.5]
+    
+    # Calculation: 5 separations × 2 sigmas × 5 samples = 50 runs
+    n_samples_per_config: 5
+
+# ============================================================================
+# TESTING: Same as robust_v1 (40 runs)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN TEST (20 runs)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 20
+    
+    # Test on interpolated positions (between training grid)
+    test_positions_x: [5.5, 9.0, 13.0, 16.5]
+    test_positions_y: [5.5, 9.0, 13.0, 16.5]
+    
+    # Test variance (not in training set)
+    test_variances: [1.5]
+    
+    # Plus 4 extrapolation tests (corners)
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM TEST (5 runs)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 5
+  
+  # -------------------------------------------------------------------------
+  # RING TEST (8 runs)
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 8
+    
+    # Interpolation: radii between training values
+    test_radii: [2.5, 3.5, 4.5, 5.5]
+    test_widths: [0.45]
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER TEST (7 runs)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    
+    # Test on interpolated separations
+    test_separations: [3.75, 5.25, 6.75, 8.25]
+    test_sigmas: [1.1]
+    
+    # Plus 3 extrapolation tests
+    extrapolation_separations: [2.0, 10.5, 12.0]
+    extrapolation_sigma: [1.1]
+
+# ============================================================================
+# ROM SETTINGS: ALVAREZ-STYLE COMPACT ROM
+# ============================================================================
+rom:
+  # POD: Fixed dimension (Alvarez-style hard cap)
+  pod_energy: 0.97          # Informational only; fixed_d overrides
+  fixed_d: 25               # HARD CAP: d = 25 modes (compact latent space)
+  
+  # MVAR: Modest lag with moderate regularization
+  mvar_lag: 5               # w = 5 (short temporal memory)
+  ridge_alpha: 0.05         # Moderate ridge regularization
+  
+  # Spectral stabilization
+  eigenvalue_threshold: 0.98  # Scale eigenvalues if ρ_max > 0.98
+  
+  # Temporal subsampling: ROM operates at slower time scale
+  rom_subsample: 5          # Use every 5th frame → Δt_ROM = 0.25s
+  
+# ============================================================================
+# EXPECTED RESULTS (Alvarez-style ROM, T=1s test)
+# ============================================================================
+# Micro timesteps: T=1s / dt=0.05s = 20 frames
+# ROM timesteps: 20 / 5 = 4 frames @ Δt_ROM=0.25s
+# POD: FIXED d=25 modes (hard cap)
+# MVAR: lag=5, params = 25² × 5 = 3,125
+# Training samples: 400 runs × 4 frames = 1,600
+# Ratio params/data: 3,125 / 1,600 ≈ 2.0
+#
+# NOTE: At T=50s, ratio will be: 3,125 / 80,000 ≈ 0.04 (Alvarez-like!)
+# This test verifies the pipeline works before scaling to T=50s
+# ============================================================================
+# Note: Runtime will be significantly longer (~20-30 minutes)
+# ============================================================================
