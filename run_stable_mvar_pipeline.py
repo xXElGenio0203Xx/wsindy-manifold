@@ -1031,7 +1031,7 @@ def main():
             "lag_order": int(w),
             "latent_dimension": int(d),
             "n_parameters": int(d * d * w),
-            "ridge_alpha": float(ridge_alpha),
+            "ridge_alpha": float(RIDGE_ALPHA),
             "training_r2": float(train_r2),
             "spectral_radius_before": float(rho_before),
             "spectral_radius_after": float(rho_after),
