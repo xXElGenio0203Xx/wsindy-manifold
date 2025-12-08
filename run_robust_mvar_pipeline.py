@@ -20,7 +20,8 @@ import yaml
 from multiprocessing import Pool, cpu_count
 
 from rectsim.vicsek_discrete import simulate_backend
-from rectsim.legacy_functions import kde_density_movie
+from rectsim.legacy_functions import kde_density_movie, polarization, mean_speed as compute_mean_speed, nematic_order
+from rectsim.metrics import angular_momentum
 
 def load_config(config_path):
     """Load configuration from YAML."""
@@ -627,14 +628,36 @@ def main():
         all_r2.append(r2)
         
         # Compute order parameters from density (spatial std as proxy)
-        order_true = np.array([np.std(rho_true[t]) for t in range(T_test)])
-        order_pred = np.array([np.std(rho_pred[t]) for t in range(T_test)])
+        order_spatial_true = np.array([np.std(rho_true[t]) for t in range(T_test)])
+        order_spatial_pred = np.array([np.std(rho_pred[t]) for t in range(T_test)])
         
-        # Save order parameters
+        # Load trajectory for particle-based order parameters
+        traj_data = np.load(run_dir / "trajectory.npz")
+        traj = traj_data['traj']  # (T, N, 2)
+        vel = traj_data['vel']    # (T, N, 2)
+        
+        # Compute particle-based order parameters
+        phi_true = np.array([polarization(vel[t]) for t in range(T_test)])
+        nematic_true = np.array([nematic_order(vel[t]) for t in range(T_test)])
+        speed_true = np.array([compute_mean_speed(vel[t]) for t in range(T_test)])
+        
+        # Compute angular momentum (needs positions and velocities)
+        config = BASE_CONFIG.copy()
+        Lx, Ly = config['sim']['Lx'], config['sim']['Ly']
+        ang_mom_true = np.array([angular_momentum(traj[t], vel[t]) for t in range(T_test)])
+        
+        # Save comprehensive order parameters
         order_df = pd.DataFrame({
             't': times,
-            'order_true': order_true,
-            'order_pred': order_pred,
+            # Density-based
+            'spatial_order_true': order_spatial_true,
+            'spatial_order_pred': order_spatial_pred,
+            # Particle-based (only from true trajectories)
+            'polarization': phi_true,
+            'nematic': nematic_true,
+            'mean_speed': speed_true,
+            'angular_momentum': ang_mom_true,
+            # Mass conservation
             'mass_true': mass_true_t,
             'mass_pred': mass_pred_t,
             'mass_error_rel': rel_mass_error

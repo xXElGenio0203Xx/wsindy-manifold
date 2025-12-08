@@ -373,42 +373,119 @@ def main():
         plt.savefig(ic_output_dir / "error_hist.png", dpi=200)
         plt.close()
         
-        # 5. Order parameters plot (from density)
+        # 5. Order parameters plot (from density + particles)
         order_params_path = run_dir / "order_params_density.csv"
         if order_params_path.exists():
             df_order = pd.read_csv(order_params_path)
             
-            fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+            # Check if we have particle-based metrics
+            has_particles = 'polarization' in df_order.columns
             
-            # Spatial order (std of density)
-            axes[0].plot(df_order['t'], df_order['order_true'], 'b-', linewidth=2, label='True', alpha=0.8)
-            axes[0].plot(df_order['t'], df_order['order_pred'], 'r--', linewidth=2, label='Predicted', alpha=0.8)
-            axes[0].set_ylabel('Spatial Order\n(Density Std)', fontsize=12, fontweight='bold')
-            axes[0].grid(True, alpha=0.3)
-            axes[0].legend(loc='best', fontsize=10)
-            axes[0].set_title(f'Order Parameters (Density-Based) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
-                             fontsize=14, fontweight='bold')
-            
-            # Mass conservation
-            axes[1].plot(df_order['t'], df_order['mass_true'], 'b-', linewidth=2, label='True', alpha=0.8)
-            axes[1].plot(df_order['t'], df_order['mass_pred'], 'g--', linewidth=2, label='Predicted (Corrected)', alpha=0.8)
-            axes[1].set_ylabel('Total Mass', fontsize=12, fontweight='bold')
-            axes[1].grid(True, alpha=0.3)
-            axes[1].legend(loc='best', fontsize=10)
-            
-            # Mass error
-            axes[2].semilogy(df_order['t'], df_order['mass_error_rel'] * 100, 'r-', linewidth=2)
-            axes[2].set_ylabel('Mass Error (%)', fontsize=12, fontweight='bold')
-            axes[2].set_xlabel('Time (s)', fontsize=12)
-            axes[2].grid(True, alpha=0.3)
-            max_err = df_order['mass_error_rel'].max() * 100
-            axes[2].axhline(max_err, color='k', linestyle='--', alpha=0.5,
-                           label=f'Max: {max_err:.2e}%')
-            axes[2].legend(loc='best', fontsize=10)
-            
-            plt.tight_layout()
-            plt.savefig(ic_output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
-            plt.close()
+            if has_particles:
+                # Create 5-panel figure with all order parameters
+                fig, axes = plt.subplots(5, 1, figsize=(14, 16), sharex=True)
+                
+                # 1. Polarization Φ (particle alignment)
+                axes[0].plot(df_order['t'], df_order['polarization'], 'b-', linewidth=2.5, alpha=0.85)
+                axes[0].set_ylabel('Polarization Φ\n(Velocity Alignment)', fontsize=12, fontweight='bold')
+                axes[0].grid(True, alpha=0.3)
+                axes[0].set_ylim([0, 1.05])
+                median_phi = df_order['polarization'].iloc[-len(df_order)//4:].median()
+                axes[0].axhline(median_phi, color='r', linestyle='--', alpha=0.5,
+                               label=f'Final median: {median_phi:.3f}')
+                axes[0].legend(loc='best', fontsize=10)
+                axes[0].set_title(f'Order Parameters - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
+                                 fontsize=14, fontweight='bold')
+                
+                # 2. Nematic Order Q (bidirectional alignment)
+                axes[1].plot(df_order['t'], df_order['nematic'], 'm-', linewidth=2.5, alpha=0.85)
+                axes[1].set_ylabel('Nematic Order Q\n(Bidirectional)', fontsize=12, fontweight='bold')
+                axes[1].grid(True, alpha=0.3)
+                axes[1].set_ylim([-0.05, 1.05])
+                
+                # 3. Mean Speed (kinetic energy proxy)
+                axes[2].plot(df_order['t'], df_order['mean_speed'], 'g-', linewidth=2.5, alpha=0.85)
+                axes[2].set_ylabel('Mean Speed\n(Kinetic Energy)', fontsize=12, fontweight='bold')
+                axes[2].grid(True, alpha=0.3)
+                axes[2].axhline(df_order['mean_speed'].mean(), color='k', linestyle='--', alpha=0.4)
+                
+                # 4. Angular Momentum (rotation/milling)
+                axes[3].plot(df_order['t'], df_order['angular_momentum'], 'c-', linewidth=2.5, alpha=0.85)
+                axes[3].set_ylabel('Angular Momentum\n(Milling/Rotation)', fontsize=12, fontweight='bold')
+                axes[3].grid(True, alpha=0.3)
+                axes[3].set_ylim([-0.05, 1.05])
+                
+                # 5. Spatial Order (density heterogeneity) - true vs predicted
+                axes[4].plot(df_order['t'], df_order['spatial_order_true'], 'b-', linewidth=2.5, label='True', alpha=0.8)
+                axes[4].plot(df_order['t'], df_order['spatial_order_pred'], 'r--', linewidth=2.5, label='Predicted', alpha=0.8)
+                axes[4].set_ylabel('Spatial Order\n(Density Std)', fontsize=12, fontweight='bold')
+                axes[4].set_xlabel('Time (s)', fontsize=12, fontweight='bold')
+                axes[4].grid(True, alpha=0.3)
+                axes[4].legend(loc='best', fontsize=11)
+                
+                plt.tight_layout()
+                plt.savefig(ic_output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
+                plt.close()
+                
+                # Also create mass conservation plot separately
+                fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+                
+                # Mass conservation
+                axes[0].plot(df_order['t'], df_order['mass_true'], 'b-', linewidth=2, label='True', alpha=0.8)
+                axes[0].plot(df_order['t'], df_order['mass_pred'], 'g--', linewidth=2, label='Predicted (Corrected)', alpha=0.8)
+                axes[0].set_ylabel('Total Mass', fontsize=12, fontweight='bold')
+                axes[0].grid(True, alpha=0.3)
+                axes[0].legend(loc='best', fontsize=10)
+                axes[0].set_title(f'Mass Conservation - {ic_type.replace("_", " ").title()}', 
+                                 fontsize=14, fontweight='bold')
+                
+                # Mass error
+                axes[1].semilogy(df_order['t'], df_order['mass_error_rel'] * 100, 'r-', linewidth=2)
+                axes[1].set_ylabel('Mass Error (%)', fontsize=12, fontweight='bold')
+                axes[1].set_xlabel('Time (s)', fontsize=12)
+                axes[1].grid(True, alpha=0.3)
+                max_err = df_order['mass_error_rel'].max() * 100
+                axes[1].axhline(max_err, color='k', linestyle='--', alpha=0.5,
+                               label=f'Max: {max_err:.2e}%')
+                axes[1].legend(loc='best', fontsize=10)
+                
+                plt.tight_layout()
+                plt.savefig(ic_output_dir / "mass_conservation.png", dpi=150, bbox_inches='tight')
+                plt.close()
+                
+            else:
+                # Fallback: only density-based metrics available
+                fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+                
+                # Spatial order (std of density)
+                axes[0].plot(df_order['t'], df_order['spatial_order_true'], 'b-', linewidth=2, label='True', alpha=0.8)
+                axes[0].plot(df_order['t'], df_order['spatial_order_pred'], 'r--', linewidth=2, label='Predicted', alpha=0.8)
+                axes[0].set_ylabel('Spatial Order\n(Density Std)', fontsize=12, fontweight='bold')
+                axes[0].grid(True, alpha=0.3)
+                axes[0].legend(loc='best', fontsize=10)
+                axes[0].set_title(f'Order Parameters (Density-Based) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
+                                 fontsize=14, fontweight='bold')
+                
+                # Mass conservation
+                axes[1].plot(df_order['t'], df_order['mass_true'], 'b-', linewidth=2, label='True', alpha=0.8)
+                axes[1].plot(df_order['t'], df_order['mass_pred'], 'g--', linewidth=2, label='Predicted (Corrected)', alpha=0.8)
+                axes[1].set_ylabel('Total Mass', fontsize=12, fontweight='bold')
+                axes[1].grid(True, alpha=0.3)
+                axes[1].legend(loc='best', fontsize=10)
+                
+                # Mass error
+                axes[2].semilogy(df_order['t'], df_order['mass_error_rel'] * 100, 'r-', linewidth=2)
+                axes[2].set_ylabel('Mass Error (%)', fontsize=12, fontweight='bold')
+                axes[2].set_xlabel('Time (s)', fontsize=12)
+                axes[2].grid(True, alpha=0.3)
+                max_err = df_order['mass_error_rel'].max() * 100
+                axes[2].axhline(max_err, color='k', linestyle='--', alpha=0.5,
+                                   label=f'Max: {max_err:.2e}%')
+                axes[2].legend(loc='best', fontsize=10)
+                
+                plt.tight_layout()
+                plt.savefig(ic_output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
+                plt.close()
         
         # 6. Original order parameters (from particle trajectories if available)
         order_params_traj_path = run_dir / "order_params.csv"

@@ -13,6 +13,11 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 import argparse
+import sys
+sys.path.insert(0, str(Path(__file__).parent / 'src'))
+
+from rectsim.legacy_functions import polarization, mean_speed as compute_mean_speed, nematic_order
+from rectsim.metrics import angular_momentum
 
 def reprocess_experiment(experiment_name):
     """Reprocess predictions for a given experiment."""
@@ -78,8 +83,48 @@ def reprocess_experiment(experiment_name):
             all_mass_violations.append(max_mass_violation)
             
             # Compute order parameters
-            order_true = np.array([np.std(rho_true[t]) for t in range(T)])
-            order_pred = np.array([np.std(rho_pred[t]) for t in range(T)])
+            order_spatial_true = np.array([np.std(rho_true[t]) for t in range(T)])
+            order_spatial_pred = np.array([np.std(rho_pred[t]) for t in range(T)])
+            
+            # Load trajectory for particle-based order parameters
+            traj_path = run_dir / "trajectory.npz"
+            if traj_path.exists():
+                traj_data = np.load(traj_path)
+                traj = traj_data['traj']  # (T, N, 2)
+                vel = traj_data['vel']    # (T, N, 2)
+                
+                # Compute particle-based order parameters
+                phi_true = np.array([polarization(vel[t]) for t in range(T)])
+                nematic_true = np.array([nematic_order(vel[t]) for t in range(T)])
+                speed_true = np.array([compute_mean_speed(vel[t]) for t in range(T)])
+                ang_mom_true = np.array([angular_momentum(traj[t], vel[t]) for t in range(T)])
+                
+                # Save comprehensive order parameters
+                order_df = pd.DataFrame({
+                    't': times,
+                    # Density-based
+                    'spatial_order_true': order_spatial_true,
+                    'spatial_order_pred': order_spatial_pred,
+                    # Particle-based (only from true trajectories)
+                    'polarization': phi_true,
+                    'nematic': nematic_true,
+                    'mean_speed': speed_true,
+                    'angular_momentum': ang_mom_true,
+                    # Mass conservation
+                    'mass_true': mass_true_t,
+                    'mass_pred': mass_pred_t,
+                    'mass_error_rel': rel_mass_error
+                })
+            else:
+                # Trajectory not available, save only density-based metrics
+                order_df = pd.DataFrame({
+                    't': times,
+                    'spatial_order_true': order_spatial_true,
+                    'spatial_order_pred': order_spatial_pred,
+                    'mass_true': mass_true_t,
+                    'mass_pred': mass_pred_t,
+                    'mass_error_rel': rel_mass_error
+                })
             
             # Save updated prediction
             np.savez_compressed(
@@ -90,15 +135,6 @@ def reprocess_experiment(experiment_name):
                 times=pred_data['times']
             )
             
-            # Save order parameters
-            order_df = pd.DataFrame({
-                't': times,
-                'order_true': order_true,
-                'order_pred': order_pred,
-                'mass_true': mass_true_t,
-                'mass_pred': mass_pred_t,
-                'mass_error_rel': rel_mass_error
-            })
             order_df.to_csv(run_dir / "order_params_density.csv", index=False)
             
             reprocessed += 1
