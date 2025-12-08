@@ -24,15 +24,15 @@ echo "Job ID: $SLURM_JOB_ID"
 echo ""
 
 # Load modules
-module load python/3.9.0
-module load gcc/10.2
+module load python/3.11.0
+module load gcc/12.1.0
 
 # Navigate to project directory
 cd ~/wsindy-manifold
 
 # Install dependencies
 echo "Installing dependencies..."
-pip install -q numpy scipy matplotlib pyyaml tqdm scikit-learn
+pip install -q numpy scipy matplotlib pyyaml tqdm scikit-learn pandas
 
 echo ""
 echo "========================================"
