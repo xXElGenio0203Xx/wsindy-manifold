@@ -1,0 +1,160 @@
+# ============================================================================
+# ALVAREZ-STYLE ROM CONFIG - PRODUCTION VERSION
+# ============================================================================
+# Well-conditioned MVAR design following Alvarez et al. principles
+#
+# Key design principles:
+#   - Longer training horizon: T = 8.0s (more windows per trajectory)
+#   - Micro dt = 0.1s (unchanged)
+#   - KDE bandwidth: 3.0 grid cells (more smoothing, lower effective rank)
+#   - POD: small latent space d = 20 (fixed_modes)
+#   - MVAR: short lag w = 5 (good memory vs. parameter count balance)
+#   - Ridge: alpha = 1e-4 (strong regularization)
+#   - Eigenvalue scaling: very mild, threshold = 0.999
+#   - Test horizon: 10s (extrapolation beyond training)
+#
+# Identifiability:
+#   K = T/dt = 8.0/0.1 = 80 steps per run
+#   Windows per run ≈ K - w = 75
+#   Total windows: 400 runs × 75 = 30,000
+#   Parameters: d²×w = 20²×5 = 2,000
+#   Ratio ρ = 30,000/2,000 = 15 ✓ (well-conditioned)
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# MICRO MODEL
+# ---------------------------------------------------------------------------
+sim:
+  N: 40
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+  T: 8.0                    # Training horizon: 8 seconds
+  dt: 0.1
+  v0: 1.0
+  R: 2.0                    # Vicsek interaction radius
+  eta: 0.3                  # Noise level
+
+# ---------------------------------------------------------------------------
+# DENSITY COMPUTATION (higher smoothing for stability)
+# ---------------------------------------------------------------------------
+density:
+  nx: 64
+  ny: 64
+  bandwidth: 3.0            # 3 grid cells → more smoothing, lower effective rank
+
+# ---------------------------------------------------------------------------
+# TRAINING ICs (rich mix, 400 runs total)
+# ---------------------------------------------------------------------------
+train_ic:
+  n_train_per_type: 100     # 100 per type = 400 total
+  distributions:
+    # Gaussian clusters - various positions and variances
+    - type: "gaussian_cluster"
+      params: {center_x: 3.75, center_y: 3.75, std: 0.5}
+    - type: "gaussian_cluster"
+      params: {center_x: 7.5, center_y: 7.5, std: 0.5}
+    - type: "gaussian_cluster"
+      params: {center_x: 11.25, center_y: 11.25, std: 0.5}
+    - type: "gaussian_cluster"
+      params: {center_x: 7.5, center_y: 7.5, std: 1.0}
+    - type: "gaussian_cluster"
+      params: {center_x: 7.5, center_y: 7.5, std: 2.0}
+    - type: "gaussian_cluster"
+      params: {center_x: 7.5, center_y: 7.5, std: 3.0}
+    
+    # Uniform distributions
+    - type: "uniform"
+      params: {}
+    
+    # Ring structures
+    - type: "ring"
+      params: {radius: 2.0, std: 0.3}
+    - type: "ring"
+      params: {radius: 3.0, std: 0.3}
+    - type: "ring"
+      params: {radius: 4.0, std: 0.6}
+    - type: "ring"
+      params: {radius: 5.0, std: 0.6}
+    
+    # Two clusters
+    - type: "two_clusters"
+      params: {separation: 3.0, std: 0.8}
+    - type: "two_clusters"
+      params: {separation: 4.5, std: 0.8}
+    - type: "two_clusters"
+      params: {separation: 6.0, std: 1.5}
+    - type: "two_clusters"
+      params: {separation: 7.5, std: 1.5}
+
+# ---------------------------------------------------------------------------
+# TEST ICs (10s trajectories, out-of-training configurations)
+# ---------------------------------------------------------------------------
+test_ic:
+  n_test_per_type: 10       # 10 per type = 40 total
+  distributions:
+    # Test Gaussians at different positions/variances
+    - type: "gaussian_cluster"
+      params: {center_x: 5.5, center_y: 5.5, std: 1.5}
+    - type: "gaussian_cluster"
+      params: {center_x: 9.0, center_y: 9.0, std: 1.5}
+    - type: "gaussian_cluster"
+      params: {center_x: 2.0, center_y: 2.0, std: 1.5}
+    
+    # Test uniform
+    - type: "uniform"
+      params: {}
+    
+    # Test rings
+    - type: "ring"
+      params: {radius: 2.5, std: 0.45}
+    - type: "ring"
+      params: {radius: 3.5, std: 0.45}
+    - type: "ring"
+      params: {radius: 4.5, std: 0.45}
+    
+    # Test two clusters
+    - type: "two_clusters"
+      params: {separation: 3.75, std: 1.1}
+    - type: "two_clusters"
+      params: {separation: 5.25, std: 1.1}
+    - type: "two_clusters"
+      params: {separation: 6.75, std: 1.1}
+
+test_sim:
+  T: 10.0                   # Test horizon: 10 seconds (extrapolation)
+
+# ---------------------------------------------------------------------------
+# ROM: ALVAREZ-STYLE PARAMETERS
+# ---------------------------------------------------------------------------
+rom:
+  energy_threshold: 0.98    # For diagnostics only (not used for selection)
+  latent_dim: 20            # FIXED: d = 20 latent modes (throw away noisy tail)
+
+mvar:
+  order: 5                  # Lag w = 5 (good memory without too many params)
+  ridge_alpha: 1.0e-4       # Strong ridge regularization (key for stability)
+  enforce_stability: true
+  eigenvalue_threshold: 0.999  # Mild eigenvalue scaling (safety net)
+  train_fraction: 0.8       # Use first 80% of each trajectory for training
+
+# ---------------------------------------------------------------------------
+# EVALUATION (measure extrapolation from end of training)
+# ---------------------------------------------------------------------------
+eval:
+  forecast_dt: 1            # Evaluate every time step
+  metrics:
+    - "mse"
+    - "mae"
+    - "r2"
+    - "mass_conservation"
+
+# ---------------------------------------------------------------------------
+# QUALITATIVE EFFECTS
+# ---------------------------------------------------------------------------
+# - Larger bandwidth (3.0) smooths high-frequency noise → steeper POD spectrum
+# - Fixed d=20 models only large-scale density structure (intentional)
+# - Short lag w=5 balances temporal memory with parameter efficiency
+# - Strong ridge alpha=1e-4 regularizes fit, reduces overfitting
+# - Mild eigenvalue threshold is safety net, not primary stabilization
+# - Result: Well-conditioned MVAR with excellent identifiability ratio
