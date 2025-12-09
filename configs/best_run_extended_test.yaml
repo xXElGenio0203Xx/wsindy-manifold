@@ -211,7 +211,7 @@ rom:
   fixed_modes: 25           # FORCE exactly 25 modes (from best run)
   mvar_lag: 20              # Lag = 20 (UNCHANGED from best run)
   ridge_alpha: 1.0e-6       # Ridge = 1e-6 (UNCHANGED from best run)
-  eigenvalue_threshold: null  # No eigenvalue scaling (not used in best run)
+  eigenvalue_threshold: 0.995  # Scale eigenvalues if spectral radius > 0.995
 
 # ============================================================================
 # TIME-RESOLVED EVALUATION SETTINGS
