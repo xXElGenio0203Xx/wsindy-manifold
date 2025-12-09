@@ -420,8 +420,14 @@ def main():
     print(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Load configuration
+    with open(args.config, 'r') as f:
+        full_config = yaml.safe_load(f)
+    
     (BASE_CONFIG, DENSITY_NX, DENSITY_NY, DENSITY_BANDWIDTH,
      train_ic_config, test_ic_config, rom_config) = load_config(args.config)
+    
+    # Extract evaluation config if present
+    eval_config = full_config.get('evaluation', {})
     
     OUTPUT_DIR = Path(f"oscar_output/{args.experiment_name}")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -859,7 +865,6 @@ def main():
         # =================================================================
         
         # Check if we should evaluate on a subset of timesteps
-        eval_config = config.get('evaluation', {})
         eval_start_time = eval_config.get('forecast_start', None)
         eval_end_time = eval_config.get('forecast_end', None)
         
@@ -928,6 +933,9 @@ def main():
         # COMPUTE TIME-RESOLVED R² (from warm-up to end)
         # =================================================================
         
+        # Compute POD reconstruction for full trajectory (needed for time-resolved)
+        rho_pod_recon_full = rho_pod_recon  # Already computed above
+        
         # Initialize arrays for time-resolved R²
         r2_recon_vs_time = np.zeros(T_test - w)
         r2_latent_vs_time = np.zeros(T_test - w)
@@ -952,7 +960,7 @@ def main():
             r2_latent_vs_time[t_idx - w] = 1 - ss_res_lat / ss_tot_lat if ss_tot_lat > 1e-10 else 0.0
             
             # R² POD (reconstruction quality)
-            rho_pod_slice = rho_pod_recon[t_slice]
+            rho_pod_slice = rho_pod_recon_full[t_slice]
             ss_res_pod = np.sum((rho_true_slice - rho_pod_slice) ** 2)
             r2_pod_vs_time[t_idx - w] = 1 - ss_res_pod / ss_tot if ss_tot > 1e-10 else 0.0
         
@@ -968,25 +976,28 @@ def main():
         })
         r2_time_df.to_csv(run_dir / "r2_vs_time.csv", index=False)
         
-        # Plot time-resolved R²
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(times_eval, r2_recon_vs_time, 'b-', linewidth=2, label='R² Reconstructed (Physical Space)')
-        ax.plot(times_eval, r2_latent_vs_time, 'r-', linewidth=2, label='R² Latent (ROM Space)')
-        ax.plot(times_eval, r2_pod_vs_time, 'g-', linewidth=2, label='R² POD (Basis Quality)')
-        ax.axhline(0, color='k', linestyle='--', linewidth=0.8, alpha=0.5)
-        ax.set_xlabel('Time (s)', fontsize=12)
-        ax.set_ylabel('R² Score', fontsize=12)
-        ax.set_title(f'Time-Resolved R² - {run_name}', fontsize=14, fontweight='bold')
-        ax.legend(loc='best', fontsize=10)
-        ax.grid(True, alpha=0.3)
-        ax.set_ylim([-0.1, 1.05])
-        plt.tight_layout()
-        plt.savefig(run_dir / "r2_vs_time.png", dpi=150, bbox_inches='tight')
-        plt.close()
+        # Plot time-resolved R² (import matplotlib here to avoid issues)
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(times_eval, r2_recon_vs_time, 'b-', linewidth=2, label='R² Reconstructed (Physical Space)')
+            ax.plot(times_eval, r2_latent_vs_time, 'r-', linewidth=2, label='R² Latent (ROM Space)')
+            ax.plot(times_eval, r2_pod_vs_time, 'g-', linewidth=2, label='R² POD (Basis Quality)')
+            ax.axhline(0, color='k', linestyle='--', linewidth=0.8, alpha=0.5)
+            ax.set_xlabel('Time (s)', fontsize=12)
+            ax.set_ylabel('R² Score', fontsize=12)
+            ax.set_title(f'Time-Resolved R² - {run_name}', fontsize=14, fontweight='bold')
+            ax.legend(loc='best', fontsize=10)
+            ax.grid(True, alpha=0.3)
+            ax.set_ylim([-0.1, 1.05])
+            plt.tight_layout()
+            plt.savefig(run_dir / "r2_vs_time.png", dpi=150, bbox_inches='tight')
+            plt.close()
+        except Exception as e:
+            print(f"Warning: Could not generate R² vs time plot: {e}")
         
         # Compute order parameters from density (spatial std as proxy)
         order_spatial_true = np.array([np.std(rho_true[t]) for t in range(T_test)])
