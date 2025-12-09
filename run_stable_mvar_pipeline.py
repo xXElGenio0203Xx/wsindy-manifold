@@ -858,34 +858,135 @@ def main():
         # COMPUTE MULTIPLE R² METRICS
         # =================================================================
         
+        # Check if we should evaluate on a subset of timesteps
+        eval_config = config.get('evaluation', {})
+        eval_start_time = eval_config.get('forecast_start', None)
+        eval_end_time = eval_config.get('forecast_end', None)
+        
+        # Determine evaluation window
+        if eval_start_time is not None and eval_end_time is not None:
+            dt_rom = BASE_CONFIG['sim']['dt'] * ROM_SUBSAMPLE
+            t_start_idx = int(eval_start_time / dt_rom)
+            t_end_idx = int(eval_end_time / dt_rom)
+            t_start_idx = max(w, t_start_idx)  # Ensure we're past warm-up
+            t_end_idx = min(T_test, t_end_idx)
+            
+            # Extract evaluation window
+            rho_true_eval = rho_true[t_start_idx:t_end_idx]
+            rho_pred_eval = rho_pred[t_start_idx:t_end_idx]
+            x_latent_eval = x_latent[t_start_idx:t_end_idx]
+            x_pred_eval = x_pred[t_start_idx:t_end_idx]
+            rho_pod_recon_eval = None  # Will compute below
+            
+            eval_window_str = f" (t={eval_start_time:.1f}-{eval_end_time:.1f}s)"
+        else:
+            # Use all timesteps after warm-up
+            rho_true_eval = rho_true[w:]
+            rho_pred_eval = rho_pred[w:]
+            x_latent_eval = x_latent[w:]
+            x_pred_eval = x_pred[w:]
+            rho_pod_recon_eval = None
+            
+            eval_window_str = f" (t={w*BASE_CONFIG['sim']['dt']*ROM_SUBSAMPLE:.1f}s+)"
+        
         # 1. R² in reconstructed (physical) space
-        ss_res_phys = np.sum((rho_true - rho_pred) ** 2)
-        ss_tot_phys = np.sum((rho_true - rho_true.mean()) ** 2)
+        ss_res_phys = np.sum((rho_true_eval - rho_pred_eval) ** 2)
+        ss_tot_phys = np.sum((rho_true_eval - rho_true_eval.mean()) ** 2)
         r2_reconstructed = 1 - ss_res_phys / ss_tot_phys if ss_tot_phys > 1e-10 else (1.0 if ss_res_phys < 1e-10 else 0.0)
         all_r2.append(r2_reconstructed)
         
         # 2. R² in latent space (ROM forecasting accuracy)
-        ss_res_latent = np.sum((x_latent - x_pred) ** 2)
-        ss_tot_latent = np.sum((x_latent - x_latent.mean(axis=0)) ** 2)
+        ss_res_latent = np.sum((x_latent_eval - x_pred_eval) ** 2)
+        ss_tot_latent = np.sum((x_latent_eval - x_latent_eval.mean(axis=0)) ** 2)
         r2_latent = 1 - ss_res_latent / ss_tot_latent if ss_tot_latent > 1e-10 else (1.0 if ss_res_latent < 1e-10 else 0.0)
         
         # 3. POD reconstruction error (how well POD captures true density)
         rho_pod_recon_flat = x_latent @ U_r.T + X_mean
         rho_pod_recon = rho_pod_recon_flat.reshape(T_test, ygrid.shape[0], xgrid.shape[0])
-        ss_res_pod = np.sum((rho_true - rho_pod_recon) ** 2)
-        ss_tot_pod = np.sum((rho_true - rho_true.mean()) ** 2)
+        
+        if eval_start_time is not None and eval_end_time is not None:
+            rho_pod_recon_eval = rho_pod_recon[t_start_idx:t_end_idx]
+        else:
+            rho_pod_recon_eval = rho_pod_recon[w:]
+        
+        ss_res_pod = np.sum((rho_true_eval - rho_pod_recon_eval) ** 2)
+        ss_tot_pod = np.sum((rho_true_eval - rho_true_eval.mean()) ** 2)
         r2_pod = 1 - ss_res_pod / ss_tot_pod if ss_tot_pod > 1e-10 else (1.0 if ss_res_pod < 1e-10 else 0.0)
         
         # Relative reconstruction error (normalized RMSE)
-        rmse_recon = np.sqrt(np.mean((rho_true - rho_pred) ** 2))
-        rmse_pod = np.sqrt(np.mean((rho_true - rho_pod_recon) ** 2))
-        rms_true = np.sqrt(np.mean(rho_true ** 2))
+        rmse_recon = np.sqrt(np.mean((rho_true_eval - rho_pred_eval) ** 2))
+        rmse_pod = np.sqrt(np.mean((rho_true_eval - rho_pod_recon_eval) ** 2))
+        rms_true = np.sqrt(np.mean(rho_true_eval ** 2))
         rel_error_recon = rmse_recon / rms_true if rms_true > 1e-10 else 0.0
         rel_error_pod = rmse_pod / rms_true if rms_true > 1e-10 else 0.0
         
         # Store metrics for all runs
         all_r2_latent.append(r2_latent)
         all_r2_pod.append(r2_pod)
+        
+        # =================================================================
+        # COMPUTE TIME-RESOLVED R² (from warm-up to end)
+        # =================================================================
+        
+        # Initialize arrays for time-resolved R²
+        r2_recon_vs_time = np.zeros(T_test - w)
+        r2_latent_vs_time = np.zeros(T_test - w)
+        r2_pod_vs_time = np.zeros(T_test - w)
+        
+        # Compute R² at each timestep (comparing against mean up to that point)
+        for t_idx in range(w, T_test):
+            t_slice = slice(w, t_idx + 1)
+            
+            # R² reconstructed (physical space)
+            rho_true_slice = rho_true[t_slice]
+            rho_pred_slice = rho_pred[t_slice]
+            ss_res = np.sum((rho_true_slice - rho_pred_slice) ** 2)
+            ss_tot = np.sum((rho_true_slice - rho_true_slice.mean()) ** 2)
+            r2_recon_vs_time[t_idx - w] = 1 - ss_res / ss_tot if ss_tot > 1e-10 else 0.0
+            
+            # R² latent (ROM space)
+            x_latent_slice = x_latent[t_slice]
+            x_pred_slice = x_pred[t_slice]
+            ss_res_lat = np.sum((x_latent_slice - x_pred_slice) ** 2)
+            ss_tot_lat = np.sum((x_latent_slice - x_latent_slice.mean(axis=0)) ** 2)
+            r2_latent_vs_time[t_idx - w] = 1 - ss_res_lat / ss_tot_lat if ss_tot_lat > 1e-10 else 0.0
+            
+            # R² POD (reconstruction quality)
+            rho_pod_slice = rho_pod_recon[t_slice]
+            ss_res_pod = np.sum((rho_true_slice - rho_pod_slice) ** 2)
+            r2_pod_vs_time[t_idx - w] = 1 - ss_res_pod / ss_tot if ss_tot > 1e-10 else 0.0
+        
+        # Save time-resolved metrics
+        dt_rom = BASE_CONFIG['sim']['dt'] * ROM_SUBSAMPLE
+        times_eval = np.arange(w, T_test) * dt_rom
+        
+        r2_time_df = pd.DataFrame({
+            'time': times_eval,
+            'r2_reconstructed': r2_recon_vs_time,
+            'r2_latent': r2_latent_vs_time,
+            'r2_pod': r2_pod_vs_time
+        })
+        r2_time_df.to_csv(run_dir / "r2_vs_time.csv", index=False)
+        
+        # Plot time-resolved R²
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(times_eval, r2_recon_vs_time, 'b-', linewidth=2, label='R² Reconstructed (Physical Space)')
+        ax.plot(times_eval, r2_latent_vs_time, 'r-', linewidth=2, label='R² Latent (ROM Space)')
+        ax.plot(times_eval, r2_pod_vs_time, 'g-', linewidth=2, label='R² POD (Basis Quality)')
+        ax.axhline(0, color='k', linestyle='--', linewidth=0.8, alpha=0.5)
+        ax.set_xlabel('Time (s)', fontsize=12)
+        ax.set_ylabel('R² Score', fontsize=12)
+        ax.set_title(f'Time-Resolved R² - {run_name}', fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim([-0.1, 1.05])
+        plt.tight_layout()
+        plt.savefig(run_dir / "r2_vs_time.png", dpi=150, bbox_inches='tight')
+        plt.close()
         
         # Compute order parameters from density (spatial std as proxy)
         order_spatial_true = np.array([np.std(rho_true[t]) for t in range(T_test)])

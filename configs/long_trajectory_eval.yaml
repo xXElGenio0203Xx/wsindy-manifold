@@ -1,0 +1,179 @@
+# ============================================================================
+# LONG TRAJECTORY EVALUATION - 20 SECOND FORECASTS
+# ============================================================================
+# Based on stable_mvar_v2 (32x32, 99% POD, w=12) but with:
+#   - T_train = 20s (longer training trajectories)
+#   - T_test = 20s (evaluate full 20s forecasts)
+#   - ridge_alpha = 0.01 (reduced from 0.4)
+#   - eigenvalue_threshold = 0.98 (stricter than 0.95)
+#   - Evaluate R² over t=2-20s using first w states as warm-up
+# ============================================================================
+
+# Model
+model:
+  type: discrete
+  speed: 2.0
+  speed_mode: constant_with_forces
+
+# Simulation parameters
+sim:
+  N: 150
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+  T: 20.0                   # 20 seconds for long trajectory evaluation
+  dt: 0.05
+  save_every: 1
+  neighbor_rebuild: 5
+  integrator: "euler"
+
+# Vicsek alignment
+params:
+  R: 3.0
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+# Morse forces
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Cr: 0.3
+    Ca: 1.0
+    lr: 0.5
+    la: 2.0
+    rcut_factor: 3.0
+    mu_t: 0.3
+
+alignment:
+  enabled: true
+
+# Outputs
+outputs:
+  run_name: "long_trajectory_eval"
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 32
+  density_bandwidth: 2.0
+
+# ============================================================================
+# TRAINING: Mixed distributions (400 runs)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  
+  gaussian:
+    enabled: true
+    n_runs: 200
+    positions_x: [3.75, 7.5, 11.25, 15.0, 18.75]
+    positions_y: [3.75, 7.5, 11.25, 15.0, 18.75]
+    variances: [0.5, 1.0, 2.0, 3.0]
+    n_samples_per_config: 2
+  
+  uniform:
+    enabled: true
+    n_runs: 100
+    n_samples: 100
+  
+  ring:
+    enabled: true
+    n_runs: 50
+    radii: [2.0, 3.0, 4.0, 5.0, 6.0]
+    widths: [0.3, 0.6]
+    n_samples_per_config: 5
+  
+  two_clusters:
+    enabled: true
+    n_runs: 50
+    separations: [3.0, 4.5, 6.0, 7.5, 9.0]
+    sigmas: [0.8, 1.5]
+    n_samples_per_config: 5
+
+# ============================================================================
+# TESTING: Stratified test set (40 runs)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  
+  gaussian:
+    enabled: true
+    n_runs: 20
+    test_positions_x: [5.5, 9.0, 13.0, 16.5]
+    test_positions_y: [5.5, 9.0, 13.0, 16.5]
+    test_variances: [1.5]
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+  
+  uniform:
+    enabled: true
+    n_runs: 5
+  
+  ring:
+    enabled: true
+    n_runs: 8
+    test_radii: [2.5, 3.5, 4.5, 5.5]
+    test_widths: [0.45]
+    n_samples_per_config: 2
+  
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [3.75, 5.25, 6.75, 8.25]
+    test_sigmas: [1.1]
+    extrapolation_separations: [2.0, 10.5, 12.0]
+    extrapolation_sigma: [1.1]
+
+# ============================================================================
+# DENSITY ESTIMATION
+# ============================================================================
+density:
+  enabled: true
+  nx: 32
+  ny: 32
+  method: "kde"
+  bandwidth: 2.0
+
+# ============================================================================
+# ROM SETTINGS: SAME AS STABLE_MVAR_V2 BUT WITH TUNED REGULARIZATION
+# ============================================================================
+rom:
+  subsample: 1              # Use all snapshots
+  pod_energy: 0.99          # 99% energy capture
+  mvar_lag: 12              # Moderate lag window
+  ridge_alpha: 0.01         # REDUCED: 0.01 (was 0.4)
+  eigenvalue_threshold: 0.98  # STRICTER: 0.98 (was 0.95)
+
+# ============================================================================
+# EVALUATION SETTINGS
+# ============================================================================
+evaluation:
+  forecast_start: 2.0       # Start evaluation at t=2s (after warm-up)
+  forecast_end: 20.0        # Evaluate up to t=20s
+  warm_up_mode: "true_states"  # Use first w states from ground truth as warm-up
+  
+# ============================================================================
+# EXPECTED RESULTS (32x32 grid, POD=99%, T=20s, w=12, α=0.01)
+# ============================================================================
+# Grid: 32×32 = 1024 dimensions
+# Training: 20s trajectories (400 steps per run)
+# POD: ~25-30 modes at 99% energy
+# Timesteps: 20s / 0.05s = 400 steps per run
+# Windows per run: 400 - 12 = 388
+# Total samples: 400 × 388 = 155,200
+# Parameters: ~25² × 12 ≈ 7,500 (if d≈25)
+# Ratio: 7,500/155,200 ≈ 0.048 (in Alvarez band!)
+# 
+# Key differences from stable_mvar_v2:
+#   - 4× longer trajectories (20s vs 5s)
+#   - 4.4× more training samples (155,200 vs 35,200)
+#   - 40× weaker regularization (0.01 vs 0.4)
+#   - Stricter eigenvalue threshold (0.98 vs 0.95)
+#   - Long-horizon evaluation (t=2-20s)
+# ============================================================================
