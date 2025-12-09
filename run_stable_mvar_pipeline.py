@@ -1147,7 +1147,7 @@ def main():
             "training_r2": float(train_r2),
             "spectral_radius_before": float(rho_before),
             "spectral_radius_after": float(rho_after),
-            "eigenvalue_threshold": float(rom_config.get('eigenvalue_threshold', 0.98))
+            "eigenvalue_threshold": float(rom_config.get('eigenvalue_threshold') or 0.0)
         },
         "testing": {
             "n_runs": int(n_test),
