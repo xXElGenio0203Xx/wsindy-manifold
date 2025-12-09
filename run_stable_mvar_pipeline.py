@@ -497,8 +497,8 @@ def main():
     print("STEP 2: Global POD and MVAR Training")
     print("="*80)
     
-    # Get ROM subsampling parameter
-    ROM_SUBSAMPLE = rom_config.get('rom_subsample', 1)  # Default: no subsampling
+    # Get ROM subsampling parameter (check both 'rom_subsample' and 'subsample' keys)
+    ROM_SUBSAMPLE = rom_config.get('rom_subsample', rom_config.get('subsample', 1))
     dt_micro = BASE_CONFIG['sim']['dt']
     dt_rom = ROM_SUBSAMPLE * dt_micro
     
