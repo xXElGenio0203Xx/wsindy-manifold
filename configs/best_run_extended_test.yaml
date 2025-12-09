@@ -1,0 +1,245 @@
+# ============================================================================
+# BEST RUN EXTENDED TEST: R²=0.509 Configuration with 10s Test Evaluation
+# ============================================================================
+# Based on parameter_regime_change results:
+#   - Training R² = 0.9995 (excellent fit)
+#   - Test R² = 0.509 (BEST result achieved)
+#   - POD: 25 modes, 49% energy (64×64 grid)
+#   - MVAR: lag=20, ridge=1e-6
+#   - Training: T=2.0s, dt=0.1
+#
+# NEW MODIFICATION:
+#   - Keep ALL training parameters identical (T=2.0s for training)
+#   - Extend TEST duration to T=10.0s for time-resolved R² analysis
+#   - Add evaluation config for time-resolved plotting (from t=2.0s to 10.0s)
+# ============================================================================
+
+# Model
+model:
+  type: discrete
+  speed: 1.0
+  speed_mode: constant_with_forces
+
+# Simulation parameters - TRAINING (keep at 2.0s)
+sim:
+  N: 40
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+  T: 2.0                    # Training: 2 seconds (UNCHANGED)
+  dt: 0.1                   # dt=0.1 (UNCHANGED)
+  save_every: 1
+  neighbor_rebuild: 5
+  integrator: "euler"
+
+# Vicsek alignment
+params:
+  R: 2.0                    # interaction_radius=2.0
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.3                  # eta=0.3 (UNCHANGED)
+  match_variance: true
+
+# Morse forces
+forces:
+  enabled: false            # forces_enabled: false (UNCHANGED)
+  type: "morse"
+  params:
+    Cr: 0.3
+    Ca: 1.0
+    lr: 0.5
+    la: 2.0
+    rcut_factor: 3.0
+    mu_t: 0.3
+
+alignment:
+  enabled: true
+
+# Outputs
+outputs:
+  run_name: "best_run_extended_test"
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 64    # 64×64 grid (UNCHANGED)
+  density_bandwidth: 2.0    # bandwidth=2.0 (UNCHANGED)
+
+# ============================================================================
+# TRAINING: Mixed distributions (400 runs) - IDENTICAL TO BEST RUN
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN DISTRIBUTIONS (200 runs = 50%)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 200
+    
+    # 5×5 spatial grid
+    positions_x: [3.75, 7.5, 11.25, 15.0, 18.75]
+    positions_y: [3.75, 7.5, 11.25, 15.0, 18.75]
+    
+    # 4 variances per position
+    variances: [0.5, 1.0, 2.0, 3.0]
+    
+    # Calculation: 5×5 positions × 4 variances × 2 samples = 200 runs
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM DISTRIBUTIONS (100 runs = 25%)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 100
+    
+    # Sample uniform at different random seeds
+    n_samples: 100
+  
+  # -------------------------------------------------------------------------
+  # RING DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 50
+    
+    # 5 different radii
+    radii: [2.0, 3.0, 4.0, 5.0, 6.0]
+    
+    # 2 different widths per radius
+    widths: [0.3, 0.6]
+    
+    # Calculation: 5 radii × 2 widths × 5 samples = 50 runs
+    n_samples_per_config: 5
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER DISTRIBUTIONS (50 runs = 12.5%)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 50
+    
+    # 5 different separations
+    separations: [3.0, 4.5, 6.0, 7.5, 9.0]
+    
+    # 2 different cluster sizes
+    sigmas: [0.8, 1.5]
+    
+    # Calculation: 5 separations × 2 sigmas × 5 samples = 50 runs
+    n_samples_per_config: 5
+
+# ============================================================================
+# TESTING: Same as best run (40 runs) - EXTENDED to 10s
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  test_T: 10.0              # Test trajectories: 10 seconds (EXTENDED)
+  
+  # -------------------------------------------------------------------------
+  # GAUSSIAN TEST (20 runs)
+  # -------------------------------------------------------------------------
+  gaussian:
+    enabled: true
+    n_runs: 20
+    
+    # Test on interpolated positions (between training grid)
+    test_positions_x: [5.5, 9.0, 13.0, 16.5]
+    test_positions_y: [5.5, 9.0, 13.0, 16.5]
+    
+    # Test variance (not in training set)
+    test_variances: [1.5]
+    
+    # Plus 4 extrapolation tests (corners)
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+  
+  # -------------------------------------------------------------------------
+  # UNIFORM TEST (5 runs)
+  # -------------------------------------------------------------------------
+  uniform:
+    enabled: true
+    n_runs: 5
+  
+  # -------------------------------------------------------------------------
+  # RING TEST (8 runs)
+  # -------------------------------------------------------------------------
+  ring:
+    enabled: true
+    n_runs: 8
+    
+    # Interpolation: radii between training values
+    test_radii: [2.5, 3.5, 4.5, 5.5]
+    test_widths: [0.45]
+    n_samples_per_config: 2
+  
+  # -------------------------------------------------------------------------
+  # TWO-CLUSTER TEST (7 runs)
+  # -------------------------------------------------------------------------
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    
+    # Test on interpolated separations
+    test_separations: [3.75, 5.25, 6.75, 8.25]
+    test_sigmas: [1.1]
+    
+    # Plus 3 extrapolation tests
+    extrapolation_separations: [2.0, 10.5, 12.0]
+    extrapolation_sigma: [1.1]
+
+# ============================================================================
+# DENSITY ESTIMATION
+# ============================================================================
+density:
+  enabled: true
+  nx: 64                    # 64×64 grid (UNCHANGED)
+  ny: 64
+  method: "kde"
+  bandwidth: 2.0
+
+# ============================================================================
+# ROM SETTINGS: EXACT MATCH TO BEST RUN
+# ============================================================================
+rom:
+  subsample: 1              # No temporal subsampling
+  pod_energy: 0.995         # Target 99.5% energy
+  fixed_modes: 25           # FORCE exactly 25 modes (from best run)
+  mvar_lag: 20              # Lag = 20 (UNCHANGED from best run)
+  ridge_alpha: 1.0e-6       # Ridge = 1e-6 (UNCHANGED from best run)
+  eigenvalue_threshold: null  # No eigenvalue scaling (not used in best run)
+
+# ============================================================================
+# TIME-RESOLVED EVALUATION SETTINGS
+# ============================================================================
+evaluation:
+  forecast_start: 2.0       # Start evaluating after warm-up (2 seconds)
+  forecast_end: 10.0        # Evaluate until end of 10s test trajectory
+  save_time_resolved: true  # Generate r2_vs_time.csv and r2_vs_time.png
+
+# ============================================================================
+# EXPECTED RESULTS
+# ============================================================================
+# Training (identical to best run):
+#   - Grid: 64×64 = 4096 dimensions
+#   - POD: 25 modes (forced), ~49% energy capture
+#   - Timesteps: 2s / 0.1s = 20 steps per run
+#   - Windows: 20 - 20 = 0... wait, this seems wrong
+#   - Actually: With lag=20, we can only use the last snapshot for MVAR
+#   - This might explain the success - very limited parameter estimation!
+#
+# Testing (new - extended):
+#   - Duration: 10s instead of 2s
+#   - Timesteps: 10s / 0.1s = 100 steps
+#   - Evaluation: From t=2.0s to t=10.0s (80 timesteps)
+#   - Time-resolved R² plots from t=2.0s onward
+#
+# Hypothesis:
+#   - This configuration achieved R²=0.509 (best result)
+#   - Now we'll see how it degrades over longer forecasts
+#   - Compare to long_trajectory_eval which failed immediately
+# ============================================================================
