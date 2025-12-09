@@ -6,149 +6,266 @@ Complete guide for the Reduced-Order Model (ROM) pipeline using global POD + MVA
 
 ## Overview
 
-The ROM pipeline consists of four stages:
+The ROM pipeline is now unified into a single command that handles all stages:
 
-1. **Simulation** (Stage 1): Generate ensemble of simulations with varied initial conditions
-2. **POD Basis** (Stage 2): Compute global POD basis from training runs
-3. **MVAR Training** (Stage 3): Fit autoregressive model in latent space
-4. **Evaluation** (Stage 4): Generate forecasts and compute comprehensive metrics
+**Main Pipeline:** `run_unified_mvar_pipeline.py`
+- Automatically runs all 4 stages from a single config file
+- Handles training simulations → POD basis → MVAR training → Test evaluation
+- Supports multiple IC types, custom experiments, and stability enforcement
+- Generates comprehensive outputs and metrics
 
-This modular design allows:
-- Clear separation between training and test data
+**Supporting Pipelines:**
+- `run_visualizations.py` - Generate plots, videos, and analysis
+- `run_parameter_experiment.py` - Quick parameter testing (no training)
+
+**Pipeline Stages (automated):**
+1. **Simulation**: Generate training and test simulations with varied ICs
+2. **POD Basis**: Compute global POD basis from training runs only
+3. **MVAR Training**: Fit autoregressive model in latent space
+4. **Evaluation**: Generate forecasts and compute comprehensive metrics
+
+This unified design provides:
+- Single config file controls everything
+- Automatic train/test separation
 - Consistent evaluation across experiments
-- Easy comparison of different ROM methods
-- Minimal friction between local testing and Oscar HPC runs
+- Modular components in `src/rectsim/` for customization
 
 ## Directory Structure
 
 ```
 project_root/
-├── simulations/
-│   └── <experiment_name>/
-│       ├── configs/          # YAML configs used
-│       └── runs/             # Raw simulation outputs
-│           ├── run_0000/
-│           │   ├── density.npz
-│           │   ├── traj.npz
-│           │   ├── metrics.csv
-│           │   └── run.json
-│           └── ...
+├── configs/
+│   └── your_experiment.yaml    # Single config for entire pipeline
 │
-└── rom/
-    └── <experiment_name>/
-        ├── config.json       # ROM experiment configuration
-        ├── pod/
-        │   ├── basis.npz     # POD modes, singular values, mean
-        │   ├── pod_energy.png
-        │   └── pod_info.json
-        ├── latent/
-        │   ├── run_0000_latent.npz
-        │   └── ...
-        └── mvar/
-            ├── mvar_model.npz
-            ├── train_info.json
-            └── forecast/
-                ├── forecast_run_<id>.npz
-                ├── metrics_run_<id>.json
-                ├── order_params_run_<id>.csv
-                ├── errors_time_run_<id>.png
-                ├── order_params_run_<id>.png
-                ├── snapshot_grid_run_<id>.png
-                ├── density_true_run_<id>.mp4
-                ├── density_pred_run_<id>.mp4
-                ├── density_comparison_run_<id>.mp4
-                └── aggregate_metrics.json
-```
-
+├── oscar_output/               # Pipeline outputs
+│   └── <experiment_name>/
+│       ├── train/
+│       │   ├── simulations.csv      # Training run metadata
+│       │   ├── density_rXXXX.npz    # Density fields
+│       │   └── trajectory_rXXXX.npz # Trajectories
+│       ├── test/
+│       │   ├── simulations.csv      # Test run metadata
+│       │   ├── density_rXXXX.npz
+│       │   └── trajectory_rXXXX.npz
+│       ├── pod/
+│       │   ├── basis.npz            # POD modes, singular values, mean
+│       │   ├── pod_energy.png
+│       │   └── metadata.json
+│       └── mvar/
+│           ├── model.npz            # MVAR coefficients
+│           ├── training_metadata.json
+│           ├── test_metrics.csv     # Per-run metrics
+│           ├── predictions_rXXXX.npz
+│           └── forecast_metadata.json
+│
+├── predictions/                # Visualization outputs
+│   └── <experiment_name>/
+│       ├── pod_analysis/
+│       ├── best_runs/
+│       ├── summary_plots/
+│       ├── time_resolved/
+│       └── summary.json
+│
+└── experiments/                # Parameter testing outputs
+    └── <test_name>/
+        └── simulations/
+            └── <ic_type>/
+                ├── trajectory.mp4
 ## Quick Start
 
 ### Local Testing
 
+**1. Run complete pipeline:**
 ```bash
-# Stage 1: Generate ensemble (10 runs, small)
-rectsim ensemble --config configs/rom_test.yaml \
-  --sim.N 50 --sim.T 300 --ensemble.n_runs 10
+python run_unified_mvar_pipeline.py \
+  --config configs/unified_quick_test.yaml \
+  --experiment_name my_test
+```
 
-# Stage 2: Build POD basis
-python scripts/rom_build_pod.py \
-  --experiment_name test_exp \
-  --sim_root simulations/social_force_N50.../runs \
-  --train_runs 0 1 2 3 4 5 6 7 \
-  --test_runs 8 9 \
-  --energy_threshold 0.995
+This single command runs all 4 stages automatically:
+- Generates training simulations (e.g., 8 runs with varied ICs)
+- Generates test simulations (e.g., 2 runs)
+- Builds POD basis from training data only
+- Trains MVAR model on latent trajectories
+- Evaluates forecasts on test runs
+- Saves all outputs to `oscar_output/my_test/`
 
-# Stage 3: Train MVAR
-python scripts/rom_train_mvar.py \
-  --experiment_name test_exp \
-  --mvar_order 4 \
-  --ridge 1e-6 \
-  --train_frac 0.8
+**2. Visualize results:**
+```bash
+python run_visualizations.py --experiment_name my_test
+```
 
-# Stage 4: Evaluate forecasts
-python scripts/rom_evaluate.py \
-  --experiment_name test_exp \
-  --sim_root simulations/social_force_N50.../runs \
-  --no_videos  # Skip videos for faster testing
+Generates:
+- POD energy plots
+- Per-run visualizations (best/worst)
+- Summary statistics and boxplots
+- Time-resolved R² degradation analysis
+- Comprehensive summary JSON
 
-# Review results
-cat rom/test_exp/mvar/forecast/aggregate_metrics.json
+**3. Quick parameter testing (optional):**
+```bash
+python run_parameter_experiment.py \
+  --config configs/test_params.yaml \
+  --experiment_name param_test
 ```
 
 ### Oscar HPC Workflow
 
-See [Oscar Workflow](#oscar-workflow) section below for SLURM scripts.
-
-## Stage Details
-
-### Stage 1: Simulation (Ensemble Generation)
-
-Generate multiple simulation runs with varied initial conditions but identical model parameters.
-
-**Command:**
+**1. Create SLURM script:**
 ```bash
-rectsim ensemble --config CONFIG_YAML
+#!/bin/bash
+#SBATCH --job-name=rom_experiment
+#SBATCH --time=4:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32G
+
+source ~/wsindy-manifold/.venv/bin/activate
+cd ~/wsindy-manifold
+
+python run_unified_mvar_pipeline.py \
+  --config configs/production_experiment.yaml \
+  --experiment_name production_v1
 ```
 
-**Key configuration:**
+**2. Submit job:**
+```bash
+sbatch my_job.slurm
+```
+
+**3. Monitor:**
+```bash
+squeue -u $USER
+tail -f slurm-JOBID.out
+```
+
+**4. Download results and visualize locally:**
+```bash
+# On local machine
+scp -r user@oscar:~/wsindy-manifold/oscar_output/production_v1 .
+python run_visualizations.py --experiment_name production_v1
+```
+
+**See:** `slurm_scripts/` folder for example SLURM scripts.
+
+**Example config structure:**
 ```yaml
-ensemble:
-  n_runs: 20                # Number of runs
-  ic_types:                 # Initial condition types
-    - uniform
-    - gaussian
-    - ring
-    - cluster
-  ic_weights: [0.4, 0.3, 0.2, 0.1]
+# Base simulation parameters
+sim:
+  N: 200                    # Number of particles
+  T: 400.0                  # Duration (seconds)
+  dt: 0.1                   # Time step
+  Lx: 30.0                  # Domain size X
+  Ly: 30.0                  # Domain size Y
+  v0: 1.0                   # Speed
+  R: 1.0                    # Interaction radius
+  bc: "periodic"            # Boundary conditions
 
-output:
-  save_density: true        # REQUIRED for ROM pipeline
-```
+# Density computation
+density:
+  nx: 64                    # Grid resolution X
+  ny: 64                    # Grid resolution Y
+  bandwidth: 0.7            # KDE bandwidth
 
-**Output:**
-- `simulations/<model_id>/runs/run_XXXX/density.npz`
-- Each contains: `rho` (T, ny, nx), `times` (T,)
+# Training simulations
+train_ic:
+  n_train_per_type: 100     # Simulations per IC type
+  distributions:
+    - type: "gaussian_cluster"
+      params: {std: 3.0}
+    - type: "uniform"
+      params: {}
+    - type: "ring"
+## Pipeline Stages (Automated)
 
-**See:** `ENSEMBLE_GUIDE.md` for full ensemble documentation.
+### Stage 1: Simulation Generation
+
+The pipeline automatically generates training and test simulations based on config.
+
+**Handled by:** `rectsim.ic_generator` and `rectsim.simulation_runner`
+
+**What happens:**
+1. Generate initial conditions for each IC type and count
+2. Run simulations in parallel using `joblib`
+3. Compute density fields using KDE
+4. Save outputs: `oscar_output/<experiment>/train/` and `test/`
+
+**Outputs:**
+- `simulations.csv` - Metadata (IC type, params, seeds)
+- `density_rXXXX.npz` - Density fields (T, ny, nx)
+- `trajectory_rXXXX.npz` - Particle trajectories (T, N, 2)
 
 ---
 
 ### Stage 2: POD Basis Construction
 
-Compute global POD basis from training runs only, project all runs to latent space.
+Build global POD basis from training runs only, project all runs to latent space.
 
-**Command:**
-```bash
-python scripts/rom_build_pod.py \
-  --experiment_name <NAME> \
-  --sim_root <SIM_ROOT> \
-  --train_runs 0 1 2 3 4 5 6 7 \
-  --test_runs 8 9 \
-  --energy_threshold 0.995
-```
+**Handled by:** `rectsim.pod_builder`
 
-**Arguments:**
-- `--experiment_name`: Unique identifier for this ROM experiment
-- `--sim_root`: Directory containing simulation run folders
+**What happens:**
+1. Load density fields from training runs only
+2. Flatten spatial dimensions: (T, ny, nx) → (T, ny×nx)
+3. Stack all training snapshots into matrix X
+4. Center data: X_centered = X - mean
+5. Compute SVD: X_centered = U @ diag(S) @ Vt
+6. Select modes by energy threshold or fixed count
+7. POD modes: Phi = U[:, :r]
+8. Project all runs (train + test) to latent space: Y = (X - mean) @ Phi
+
+**Outputs:**
+- `pod/basis.npz` - Modes (Phi), singular values (S), mean, energy
+- `pod/pod_energy.png` - Scree plot
+- `pod/metadata.json` - Configuration and diagnostics
+
+**Key principle:** POD basis computed ONLY from training data to prevent leakage.
+
+---
+
+### Stage 3: MVAR Training
+
+Fit multivariate autoregressive model on training latent trajectories.
+
+**Handled by:** `rectsim.mvar_trainer`
+
+**What happens:**
+1. Load latent trajectories for training runs
+2. Apply time-based split: first 80% for training, last 20% reserved
+3. Build autoregressive design matrix with specified lag order
+4. Fit MVAR model via ridge regression:
+   ```python
+   Y(t) = A1·Y(t-1) + A2·Y(t-2) + ... + Ap·Y(t-p) + ε
+   ```
+5. Optional: Enforce stability by scaling eigenvalues < 1
+6. Compute training metrics (residuals, R²)
+
+**Outputs:**
+- `mvar/model.npz` - Coefficient matrices (A1, A2, ..., Ap)
+- `mvar/training_metadata.json` - Order, regularization, stability info
+
+---
+
+### Stage 4: Test Evaluation
+
+Generate forecasts on test runs and compute comprehensive metrics.
+
+**Handled by:** `rectsim.test_evaluator`
+
+**What happens:**
+1. Load test latent trajectories
+2. For each test run:
+   - Use first 20% as initial condition
+   - Generate MVAR forecast for remaining time
+   - Reconstruct density: ρ_pred = mean + Y_pred @ Phi.T
+   - Compute metrics: MSE, MAE, R², mass conservation
+   - Calculate time-resolved degradation
+3. Aggregate statistics across all test runs
+
+**Outputs:**
+- `mvar/predictions_rXXXX.npz` - Predicted latent and density
+- `mvar/test_metrics.csv` - Per-run metrics
+- `mvar/forecast_metadata.json` - Aggregate statisticsim_root`: Directory containing simulation run folders
 - `--train_runs`: Space-separated indices for training (used to build POD)
 - `--test_runs`: Space-separated indices for testing (projected with fixed basis)
 - `--energy_threshold`: POD energy threshold (default: 0.995 = 99.5%)
