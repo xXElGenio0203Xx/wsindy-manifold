@@ -17,20 +17,19 @@ Output: Videos, plots, metrics CSVs, summary JSON
 
 import numpy as np
 from pathlib import Path
-import matplotlib.pyplot as plt
 import json
 import pandas as pd
-from tqdm import tqdm
 import argparse
 import time
 
-# Import rectsim modules
-from rectsim.legacy_functions import (
-    trajectory_video,
-    side_by_side_video,
-    compute_frame_metrics,
-    compute_summary_metrics,
-    plot_errors_timeseries
+# Import visualization modules
+from visualizations import (
+    generate_pod_plots,
+    compute_test_metrics,
+    generate_best_run_visualizations,
+    generate_summary_plots,
+    generate_time_resolved_analysis,
+    generate_summary_json
 )
 
 
@@ -51,9 +50,10 @@ def main():
     
     BEST_RUNS_DIR = OUTPUT_DIR / "best_runs"
     PLOTS_DIR = OUTPUT_DIR / "plots"
+    TIME_ANALYSIS_DIR = OUTPUT_DIR / "time_analysis"
     
     # Create output directories
-    for d in [BEST_RUNS_DIR, PLOTS_DIR]:
+    for d in [BEST_RUNS_DIR, PLOTS_DIR, TIME_ANALYSIS_DIR]:
         d.mkdir(parents=True, exist_ok=True)
     
     print("="*80)
@@ -93,25 +93,24 @@ def main():
         test_metadata = json.load(f)
     
     # Load POD model
-    pod_data = np.load(MVAR_DIR / "pod_basis.npz")
-    U = pod_data["U"]
-    singular_values = pod_data["singular_values"]
-    all_singular_values = pod_data["all_singular_values"]
-    actual_energy = pod_data["energy_ratio"]
-    cumulative_ratio = pod_data["cumulative_ratio"]
+    pod_data_raw = np.load(MVAR_DIR / "pod_basis.npz")
+    U = pod_data_raw["U"]
+    singular_values = pod_data_raw["singular_values"]
+    all_singular_values = pod_data_raw["all_singular_values"]
+    actual_energy = pod_data_raw["energy_ratio"]
+    cumulative_ratio = pod_data_raw["cumulative_ratio"]
     R_POD = U.shape[1]
     
     # Load MVAR model
-    mvar_data = np.load(MVAR_DIR / "mvar_model.npz")
-    P_LAG = int(mvar_data["p"])
-    train_r2 = float(mvar_data["train_r2"])
-    train_rmse = float(mvar_data["train_rmse"])
+    mvar_data_raw = np.load(MVAR_DIR / "mvar_model.npz")
+    P_LAG = int(mvar_data_raw["p"])
+    train_r2 = float(mvar_data_raw["train_r2"])
+    train_rmse = float(mvar_data_raw["train_rmse"])
     
     # Load X_train_mean for R² calculation
     X_train_mean = np.load(MVAR_DIR / "X_train_mean.npy")
     
     # Load simulation config from first training run
-    first_run_meta_path = TRAIN_DIR / train_metadata[0]["run_name"] / "metadata.json"
     first_run_data = np.load(TRAIN_DIR / train_metadata[0]["run_name"] / "density.npz")
     BASE_CONFIG_SIM = {
         "Lx": float(first_run_data["xgrid"][-1] - first_run_data["xgrid"][0] + 
@@ -127,6 +126,19 @@ def main():
     ic_key = "distribution" if "distribution" in test_metadata[0] else "ic_type"
     IC_TYPES = sorted(set(meta[ic_key] for meta in test_metadata))
     
+    # For DataFrame access, always use 'ic_type' since compute_test_metrics standardizes it
+    df_ic_key = 'ic_type'
+    
+    # Package POD data with additional parameters
+    pod_data = {
+        'singular_values': singular_values,
+        'all_singular_values': all_singular_values,
+        'cumulative_energy': cumulative_ratio,
+        'p_lag': P_LAG,
+        'train_r2': train_r2,
+        'train_rmse': train_rmse
+    }
+    
     print(f"\n✓ Loaded data:")
     print(f"   Training: {N_TRAIN} runs")
     print(f"   Test: {M_TEST} runs")
@@ -134,592 +146,95 @@ def main():
     print(f"   MVAR: p={P_LAG}, R²={train_r2:.4f}")
     
     # =============================================================================
-    # STEP 1: POD PLOTS
+    # STEP 1: POD Plots
     # =============================================================================
     
     print("\n" + "="*80)
     print("STEP 1: Generating POD Plots")
     print("="*80)
     
-    # Plot 1: POD singular values (log scale)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.semilogy(range(1, len(all_singular_values)+1), all_singular_values, 'o-', 
-                linewidth=2, markersize=2, color='steelblue', alpha=0.6)
-    ax.axvline(R_POD, color='r', linestyle='--', linewidth=2, 
-               label=f'Selected r={R_POD} ({actual_energy*100:.2f}% energy)')
-    ax.set_xlabel('POD Mode Index', fontsize=12)
-    ax.set_ylabel('Singular Value (log scale)', fontsize=12)
-    ax.set_title('POD Singular Values', fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3, which='both')
-    ax.legend(fontsize=10)
-    x_max = max(R_POD * 1.2, min(500, len(all_singular_values)))
-    ax.set_xlim(0, x_max)
-    plt.tight_layout()
-    plt.savefig(PLOTS_DIR / "pod_singular_values.png", dpi=200)
-    plt.close()
-    
-    # Plot 2: Cumulative energy
-    fig, ax = plt.subplots(figsize=(10, 6))
-    cumulative_energy_pct = 100 * cumulative_ratio
-    ax.plot(range(1, len(all_singular_values)+1), cumulative_energy_pct, 'o-', 
-            linewidth=2, markersize=2, color='forestgreen', alpha=0.7)
-    ax.axvline(R_POD, color='r', linestyle='--', linewidth=2, label=f'Selected r={R_POD}')
-    ax.axhline(90, color='orange', linestyle=':', alpha=0.7, linewidth=2, label='90% energy')
-    ax.axhline(95, color='purple', linestyle=':', alpha=0.7, linewidth=2, label='95% energy')
-    ax.axhline(actual_energy*100, color='darkgreen', linestyle=':', alpha=0.7, linewidth=2, 
-               label=f'{actual_energy*100:.1f}% energy (target)')
-    ax.set_xlabel('Number of POD Modes', fontsize=12)
-    ax.set_ylabel('Cumulative Energy Captured (%)', fontsize=12)
-    ax.set_title(f'POD Energy Spectrum ({N_TRAIN} training runs)', fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=10)
-    x_max = max(R_POD * 1.2, min(500, len(all_singular_values)))
-    ax.set_xlim(0, x_max)
-    ax.set_ylim(0, 105)
-    plt.tight_layout()
-    plt.savefig(PLOTS_DIR / "pod_energy.png", dpi=200)
-    plt.close()
-    
-    print("✓ POD plots saved")
+    generate_pod_plots(pod_data, PLOTS_DIR, N_TRAIN)
     
     # =============================================================================
-    # STEP 2: COMPUTE METRICS
+    # STEP 2: Compute Metrics
     # =============================================================================
     
     print("\n" + "="*80)
-    print("STEP 2: Computing Evaluation Metrics")
+    print("STEP 2: Computing Test Metrics")
     print("="*80)
     
-    all_metrics = []
-    test_predictions = {}
-    
-    print(f"\nComputing metrics for {M_TEST} test runs...")
-    
-    for meta in tqdm(test_metadata, desc="Metrics"):
-        run_name = meta["run_name"]
-        run_dir = TEST_DIR / run_name
-        
-        # Load densities
-        true_data = np.load(run_dir / "density_true.npz")
-        pred_data = np.load(run_dir / "density_pred.npz")
-        
-        rho_true = true_data["rho"]
-        rho_pred = pred_data["rho"]
-        times_true = true_data["times"]
-        times_pred = pred_data["times"]
-        
-        # Align timesteps (pred may be subsampled)
-        T_pred = rho_pred.shape[0]
-        if rho_true.shape[0] != T_pred:
-            # Use fixed subsample=5 (matches Oscar ROM_SUBSAMPLE)
-            # This ensures we get frames [0, 5, 10, ...] not [0, 4, 8, ...]
-            ROM_SUBSAMPLE = 5
-            rho_true = rho_true[::ROM_SUBSAMPLE][:T_pred]
-            times = times_pred
-        else:
-            times = times_true
-        
-        # Flatten for metrics
-        T, ny, nx = rho_true.shape
-        rho_true_flat = rho_true.reshape(T, ny * nx)
-        rho_pred_flat = rho_pred.reshape(T, ny * nx)
-        
-        # Compute metrics
-        frame_metrics = compute_frame_metrics(rho_true_flat, rho_pred_flat)
-        summary = compute_summary_metrics(
-            rho_true_flat,
-            rho_pred_flat,
-            X_train_mean,
-            frame_metrics
-        )
-        summary["run_name"] = run_name
-        summary["ic_type"] = meta[ic_key]
-        
-        # Load trajectory for later use
-        traj_data = np.load(run_dir / "trajectory.npz")
-        traj = traj_data["traj"]
-        traj_times = traj_data["times"]
-        
-        # Subsample trajectory to match density timesteps
-        if traj.shape[0] != T_pred:
-            ROM_SUBSAMPLE = 5
-            traj = traj[::ROM_SUBSAMPLE][:T_pred]
-            traj_times = traj_times[::ROM_SUBSAMPLE][:T_pred]
-        
-        # Store for visualization
-        test_predictions[run_name] = {
-            "rho_true": rho_true,
-            "rho_pred": rho_pred,
-            "times": times,
-            "traj": traj,
-            "ic_type": meta[ic_key],
-            "frame_metrics": frame_metrics
-        }
-        
-        all_metrics.append(summary)
-    
-    # Convert to DataFrame
-    metrics_df = pd.DataFrame(all_metrics)
-    metrics_df.to_csv(OUTPUT_DIR / "metrics_all_runs.csv", index=False)
-    
-    # Overall metrics
-    print("\n📊 Overall Metrics:")
-    print(f"   R²:              {metrics_df['r2'].mean():.4f} ± {metrics_df['r2'].std():.4f}")
-    print(f"   Median L² error: {metrics_df['median_e2'].mean():.4f} ± {metrics_df['median_e2'].std():.4f}")
-    
-    # Metrics by IC type
-    print("\n📊 Metrics by IC Type:")
-    ic_metrics = {}
-    
-    for ic_type in IC_TYPES:
-        ic_mask = metrics_df["ic_type"] == ic_type
-        ic_data = metrics_df[ic_mask]
-        
-        if len(ic_data) == 0:
-            continue
-        
-        ic_stats = {
-            "ic_type": ic_type,
-            "n_runs": len(ic_data),
-            "r2_mean": ic_data["r2"].mean(),
-            "r2_std": ic_data["r2"].std(),
-            "r2_median": ic_data["r2"].median(),
-            "best_run": ic_data.loc[ic_data["r2"].idxmax(), "run_name"],
-            "best_r2": ic_data["r2"].max(),
-        }
-        
-        ic_metrics[ic_type] = ic_stats
-        
-        print(f"\n   {ic_type}:")
-        print(f"      Runs: {ic_stats['n_runs']}")
-        print(f"      R²: {ic_stats['r2_mean']:.4f} ± {ic_stats['r2_std']:.4f}")
-        print(f"      Best run: {ic_stats['best_run']} (R² = {ic_stats['best_r2']:.4f})")
-    
-    # Save IC metrics
-    pd.DataFrame(ic_metrics.values()).to_csv(OUTPUT_DIR / "metrics_by_ic_type.csv", index=False)
+    metrics_df, test_predictions, ic_metrics = compute_test_metrics(
+        test_metadata=test_metadata,
+        test_dir=TEST_DIR,
+        x_train_mean=X_train_mean,
+        ic_types=IC_TYPES,
+        output_dir=OUTPUT_DIR
+    )
     
     # =============================================================================
-    # STEP 3: VISUALIZATIONS FOR BEST RUNS (TOP 4 BY R²)
+    # STEP 3: Best Run Visualizations
     # =============================================================================
     
     print("\n" + "="*80)
-    print("STEP 3: Generating Visualizations for Best Runs")
+    print("STEP 3: Generating Best Run Visualizations")
     print("="*80)
     
-    # Select top 4 runs by R² across all IC types
-    top_4_runs = metrics_df.nlargest(4, 'r2')
-    top_4_ic_types = top_4_runs['ic_type'].tolist()
-    
-    print(f"\nGenerating videos and plots for top 4 runs by R²:")
-    for idx, row in top_4_runs.iterrows():
-        print(f"   {row['run_name']}: {row['ic_type']} (R² = {row['r2']:.4f})")
-    
-    for ic_type in tqdm(top_4_ic_types, desc="IC types"):
-        ic_stats = ic_metrics.get(ic_type)
-        if ic_stats is None:
-            continue
-        
-        best_run = ic_stats["best_run"]
-        pred = test_predictions[best_run]
-        run_dir = TEST_DIR / best_run
-        
-        ic_output_dir = BEST_RUNS_DIR / ic_type
-        ic_output_dir.mkdir(exist_ok=True, parents=True)
-        
-        # 1. Trajectory video
-        trajectory_video(
-            path=ic_output_dir,
-            traj=pred["traj"],
-            times=pred["times"],
-            Lx=BASE_CONFIG_SIM["Lx"],
-            Ly=BASE_CONFIG_SIM["Ly"],
-            name="traj_truth",
-            fps=10,
-            marker_size=50,
-            title=f'Ground Truth Trajectory - {ic_type.replace("_", " ").title()}'
-        )
-        
-        # 2. Density comparison video
-        side_by_side_video(
-            path=ic_output_dir,
-            left_frames=pred["rho_true"],
-            right_frames=pred["rho_pred"],
-            lower_strip_timeseries=pred["frame_metrics"]["e2"],
-            name="density_truth_vs_pred",
-            fps=10,
-            cmap='hot',
-            titles=('Ground Truth', 'MVAR-ROM Prediction')
-        )
-        
-        # 3. Error timeseries plot
-        summary = [m for m in all_metrics if m["run_name"] == best_run][0]
-        
-        plot_errors_timeseries(
-            frame_metrics=pred["frame_metrics"],
-            summary=summary,
-            T0=P_LAG,
-            save_path=ic_output_dir / "error_time.png",
-            title=f'Error Metrics - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})'
-        )
-        plt.close('all')
-        
-        # 4. Error distribution histogram
-        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-        
-        e1_final = np.abs(pred["rho_true"][-1] - pred["rho_pred"][-1])
-        axes[0].hist(e1_final.flatten(), bins=50, alpha=0.7, color='blue', edgecolor='black')
-        axes[0].set_xlabel('L1 Error', fontsize=11)
-        axes[0].set_ylabel('Count', fontsize=11)
-        axes[0].set_title(f'L1 Error Distribution (t={pred["times"][-1]:.1f}s)', fontsize=12)
-        axes[0].grid(True, alpha=0.3)
-        
-        e2_final = (pred["rho_true"][-1] - pred["rho_pred"][-1])**2
-        axes[1].hist(e2_final.flatten(), bins=50, alpha=0.7, color='green', edgecolor='black')
-        axes[1].set_xlabel('L2 Error', fontsize=11)
-        axes[1].set_ylabel('Count', fontsize=11)
-        axes[1].set_title(f'L2 Error Distribution (t={pred["times"][-1]:.1f}s)', fontsize=12)
-        axes[1].grid(True, alpha=0.3)
-        
-        rel_error_final = e1_final / (pred["rho_true"][-1] + 1e-10)
-        axes[2].hist(rel_error_final.flatten(), bins=50, alpha=0.7, color='red', edgecolor='black')
-        axes[2].set_xlabel('Relative Error', fontsize=11)
-        axes[2].set_ylabel('Count', fontsize=11)
-        axes[2].set_title(f'Relative Error Distribution (t={pred["times"][-1]:.1f}s)', fontsize=12)
-        axes[2].grid(True, alpha=0.3)
-        
-        fig.suptitle(f'Error Distributions - {ic_type.replace("_", " ").title()}', 
-                     fontsize=14, fontweight='bold')
-        plt.tight_layout()
-        plt.savefig(ic_output_dir / "error_hist.png", dpi=200)
-        plt.close()
-        
-        # 5. Order parameters plot (from density + particles)
-        order_params_path = run_dir / "order_params_density.csv"
-        if order_params_path.exists():
-            df_order = pd.read_csv(order_params_path)
-            
-            # Check if we have particle-based metrics
-            has_particles = 'polarization' in df_order.columns
-            
-            if has_particles:
-                # Create 5-panel figure with all order parameters
-                fig, axes = plt.subplots(5, 1, figsize=(14, 16), sharex=True)
-                
-                # 1. Polarization Φ (particle alignment)
-                axes[0].plot(df_order['t'], df_order['polarization'], 'b-', linewidth=2.5, alpha=0.85)
-                axes[0].set_ylabel('Polarization Φ\n(Velocity Alignment)', fontsize=12, fontweight='bold')
-                axes[0].grid(True, alpha=0.3)
-                axes[0].set_ylim([0, 1.05])
-                median_phi = df_order['polarization'].iloc[-len(df_order)//4:].median()
-                axes[0].axhline(median_phi, color='r', linestyle='--', alpha=0.5,
-                               label=f'Final median: {median_phi:.3f}')
-                axes[0].legend(loc='best', fontsize=10)
-                axes[0].set_title(f'Order Parameters - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
-                                 fontsize=14, fontweight='bold')
-                
-                # 2. Nematic Order Q (bidirectional alignment)
-                axes[1].plot(df_order['t'], df_order['nematic'], 'm-', linewidth=2.5, alpha=0.85)
-                axes[1].set_ylabel('Nematic Order Q\n(Bidirectional)', fontsize=12, fontweight='bold')
-                axes[1].grid(True, alpha=0.3)
-                axes[1].set_ylim([-0.05, 1.05])
-                
-                # 3. Mean Speed (kinetic energy proxy)
-                axes[2].plot(df_order['t'], df_order['mean_speed'], 'g-', linewidth=2.5, alpha=0.85)
-                axes[2].set_ylabel('Mean Speed\n(Kinetic Energy)', fontsize=12, fontweight='bold')
-                axes[2].grid(True, alpha=0.3)
-                axes[2].axhline(df_order['mean_speed'].mean(), color='k', linestyle='--', alpha=0.4)
-                
-                # 4. Angular Momentum (rotation/milling)
-                axes[3].plot(df_order['t'], df_order['angular_momentum'], 'c-', linewidth=2.5, alpha=0.85)
-                axes[3].set_ylabel('Angular Momentum\n(Milling/Rotation)', fontsize=12, fontweight='bold')
-                axes[3].grid(True, alpha=0.3)
-                axes[3].set_ylim([-0.05, 1.05])
-                
-                # 5. Spatial Order (density heterogeneity) - true vs predicted
-                axes[4].plot(df_order['t'], df_order['spatial_order_true'], 'b-', linewidth=2.5, label='True', alpha=0.8)
-                axes[4].plot(df_order['t'], df_order['spatial_order_pred'], 'r--', linewidth=2.5, label='Predicted', alpha=0.8)
-                axes[4].set_ylabel('Spatial Order\n(Density Std)', fontsize=12, fontweight='bold')
-                axes[4].set_xlabel('Time (s)', fontsize=12, fontweight='bold')
-                axes[4].grid(True, alpha=0.3)
-                axes[4].legend(loc='best', fontsize=11)
-                
-                plt.tight_layout()
-                plt.savefig(ic_output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
-                plt.close()
-                
-                # Also create mass conservation plot separately
-                fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-                
-                # Mass conservation
-                axes[0].plot(df_order['t'], df_order['mass_true'], 'b-', linewidth=2, label='True', alpha=0.8)
-                axes[0].plot(df_order['t'], df_order['mass_pred'], 'g--', linewidth=2, label='Predicted (Corrected)', alpha=0.8)
-                axes[0].set_ylabel('Total Mass', fontsize=12, fontweight='bold')
-                axes[0].grid(True, alpha=0.3)
-                axes[0].legend(loc='best', fontsize=10)
-                axes[0].set_title(f'Mass Conservation - {ic_type.replace("_", " ").title()}', 
-                                 fontsize=14, fontweight='bold')
-                
-                # Mass error
-                axes[1].semilogy(df_order['t'], df_order['mass_error_rel'] * 100, 'r-', linewidth=2)
-                axes[1].set_ylabel('Mass Error (%)', fontsize=12, fontweight='bold')
-                axes[1].set_xlabel('Time (s)', fontsize=12)
-                axes[1].grid(True, alpha=0.3)
-                max_err = df_order['mass_error_rel'].max() * 100
-                axes[1].axhline(max_err, color='k', linestyle='--', alpha=0.5,
-                               label=f'Max: {max_err:.2e}%')
-                axes[1].legend(loc='best', fontsize=10)
-                
-                plt.tight_layout()
-                plt.savefig(ic_output_dir / "mass_conservation.png", dpi=150, bbox_inches='tight')
-                plt.close()
-                
-            else:
-                # Fallback: only density-based metrics available
-                fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
-                
-                # Spatial order (std of density)
-                axes[0].plot(df_order['t'], df_order['spatial_order_true'], 'b-', linewidth=2, label='True', alpha=0.8)
-                axes[0].plot(df_order['t'], df_order['spatial_order_pred'], 'r--', linewidth=2, label='Predicted', alpha=0.8)
-                axes[0].set_ylabel('Spatial Order\n(Density Std)', fontsize=12, fontweight='bold')
-                axes[0].grid(True, alpha=0.3)
-                axes[0].legend(loc='best', fontsize=10)
-                axes[0].set_title(f'Order Parameters (Density-Based) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
-                                 fontsize=14, fontweight='bold')
-                
-                # Mass conservation
-                axes[1].plot(df_order['t'], df_order['mass_true'], 'b-', linewidth=2, label='True', alpha=0.8)
-                axes[1].plot(df_order['t'], df_order['mass_pred'], 'g--', linewidth=2, label='Predicted (Corrected)', alpha=0.8)
-                axes[1].set_ylabel('Total Mass', fontsize=12, fontweight='bold')
-                axes[1].grid(True, alpha=0.3)
-                axes[1].legend(loc='best', fontsize=10)
-                
-                # Mass error
-                axes[2].semilogy(df_order['t'], df_order['mass_error_rel'] * 100, 'r-', linewidth=2)
-                axes[2].set_ylabel('Mass Error (%)', fontsize=12, fontweight='bold')
-                axes[2].set_xlabel('Time (s)', fontsize=12)
-                axes[2].grid(True, alpha=0.3)
-                max_err = df_order['mass_error_rel'].max() * 100
-                axes[2].axhline(max_err, color='k', linestyle='--', alpha=0.5,
-                                   label=f'Max: {max_err:.2e}%')
-                axes[2].legend(loc='best', fontsize=10)
-                
-                plt.tight_layout()
-                plt.savefig(ic_output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
-                plt.close()
-        
-        # 6. Original order parameters (from particle trajectories if available)
-        order_params_traj_path = run_dir / "order_params.csv"
-        if order_params_traj_path.exists():
-            df_order_traj = pd.read_csv(order_params_traj_path)
-            
-            fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
-            
-            axes[0].plot(df_order_traj['t'], df_order_traj['phi'], 'b-', linewidth=2)
-            axes[0].set_ylabel('Polarization Φ', fontsize=12, fontweight='bold')
-            axes[0].grid(True, alpha=0.3)
-            axes[0].set_ylim([0, 1.05])
-            median_phi = df_order_traj['phi'].iloc[-len(df_order_traj)//4:].median()
-            axes[0].axhline(median_phi, color='r', linestyle='--', alpha=0.5,
-                           label=f'Final median: {median_phi:.3f}')
-            axes[0].legend(loc='best', fontsize=10)
-            axes[0].set_title(f'Order Parameters (Particles) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
-                             fontsize=14, fontweight='bold')
-            
-            axes[1].plot(df_order_traj['t'], df_order_traj['mean_speed'], 'g-', linewidth=2)
-            axes[1].set_ylabel('Mean Speed', fontsize=12, fontweight='bold')
-            axes[1].grid(True, alpha=0.3)
-            
-            axes[2].plot(df_order_traj['t'], df_order_traj['nematic'], 'm-', linewidth=2)
-            axes[2].set_ylabel('Nematic Order Q', fontsize=12, fontweight='bold')
-            axes[2].set_xlabel('Time (s)', fontsize=12)
-            axes[2].grid(True, alpha=0.3)
-            axes[2].set_ylim([-0.05, 1.05])
-            
-            plt.tight_layout()
-            plt.savefig(ic_output_dir / "order_parameters_particles.png", dpi=150, bbox_inches='tight')
-            plt.close()
-    
-    print(f"\n✓ Generated visualizations for top 4 runs")
+    top_4_runs = generate_best_run_visualizations(
+        metrics_df=metrics_df,
+        test_predictions=test_predictions,
+        ic_metrics=ic_metrics,
+        test_dir=TEST_DIR,
+        best_runs_dir=BEST_RUNS_DIR,
+        base_config_sim=BASE_CONFIG_SIM,
+        p_lag=P_LAG,
+        n_top=4
+    )
     
     # =============================================================================
-    # STEP 4: SUMMARY PLOTS
+    # STEP 4: Summary Plots
     # =============================================================================
     
     print("\n" + "="*80)
     print("STEP 4: Generating Summary Plots")
     print("="*80)
     
-    # R² by IC type
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ic_r2_data = [metrics_df[metrics_df["ic_type"] == ic]["r2"].values for ic in IC_TYPES]
-    bp = ax.boxplot(ic_r2_data, labels=IC_TYPES, patch_artist=True)
-    for patch in bp['boxes']:
-        patch.set_facecolor('lightblue')
-    ax.set_ylabel('R² Score', fontsize=12)
-    ax.set_xlabel('Initial Condition Type', fontsize=12)
-    ax.set_title('MVAR-ROM Performance by IC Type', fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3, axis='y')
-    plt.tight_layout()
-    plt.savefig(PLOTS_DIR / "r2_by_ic_type.png", dpi=200)
-    plt.close()
-    
-    # Median L² error by IC type
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ic_e2_data = [metrics_df[metrics_df["ic_type"] == ic]["median_e2"].values for ic in IC_TYPES]
-    bp = ax.boxplot(ic_e2_data, labels=IC_TYPES, patch_artist=True)
-    for patch in bp['boxes']:
-        patch.set_facecolor('lightcoral')
-    ax.set_ylabel('Median L² Error', fontsize=12)
-    ax.set_xlabel('Initial Condition Type', fontsize=12)
-    ax.set_title('MVAR-ROM Error by IC Type', fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3, axis='y')
-    plt.tight_layout()
-    plt.savefig(PLOTS_DIR / "error_by_ic_type.png", dpi=200)
-    plt.close()
-    
-    print("✓ Summary plots saved")
+    generate_summary_plots(metrics_df, IC_TYPES, PLOTS_DIR)
     
     # =============================================================================
-    # STEP 5: GENERATE SUMMARY JSON
+    # STEP 5: Time-Resolved Analysis
     # =============================================================================
     
     print("\n" + "="*80)
-    print("STEP 5: Generating Summary JSON")
+    print("STEP 5: Time-Resolved Analysis")
     print("="*80)
     
-    # Calculate POD compression ratio
-    n_space = 64 * 64  # DENSITY_NX * DENSITY_NY
-    compression_ratio = (1 - R_POD / n_space) * 100
+    degradation_info = generate_time_resolved_analysis(
+        test_metadata=test_metadata,
+        test_dir=TEST_DIR,
+        mvar_dir=MVAR_DIR,
+        data_dir=DATA_DIR,
+        time_analysis_dir=TIME_ANALYSIS_DIR
+    )
     
-    # Rank IC types by performance
-    ic_ranking = []
-    for ic_type in IC_TYPES:
-        if ic_type in ic_metrics:
-            ic_data = metrics_df[metrics_df["ic_type"] == ic_type]
-            ic_ranking.append({
-                "ic_type": ic_type,
-                "mean_r2": float(ic_data["r2"].mean()),
-                "std_r2": float(ic_data["r2"].std()),
-                "mean_l2_error": float(ic_data["median_e2"].mean()),
-                "best_r2": float(ic_metrics[ic_type]["best_r2"]),
-                "best_run": ic_metrics[ic_type]["best_run"]
-            })
+    # =============================================================================
+    # STEP 6: Summary JSON
+    # =============================================================================
     
-    ic_ranking.sort(key=lambda x: x["mean_r2"], reverse=True)
+    print("\n" + "="*80)
+    print("STEP 6: Generating Summary JSON")
+    print("="*80)
     
-    # Load original config values
-    DENSITY_NX = 64
-    DENSITY_NY = 64
-    DENSITY_BANDWIDTH = 2.0
-    TARGET_ENERGY = 0.995
-    RIDGE_ALPHA = 1e-6
-    
-    # Create comprehensive summary matching original pipeline
-    summary = {
-        "model_parameters": {
-            "simulation": {
-                "N_particles": 40,
-                "domain_size": {
-                    "Lx": float(BASE_CONFIG_SIM["Lx"]),
-                    "Ly": float(BASE_CONFIG_SIM["Ly"])
-                },
-                "boundary_conditions": "periodic",
-                "time": {
-                    "T_total": 2.0,
-                    "dt": 0.1,
-                    "save_every": 1
-                },
-                "model": "vicsek_morse_discrete",
-                "speed": 1.0,
-                "interaction_radius": 2.0,
-                "noise": {
-                    "kind": "gaussian",
-                    "eta": 0.3
-                },
-                "forces_enabled": False
-            },
-            "density_estimation": {
-                "method": "KDE",
-                "resolution": {"nx": int(DENSITY_NX), "ny": int(DENSITY_NY)},
-                "bandwidth": float(DENSITY_BANDWIDTH)
-            },
-            "initial_conditions": {
-                "types": IC_TYPES,
-                "description": "Stratified sampling across IC types"
-            }
-        },
-        "training_metrics": {
-            "ensemble": {
-                "n_simulations": int(N_TRAIN),
-                "ic_distribution": {
-                    ic: sum(1 for m in train_metadata if m.get(ic_key, m.get("ic_type")) == ic)
-                    for ic in IC_TYPES
-                }
-            },
-            "pod": {
-                "target_energy": float(TARGET_ENERGY),
-                "n_modes_selected": int(R_POD),
-                "actual_energy_captured": float(actual_energy),
-                "spatial_dof": int(n_space),
-                "compression_ratio_percent": float(compression_ratio),
-                "compression_description": f"{R_POD}/{n_space} modes ({compression_ratio:.2f}% compression)"
-            },
-            "mvar": {
-                "latent_dimension": int(R_POD),
-                "lag_order": int(P_LAG),
-                "ridge_alpha": float(RIDGE_ALPHA),
-                "training_r2": float(train_r2),
-                "training_rmse": float(train_rmse)
-            }
-        },
-        "test_results": {
-            "ensemble": {
-                "n_test_runs": int(M_TEST),
-                "stratification": "Equal distribution across IC types",
-                "runs_per_ic": int(M_TEST // len(IC_TYPES))
-            },
-            "overall_performance": {
-                "mean_r2": float(metrics_df["r2"].mean()),
-                "std_r2": float(metrics_df["r2"].std()),
-                "median_r2": float(metrics_df["r2"].median()),
-                "min_r2": float(metrics_df["r2"].min()),
-                "max_r2": float(metrics_df["r2"].max())
-            },
-            "error_metrics": {
-                "mean_l2_error": float(metrics_df["median_e2"].mean()),
-                "std_l2_error": float(metrics_df["median_e2"].std()),
-                "p10_l2_error": float(metrics_df["p10_e2"].mean()),
-                "p90_l2_error": float(metrics_df["p90_e2"].mean()),
-                "mean_mass_error": float(metrics_df["mean_mass_error"].mean()),
-                "max_mass_error": float(metrics_df["max_mass_error"].max()),
-                "mean_tau_tolerance": float(metrics_df["tau_tol"].mean())
-            },
-            "ic_performance_ranking": ic_ranking,
-            "best_overall_run": {
-                "run_name": metrics_df.loc[metrics_df["r2"].idxmax(), "run_name"],
-                "ic_type": metrics_df.loc[metrics_df["r2"].idxmax(), "ic_type"],
-                "r2": float(metrics_df["r2"].max())
-            },
-            "worst_overall_run": {
-                "run_name": metrics_df.loc[metrics_df["r2"].idxmin(), "run_name"],
-                "ic_type": metrics_df.loc[metrics_df["r2"].idxmin(), "ic_type"],
-                "r2": float(metrics_df["r2"].min())
-            }
-        },
-        "pipeline_metadata": {
-            "output_directory": str(DATA_DIR),
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "version": "1.0",
-            "pipeline_type": "split"
-        }
-    }
-    
-    # Save summary JSON (same name as original pipeline)
-    summary_path = OUTPUT_DIR / "pipeline_summary.json"
-    with open(summary_path, "w") as f:
-        json.dump(summary, f, indent=2)
-    
-    print("✓ Comprehensive summary JSON saved")
+    summary = generate_summary_json(
+        metrics_df=metrics_df,
+        ic_metrics=ic_metrics,
+        ic_types=IC_TYPES,
+        pod_data=pod_data,
+        train_metadata=train_metadata,
+        test_metadata=test_metadata,
+        base_config_sim=BASE_CONFIG_SIM,
+        degradation_info=degradation_info,
+        output_dir=OUTPUT_DIR
+    )
     
     # =============================================================================
     # COMPLETE
@@ -741,11 +256,19 @@ def main():
     
     print(f"\n🎬 Top 4 Runs by R² ({BEST_RUNS_DIR.name}/):")
     for idx, row in top_4_runs.iterrows():
-        print(f"   • {row['ic_type']}/ - {row['run_name']} (R²={row['r2']:.4f})")
+        print(f"   • {row[df_ic_key]}/ - {row['run_name']} (R²={row['r2']:.4f})")
     
     print(f"\n📊 Summary Plots ({PLOTS_DIR.name}/):")
     print(f"   • POD singular values + energy spectrum")
     print(f"   • R² and error by IC type")
+    
+    if degradation_info:
+        print(f"\n⏱️  Time-Resolved Analysis ({TIME_ANALYSIS_DIR.name}/):")
+        print(f"   • R² evolution over time (mean, detailed, survival curves)")
+        if 'best_r2' in degradation_info:
+            print(f"   • Best performance: t={degradation_info['best_time']:.1f}s (R²={degradation_info['best_r2']:.3f})")
+        if 'mean_r2_below_0.5' in degradation_info:
+            print(f"   • R² drops below 0.5 at t={degradation_info['mean_r2_below_0.5']:.1f}s")
     
     print(f"\n⏱️  Visualization time: {total_time//60:.0f}m {total_time%60:.1f}s")
     print("\n✅ Pipeline complete!")
@@ -754,3 +277,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

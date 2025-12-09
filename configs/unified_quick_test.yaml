@@ -1,0 +1,136 @@
+# Quick test config for unified pipeline verification
+# Minimal settings for fast testing
+
+sim_name: "unified_quick_test"
+
+# Model
+model:
+  type: discrete
+  speed: 1.0
+  speed_mode: constant_with_forces
+
+# Simulation parameters - MINIMAL
+sim:
+  N: 20                     # Small number of particles
+  Lx: 10.0
+  Ly: 10.0
+  bc: "periodic"
+  T: 1.0                    # Short duration
+  dt: 0.1
+  save_every: 1
+  neighbor_rebuild: 5
+  integrator: "euler"
+
+# Vicsek alignment
+params:
+  R: 2.0
+  alpha: 1.5
+  beta: 0.5
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.3
+  match_variance: true
+
+# Forces disabled for speed
+forces:
+  enabled: false
+  type: "morse"
+  params:
+    Cr: 0.3
+    Ca: 1.0
+    lr: 0.5
+    la: 2.0
+    rcut_factor: 3.0
+    mu_t: 0.3
+
+alignment:
+  enabled: true
+
+# Outputs
+outputs:
+  run_name: "unified_quick_test"
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 32    # Low resolution for speed
+  density_bandwidth: 2.0
+
+# ============================================================================
+# TRAINING: Minimal for testing (just 2 runs)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  
+  gaussian:
+    enabled: true
+    n_runs: 2               # Just 2 runs for quick test
+    positions_x: [5.0]      # Single position
+    positions_y: [5.0]
+    variances: [1.0]        # Single variance
+    n_samples_per_config: 2
+
+  uniform:
+    enabled: false
+
+  rings:
+    enabled: false
+
+  clusters:
+    enabled: false
+
+# ============================================================================
+# TEST: Minimal (just 1 run)
+# ============================================================================
+test_ic:
+  type: "mixed_comprehensive"
+  
+  gaussian:
+    enabled: true
+    n_runs: 1               # Just 1 test run
+    
+    # Test positions (different from training)
+    test_positions_x: [7.5]
+    test_positions_y: [7.5]
+    test_variances: [1.5]   # Different from training
+    
+    positions_x: []         # Empty for training-style config
+    positions_y: []
+    variances: []
+    n_samples_per_config: 1
+
+  uniform:
+    enabled: false
+
+  rings:
+    enabled: false
+
+  clusters:
+    enabled: false
+
+test_sim:
+  T: 2.0                    # Longer than training for forecast test
+  dt: 0.1
+  save_every: 1
+
+# ============================================================================
+# ROM-MVAR CONFIGURATION
+# ============================================================================
+rom:
+  subsample: 1
+  fixed_modes: 5            # Just 5 modes for quick test
+  mvar:
+    lag: 3                  # Short lag
+    ridge_alpha: 1e-6
+    n_segments: 1
+    segment_duration: null
+    overlap_fraction: 0.0
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
+eval:
+  save_time_resolved: true
+  forecast_start: 1.0       # Start forecasting from training end
+  forecast_end: 2.0
