@@ -654,13 +654,13 @@ def main():
     
     # 5.2. Eigenvalue scaling
     print(f"\n5.2. Computing eigenvalues and scaling...")
-    rho_max = rom_config.get('eigenvalue_threshold', 0.98)
+    rho_max = rom_config.get('eigenvalue_threshold', None)
     
     eigvals, eigvecs = np.linalg.eig(A_comp)
     rho_before = np.max(np.abs(eigvals))
     print(f"   Companion spectral radius (before): {rho_before:.6f}")
     
-    if rho_before > rho_max:
+    if rho_max is not None and rho_before > rho_max:
         print(f"   ⚠ Spectral radius {rho_before:.6f} > {rho_max}")
         print(f"   → Applying eigenvalue scaling...")
         
