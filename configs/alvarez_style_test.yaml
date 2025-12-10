@@ -76,8 +76,6 @@ test_ic:
     test_positions_x: [9.0]
     test_positions_y: [9.0]
     test_variances: [1.5]
-    extrapolation_positions: []
-    extrapolation_variance: []
   
   uniform:
     enabled: true
@@ -95,8 +93,6 @@ test_ic:
     n_runs: 2
     test_separations: [5.0]
     test_sigmas: [1.2]
-    extrapolation_separations: []
-    extrapolation_sigma: []
 
 # ---------------------------------------------------------------------------
 # ROM: ALVAREZ-STYLE PARAMETERS
