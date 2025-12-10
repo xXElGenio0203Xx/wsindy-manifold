@@ -39,31 +39,64 @@ density:
 # TRAINING ICs (reduced counts for quick test)
 # ---------------------------------------------------------------------------
 train_ic:
-  n_train_per_type: 5       # Quick test: 5 per type = 20 total
-  distributions:
-    - type: "gaussian_cluster"
-      params: {center_x: 7.5, center_y: 7.5, std: 1.5}
-    - type: "uniform"
-      params: {}
-    - type: "ring"
-      params: {radius: 4.0, std: 0.5}
-    - type: "two_clusters"
-      params: {separation: 6.0, std: 1.2}
+  gaussian:
+    enabled: true
+    n_runs: 5
+    positions_x: [7.5]
+    positions_y: [7.5]
+    variances: [1.5]
+    n_samples_per_config: 5
+  
+  uniform:
+    enabled: true
+    n_runs: 5
+    n_samples: 5
+  
+  ring:
+    enabled: true
+    n_runs: 5
+    radii: [4.0]
+    widths: [0.5]
+    n_samples_per_config: 5
+  
+  two_clusters:
+    enabled: true
+    n_runs: 5
+    separations: [6.0]
+    sigmas: [1.2]
+    n_samples_per_config: 5
 
 # ---------------------------------------------------------------------------
 # TEST ICs (reduced counts for quick test)
 # ---------------------------------------------------------------------------
 test_ic:
-  n_test_per_type: 2        # Quick test: 2 per type = 8 total
-  distributions:
-    - type: "gaussian_cluster"
-      params: {center_x: 9.0, center_y: 9.0, std: 1.5}
-    - type: "uniform"
-      params: {}
-    - type: "ring"
-      params: {radius: 3.5, std: 0.5}
-    - type: "two_clusters"
-      params: {separation: 5.0, std: 1.2}
+  gaussian:
+    enabled: true
+    n_runs: 2
+    test_positions_x: [9.0]
+    test_positions_y: [9.0]
+    test_variances: [1.5]
+    extrapolation_positions: []
+    extrapolation_variance: []
+  
+  uniform:
+    enabled: true
+    n_runs: 2
+  
+  ring:
+    enabled: true
+    n_runs: 2
+    test_radii: [3.5]
+    test_widths: [0.5]
+    n_samples_per_config: 2
+  
+  two_clusters:
+    enabled: true
+    n_runs: 2
+    test_separations: [5.0]
+    test_sigmas: [1.2]
+    extrapolation_separations: []
+    extrapolation_sigma: []
 
 # ---------------------------------------------------------------------------
 # ROM: ALVAREZ-STYLE PARAMETERS
