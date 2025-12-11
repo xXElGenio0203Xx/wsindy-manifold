@@ -1,0 +1,213 @@
+# ============================================================================
+# VICSEK ROM – JOINT MVAR + LSTM CONFIG (OPTIMAL PARAMETERS)
+# ============================================================================
+# Design principles:
+# - Many more samples than parameters (N_windows >> d²w)
+# - Modest latent dimension (d = 25 modes)
+# - Longer training horizon (T = 10s)
+# - Aligned lags between MVAR and LSTM
+# - Stronger regularization to avoid overfitting
+# ============================================================================
+
+model:
+  type: discrete
+  speed: 1.0
+  speed_mode: constant_with_forces
+
+sim:
+  N: 40
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+  T: 10.0                 # LONGER TRAINING HORIZON: 10s
+  dt: 0.1                 # time step
+  save_every: 1           # save every step (will subsample in ROM)
+  neighbor_rebuild: 5
+  integrator: "euler"
+
+params:
+  R: 2.0
+  alpha: 1.5
+  beta: 0.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.3
+  match_variance: true
+
+forces:
+  enabled: false
+  type: "morse"
+  params:
+    Cr: 0.3
+    Ca: 1.0
+    lr: 0.5
+    la: 2.0
+    rcut_factor: 3.0
+    mu_t: 0.3
+
+alignment:
+  enabled: true
+
+outputs:
+  run_name: "vicsek_rom_joint_optimal"
+  order_parameters: true
+  save_npz: true
+  fps: 20
+  density_resolution: 64
+  density_bandwidth: 3.0    # smoother density → lower effective rank
+
+# ----------------------------------------------------------------------------
+# TRAINING INITIAL CONDITIONS – COMPREHENSIVE MIXED
+# Target: ~400 training runs total
+# ----------------------------------------------------------------------------
+
+train_ic:
+  type: "mixed_comprehensive"
+  
+  # Gaussian clusters (150 runs)
+  gaussian:
+    enabled: true
+    count: 150
+    cluster_count_range: [2, 4]
+    sigma_range: [1.0, 3.0]
+    min_separation: 2.0
+  
+  # Uniform random (150 runs)
+  uniform:
+    enabled: true
+    count: 150
+  
+  # Ring configurations (50 runs)
+  ring:
+    enabled: true
+    count: 50
+    radius_range: [3.0, 6.0]
+    angular_noise: 0.2
+  
+  # Two-cluster configurations (50 runs)
+  two_clusters:
+    enabled: true
+    count: 50
+    separation_range: [4.0, 8.0]
+    sigma: 1.5
+
+# ----------------------------------------------------------------------------
+# TEST INITIAL CONDITIONS – COMPREHENSIVE EVALUATION
+# 40 test runs, 10s each
+# ----------------------------------------------------------------------------
+
+test_ic:
+  type: "mixed_test_comprehensive"
+  test_T: 10.0              # match training horizon
+  
+  # Gaussian test cases (10 runs)
+  gaussian:
+    enabled: true
+    count: 10
+    cluster_count_range: [2, 4]
+    sigma_range: [1.0, 3.0]
+    min_separation: 2.0
+  
+  # Uniform test cases (10 runs)
+  uniform:
+    enabled: true
+    count: 10
+  
+  # Ring test cases (10 runs)
+  ring:
+    enabled: true
+    count: 10
+    radius_range: [3.0, 6.0]
+    angular_noise: 0.2
+  
+  # Two-cluster test cases (10 runs)
+  two_clusters:
+    enabled: true
+    count: 10
+    separation_range: [4.0, 8.0]
+    sigma: 1.5
+
+# ----------------------------------------------------------------------------
+# DENSITY ESTIMATION
+# ----------------------------------------------------------------------------
+
+density:
+  enabled: true
+  nx: 64
+  ny: 64
+  method: "kde"
+  bandwidth: 3.0            # must match outputs.density_bandwidth
+
+# ----------------------------------------------------------------------------
+# ROM SETTINGS – POD + MVAR + LSTM (JOINT OPTIMAL)
+# ----------------------------------------------------------------------------
+# Parameter analysis:
+# - subsample = 2  → ROM dt = 0.2s, K_train ≈ 50 steps per trajectory
+# - fixed_modes = 25 → d = 25 latent modes
+# - lag = 9:
+#     * per trajectory: windows = K_train − lag ≈ 41
+#     * with ~400 trajectories: N_samples ≈ 400 × 41 ≈ 16,400 windows
+# - MVAR params: d² × w = 25² × 9 = 5,625 << 16,400 → well-determined
+# - ridge_alpha = 1e-4 → strong regularization (vs 1e-6 overfitted)
+# - eigenvalue_threshold = 0.999 → gentle stabilization
+# ----------------------------------------------------------------------------
+
+rom:
+  # General POD / ROM settings
+  subsample: 2                 # use every 2nd snapshot (effective dt = 0.2s)
+  pod_energy: 0.999            # diagnostic; enforces fixed_modes
+  fixed_modes: 25              # latent dimension d
+  eigenvalue_threshold: 0.999  # gentle stabilization for linear ROMs
+
+  models:
+    mvar:
+      enabled: true
+      lag: 9                   # MVAR lag w
+      ridge_alpha: 1.0e-4      # stronger ridge regularization
+
+    lstm:
+      enabled: true
+      lag: 9                   # SAME lag as MVAR → identical window dataset
+      hidden_units: 16         # low-parameter LSTM (fair comparison with MVAR)
+      num_layers: 1            # single layer
+      activation: "tanh"       # PyTorch LSTM default
+      batch_size: 64           # moderate batch size
+      learning_rate: 1.0e-3    # Adam learning rate
+      max_epochs: 500          # upper bound (early stopping will cut it)
+      patience: 20             # early stopping patience
+      weight_decay: 0.0        # no L2 on weights (can try 1e-5 later)
+      gradient_clip: 1.0       # prevent exploding gradients
+      loss: "mse"              # L2 loss in latent space
+
+# ----------------------------------------------------------------------------
+# EVALUATION SETTINGS – SHARED BY MVAR AND LSTM
+# ----------------------------------------------------------------------------
+
+evaluation:
+  forecast_start: 2.0          # start closed-loop forecast at t = 2.0s
+  forecast_end: 10.0           # forecast until end of 10s trajectory
+  save_time_resolved: true     # save R²(t) curves
+
+# ============================================================================
+# EXPECTED OUTCOMES
+# ============================================================================
+# Training data:
+#   - 400 trajectories × 50 ROM steps = 20,000 latent snapshots
+#   - With lag=9: ~16,400 windows for training both models
+#
+# MVAR:
+#   - Parameters: 25² × 9 = 5,625
+#   - Data/param ratio: 16,400 / 5,625 ≈ 2.9 (well-determined)
+#   - Ridge regularization prevents overfitting
+#
+# LSTM:
+#   - Hidden units: 16, layers: 1
+#   - Comparable capacity to MVAR (fair comparison)
+#   - Early stopping prevents overfitting
+#
+# Test evaluation:
+#   - 40 test runs with diverse initial conditions
+#   - Forecast horizon: 2s → 10s (8s of prediction)
+#   - Time-resolved R² analysis for both models
+# ============================================================================
