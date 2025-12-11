@@ -31,9 +31,7 @@ echo "Start time: $(date)"
 echo "======================================================================"
 
 # Load environment
-module load python/3.11.0
-module load pytorch/2.0.1
-source ~/venv_wsindy/bin/activate
+source ~/wsindy-manifold/shell_scripts/setup_oscar_env.sh
 
 # Navigate to project directory
 cd ~/wsindy-manifold || exit 1
