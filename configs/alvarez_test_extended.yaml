@@ -1,0 +1,86 @@
+# ============================================================================
+# ALVAREZ-STYLE ROM CONFIG - QUICK LOCAL TEST (Extended Forecast)
+# ============================================================================
+# Minimal version to test 12s forecast (8s conditioning + 12s prediction)
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# MICRO MODEL
+# ---------------------------------------------------------------------------
+sim:
+  N: 20
+  Lx: 10.0
+  Ly: 10.0
+  bc: "periodic"
+  T: 8.0                    # Training: 8 seconds
+  dt: 0.1
+  v0: 1.0
+  R: 2.0
+  eta: 0.3
+
+# ---------------------------------------------------------------------------
+# DENSITY COMPUTATION
+# ---------------------------------------------------------------------------
+density:
+  nx: 32
+  ny: 32
+  bandwidth: 3.0
+
+# ---------------------------------------------------------------------------
+# TRAINING ICs (4 runs only)
+# ---------------------------------------------------------------------------
+train_ic:
+  gaussian:
+    enabled: true
+    n_runs: 2
+    positions_x: [5.0]
+    positions_y: [5.0]
+    variances: [1.0, 4.0]
+    n_samples_per_config: 1
+  
+  uniform:
+    enabled: true
+    n_runs: 2
+
+# ---------------------------------------------------------------------------
+# TEST ICs (4 runs, 20s duration)
+# ---------------------------------------------------------------------------
+test_ic:
+  gaussian:
+    enabled: true
+    n_runs: 2
+    test_positions_x: [4.0]
+    test_positions_y: [4.0]
+    test_variances: [2.25]
+  
+  uniform:
+    enabled: true
+    n_runs: 2
+
+test_sim:
+  T: 20.0                   # Test: 20 seconds (12s forecast!)
+
+# ---------------------------------------------------------------------------
+# ROM: ALVAREZ-STYLE PARAMETERS
+# ---------------------------------------------------------------------------
+rom:
+  fixed_modes: 20
+
+mvar:
+  order: 5
+  ridge_alpha: 1.0e-4
+  enforce_stability: true
+  eigenvalue_threshold: 0.999
+  train_fraction: 0.8
+
+# ---------------------------------------------------------------------------
+# EVALUATION
+# ---------------------------------------------------------------------------
+eval:
+  forecast_dt: 1
+  save_time_resolved: true
+  metrics:
+    - "mse"
+    - "mae"
+    - "r2"
+    - "mass_conservation"

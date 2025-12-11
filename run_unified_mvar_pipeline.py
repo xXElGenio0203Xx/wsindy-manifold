@@ -59,14 +59,23 @@ def main():
     # Save config for reference
     shutil.copy(args.config, OUTPUT_DIR / "config_used.yaml")
     
+    # Extract MVAR config (support new nested structure and old flat structure)
+    if 'models' in rom_config and 'mvar' in rom_config['models']:
+        mvar_lag = rom_config['models']['mvar'].get('lag', 'auto')
+        ridge_alpha = rom_config['models']['mvar'].get('ridge_alpha', 1e-6)
+    else:
+        # Backward compatibility
+        mvar_lag = rom_config.get('mvar_lag', 'auto')
+        ridge_alpha = rom_config.get('ridge_alpha', 1e-6)
+    
     print(f"\nConfiguration:")
     print(f"   N: {BASE_CONFIG['sim']['N']}")
     print(f"   T: {BASE_CONFIG['sim']['T']}s")
     print(f"   dt: {BASE_CONFIG['sim']['dt']}s")
     print(f"   Domain: {BASE_CONFIG['sim']['Lx']}×{BASE_CONFIG['sim']['Ly']}")
     print(f"   Density: {DENSITY_NX}×{DENSITY_NY}")
-    print(f"   ROM lag: {rom_config.get('mvar_lag', 'auto')}")
-    print(f"   Ridge α: {rom_config.get('ridge_alpha', 1e-6)}")
+    print(f"   ROM lag: {mvar_lag}")
+    print(f"   Ridge α: {ridge_alpha}")
     
     # =========================================================================
     # STEP 1: Generate Training Data
@@ -193,7 +202,8 @@ def main():
             density_nx=DENSITY_NX,
             density_ny=DENSITY_NY,
             rom_subsample=ROM_SUBSAMPLE,
-            eval_config=eval_config
+            eval_config=eval_config,
+            train_T=BASE_CONFIG['sim']['T']
         )
         
         mean_r2_recon = test_results_df['r2_reconstructed'].mean()

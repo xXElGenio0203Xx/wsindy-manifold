@@ -51,8 +51,17 @@ def train_mvar_model(pod_data, rom_config):
     T_rom = pod_data['T_rom']
     R_POD = pod_data['R_POD']
     
-    P_LAG = rom_config.get('mvar_lag', 5)  # Default to 5 for MVAR(5)
-    RIDGE_ALPHA = rom_config.get('ridge_alpha', 1e-6)
+    # Support both old and new config structures
+    # New: rom.models.mvar.lag and rom.models.mvar.ridge_alpha
+    # Old: rom.mvar_lag and rom.ridge_alpha (backward compatible)
+    if 'models' in rom_config and 'mvar' in rom_config['models']:
+        mvar_config = rom_config['models']['mvar']
+        P_LAG = mvar_config.get('lag', 5)
+        RIDGE_ALPHA = mvar_config.get('ridge_alpha', 1e-6)
+    else:
+        # Backward compatibility with old config structure
+        P_LAG = rom_config.get('mvar_lag', 5)
+        RIDGE_ALPHA = rom_config.get('ridge_alpha', 1e-6)
     
     print(f"\nTraining global MVAR (p={P_LAG}, α={RIDGE_ALPHA})...")
     

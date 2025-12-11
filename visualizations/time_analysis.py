@@ -18,7 +18,8 @@ def generate_time_resolved_analysis(
     test_dir,
     mvar_dir,
     data_dir,
-    time_analysis_dir
+    time_analysis_dir,
+    model_name='mvar'
 ):
     """
     Generate comprehensive time-resolved R² degradation analysis.
@@ -30,11 +31,13 @@ def generate_time_resolved_analysis(
     test_dir : Path
         Directory containing test data
     mvar_dir : Path
-        Directory containing MVAR model
+        Directory containing MVAR model (or other model)
     data_dir : Path
         Root data directory (contains config_used.yaml)
     time_analysis_dir : Path
         Directory to save time analysis outputs
+    model_name : str, optional
+        Name of the model ('mvar' or 'lstm'), used for file naming
     
     Returns
     -------
@@ -57,7 +60,12 @@ def generate_time_resolved_analysis(
     
     for meta in test_metadata:
         run_name = meta["run_name"]
-        r2_file = test_dir / run_name / "r2_vs_time.csv"
+        
+        # Try model-specific file first, fallback to generic
+        r2_file = test_dir / run_name / f"r2_vs_time_{model_name}.csv"
+        if not r2_file.exists():
+            r2_file = test_dir / run_name / "r2_vs_time.csv"
+        
         if r2_file.exists():
             df = pd.read_csv(r2_file)
             df['test_id'] = run_name
@@ -87,13 +95,16 @@ def generate_time_resolved_analysis(
     print(f"   Best: t={degradation_info['best_time']:.1f}s (R²={degradation_info['best_r2']:.3f})")
     print(f"   Worst: t={degradation_info['worst_time']:.1f}s (R²={degradation_info['worst_r2']:.3f})")
     
-    # Additional analysis: Window count and contamination
-    print("\nGenerating R² degradation analysis with window count...")
-    temporal_analysis = _generate_window_analysis(
-        r2_combined, time_stats_df, times, mvar_dir, data_dir, time_analysis_dir
-    )
-    
-    degradation_info['temporal_analysis'] = temporal_analysis
+    # Additional analysis: Window count and contamination (MVAR only)
+    # Check if mvar_model.npz exists before attempting window analysis
+    if (mvar_dir / "mvar_model.npz").exists():
+        print("\nGenerating R² degradation analysis with window count...")
+        temporal_analysis = _generate_window_analysis(
+            r2_combined, time_stats_df, times, mvar_dir, data_dir, time_analysis_dir
+        )
+        degradation_info['temporal_analysis'] = temporal_analysis
+    else:
+        print("\n⚠ Skipping window analysis (MVAR model not found)")
     
     return degradation_info
 

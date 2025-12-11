@@ -7,6 +7,7 @@ Supports:
 - Time-resolved R² analysis
 - Multiple R² metrics (reconstructed, latent, POD)
 - Mass conservation tracking
+- Order parameter computation
 """
 
 import numpy as np
@@ -14,14 +15,16 @@ from pathlib import Path
 import json
 import pandas as pd
 from tqdm import tqdm
+from rectsim.standard_metrics import compute_metrics_series
 
 
 def evaluate_test_runs(
-    test_dir, n_test, base_config_test, pod_data, mvar_model, 
-    density_nx, density_ny, rom_subsample, eval_config
+    test_dir, n_test, base_config_test, pod_data, forecast_fn, lag,
+    density_nx, density_ny, rom_subsample, eval_config, train_T=None,
+    model_name="ROM"
 ):
     """
-    Evaluate ROM-MVAR model on all test runs.
+    Evaluate ROM model on all test runs using generic forecast function.
     
     Parameters
     ----------
@@ -33,8 +36,12 @@ def evaluate_test_runs(
         Test simulation configuration
     pod_data : dict
         POD data from build_pod_basis
-    mvar_model : sklearn model
-        Trained MVAR model
+    forecast_fn : callable
+        Forecast function with signature:
+        forecast_fn(y_init_window, n_steps) -> ys_pred
+        where y_init_window is [lag, d] and ys_pred is [n_steps, d]
+    lag : int
+        Lookback window size (number of timesteps)
     density_nx, density_ny : int
         Density grid resolution
     rom_subsample : int
@@ -42,8 +49,12 @@ def evaluate_test_runs(
     eval_config : dict
         Evaluation configuration with keys:
         - save_time_resolved: whether to save R² vs time
-        - forecast_start: forecast period start time
-        - forecast_end: forecast period end time
+        - forecast_start: forecast period start time (defaults to train_T)
+        - forecast_end: forecast period end time (defaults to test_T)
+    train_T : float, optional
+        Training trajectory duration (used as default forecast_start)
+    model_name : str, optional
+        Name of model for logging purposes (default: "ROM")
     
     Returns
     -------
@@ -57,12 +68,19 @@ def evaluate_test_runs(
     U_r = pod_data['U_r']
     X_mean = pod_data['X_mean']
     R_POD = pod_data['R_POD']
-    P_LAG = mvar_model.n_features_in_ // R_POD  # Infer lag from model
+    P_LAG = lag  # Use provided lag parameter
     
     # Determine evaluation mode
     save_time_resolved = eval_config.get('save_time_resolved', False)
-    forecast_start = eval_config.get('forecast_start', base_config_test['sim']['T'])
-    forecast_end = eval_config.get('forecast_end', base_config_test['sim']['T'])
+    test_T = base_config_test['sim']['T']
+    
+    # Default forecast_start to training time (where forecast begins)
+    # Default forecast_end to test time (full test trajectory)
+    if train_T is None:
+        train_T = test_T  # Fallback if not provided
+    
+    forecast_start = eval_config.get('forecast_start', train_T)
+    forecast_end = eval_config.get('forecast_end', test_T)
     
     if save_time_resolved:
         print(f"\nTime-resolved evaluation enabled:")
@@ -104,25 +122,16 @@ def evaluate_test_runs(
         if T_train < P_LAG:
             print(f"⚠️  Warning: Training period ({T_train} steps) < lag ({P_LAG}). Using all available.")
             ic_window = test_latent[:T_train]
+            # Pad with zeros if needed
+            if len(ic_window) < P_LAG:
+                padding = np.zeros((P_LAG - len(ic_window), R_POD))
+                ic_window = np.vstack([padding, ic_window])
         else:
             ic_window = test_latent[T_train-P_LAG:T_train]
         
-        # Autoregressive prediction
-        pred_latent = []
-        current_history = ic_window.copy()
-        
-        for t in range(T_train, T_test):
-            # Prepare feature vector
-            x_hist = current_history[-P_LAG:].flatten()
-            
-            # Predict next step
-            y_next = mvar_model.predict(x_hist.reshape(1, -1))[0]
-            pred_latent.append(y_next)
-            
-            # Update history
-            current_history = np.vstack([current_history[1:], y_next])
-        
-        pred_latent = np.array(pred_latent)
+        # Forecast using generic forecast function
+        n_forecast_steps = T_test - T_train
+        pred_latent = forecast_fn(ic_window, n_forecast_steps)
         
         # Reconstruct to physical space
         pred_physical = (pred_latent @ U_r.T) + X_mean
@@ -218,6 +227,75 @@ def evaluate_test_runs(
             ygrid=ygrid,
             times=forecast_times
         )
+        
+        # Compute order parameters from trajectory for visualization
+        try:
+            # Load trajectory (positions + velocities)
+            traj_file = test_run_dir / "trajectory.npz"
+            if traj_file.exists():
+                traj_data = np.load(traj_file)
+                x = traj_data['traj']  # Shape: (T, N, 2) - positions
+                
+                # Extract velocities from trajectory
+                if 'vel' in traj_data:
+                    v = traj_data['vel']  # Shape: (T, N, 2)
+                elif 'velocities' in traj_data:
+                    v = traj_data['velocities']
+                else:
+                    # Compute velocities from positions if not available
+                    dt = base_config_test['sim']['dt']
+                    v = np.zeros_like(x)
+                    v[:-1] = (x[1:] - x[:-1]) / dt
+                    v[-1] = v[-2]  # Repeat last velocity
+                
+                # Domain bounds
+                Lx = base_config_test['sim']['Lx']
+                Ly = base_config_test['sim']['Ly']
+                domain_bounds = (0, Lx, 0, Ly)
+                
+                # Compute order parameters for all timesteps
+                order_params = compute_metrics_series(
+                    x, v, domain_bounds, 
+                    resolution=density_nx,
+                    verbose=False
+                )
+                
+                # Save to CSV with time column
+                op_df = pd.DataFrame({
+                    't': test_times,
+                    'phi': order_params['polarization'],
+                    'mean_speed': order_params['mean_speed'],
+                    'angular_momentum': order_params['angular_momentum'],
+                    'density_variance': order_params['density_variance'],
+                    'total_mass': order_params['total_mass']
+                })
+                op_df.to_csv(test_run_dir / "order_params.csv", index=False)
+                
+            # ALSO compute density-based metrics for TRUE vs PREDICTED comparison
+            # This allows us to compare ground truth vs prediction
+            density_variance_true = np.std(test_density, axis=(1, 2))  # Spatial std per timestep
+            density_variance_pred_full = np.zeros(T_test)
+            density_variance_pred_full[:T_train] = density_variance_true[:T_train]  # Use true during conditioning
+            density_variance_pred_full[T_train:] = np.std(pred_physical, axis=(1, 2))  # Use pred during forecast
+            
+            mass_true = np.sum(test_density, axis=(1, 2))
+            mass_pred_full = np.zeros(T_test)
+            mass_pred_full[:T_train] = mass_true[:T_train]
+            mass_pred_full[T_train:] = np.sum(pred_physical, axis=(1, 2))
+            
+            # Save density-based comparison metrics
+            density_metrics_df = pd.DataFrame({
+                't': test_times,
+                'density_variance_true': density_variance_true,
+                'density_variance_pred': density_variance_pred_full,
+                'mass_true': mass_true,
+                'mass_pred': mass_pred_full,
+            })
+            density_metrics_df.to_csv(test_run_dir / "density_metrics.csv", index=False)
+            
+        except Exception as e:
+            # Don't fail evaluation if order params fail
+            print(f"   Warning: Could not compute order parameters for test_{test_idx:03d}: {e}")
         
         test_results.append(result)
     

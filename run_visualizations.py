@@ -31,6 +31,170 @@ from visualizations import (
     generate_time_resolved_analysis,
     generate_summary_json
 )
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+
+def generate_lstm_training_plot(training_log, plots_dir):
+    """
+    Generate LSTM training convergence plot.
+    
+    Args:
+        training_log: DataFrame with columns ['epoch', 'train_loss', 'val_loss']
+        plots_dir: Path to save plots
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+    
+    epochs = training_log['epoch'].values
+    train_loss = training_log['train_loss'].values
+    val_loss = training_log['val_loss'].values
+    
+    # Loss curves
+    ax1.plot(epochs, train_loss, label='Train Loss', linewidth=2, alpha=0.8)
+    ax1.plot(epochs, val_loss, label='Val Loss', linewidth=2, alpha=0.8)
+    
+    # Mark best epoch
+    best_epoch = training_log['val_loss'].idxmin()
+    best_val_loss = val_loss[best_epoch]
+    ax1.scatter([epochs[best_epoch]], [best_val_loss], 
+                color='red', s=100, zorder=5, label=f'Best (epoch {epochs[best_epoch]})')
+    
+    ax1.set_xlabel('Epoch', fontsize=12)
+    ax1.set_ylabel('Loss', fontsize=12)
+    ax1.set_title('LSTM Training Convergence', fontsize=14, fontweight='bold')
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_yscale('log')
+    
+    # Loss improvement rate
+    loss_improvement = np.diff(val_loss)
+    ax2.plot(epochs[1:], -loss_improvement, linewidth=2, alpha=0.8, color='green')
+    ax2.axhline(y=0, color='red', linestyle='--', alpha=0.5)
+    ax2.set_xlabel('Epoch', fontsize=12)
+    ax2.set_ylabel('Loss Improvement (-Δ Val Loss)', fontsize=12)
+    ax2.set_title('Validation Loss Improvement Rate', fontsize=14, fontweight='bold')
+    ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    output_path = plots_dir / "lstm_training.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"   ✓ Saved: {output_path.name}")
+
+
+def generate_mvar_lstm_comparison(mvar_metrics, lstm_metrics, mvar_ic_metrics, lstm_ic_metrics, ic_types, plots_dir):
+    """
+    Generate 4-panel comparison plot between MVAR and LSTM.
+    
+    Args:
+        mvar_metrics: DataFrame with MVAR test results
+        lstm_metrics: DataFrame with LSTM test results
+        mvar_ic_metrics: Dict of MVAR metrics by IC type
+        lstm_ic_metrics: Dict of LSTM metrics by IC type
+        ic_types: List of IC types
+        plots_dir: Path to save plots
+    """
+    fig = plt.figure(figsize=(14, 10))
+    gs = gridspec.GridSpec(2, 2, hspace=0.3, wspace=0.3)
+    
+    # Panel 1: R² by IC type
+    ax1 = fig.add_subplot(gs[0, 0])
+    x_pos = np.arange(len(ic_types))
+    width = 0.35
+    
+    mvar_r2 = [mvar_ic_metrics[ic]['mean_r2'] for ic in ic_types]
+    lstm_r2 = [lstm_ic_metrics[ic]['mean_r2'] for ic in ic_types]
+    
+    ax1.bar(x_pos - width/2, mvar_r2, width, label='MVAR', alpha=0.8)
+    ax1.bar(x_pos + width/2, lstm_r2, width, label='LSTM', alpha=0.8)
+    ax1.set_xlabel('IC Type', fontsize=12)
+    ax1.set_ylabel('Mean R²', fontsize=12)
+    ax1.set_title('R² by Initial Condition', fontsize=13, fontweight='bold')
+    ax1.set_xticks(x_pos)
+    ax1.set_xticklabels(ic_types, rotation=45, ha='right')
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3, axis='y')
+    ax1.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
+    
+    # Panel 2: RMSE by IC type
+    ax2 = fig.add_subplot(gs[0, 1])
+    
+    mvar_rmse = [mvar_ic_metrics[ic]['mean_rmse'] for ic in ic_types]
+    lstm_rmse = [lstm_ic_metrics[ic]['mean_rmse'] for ic in ic_types]
+    
+    ax2.bar(x_pos - width/2, mvar_rmse, width, label='MVAR', alpha=0.8)
+    ax2.bar(x_pos + width/2, lstm_rmse, width, label='LSTM', alpha=0.8)
+    ax2.set_xlabel('IC Type', fontsize=12)
+    ax2.set_ylabel('Mean RMSE', fontsize=12)
+    ax2.set_title('RMSE by Initial Condition', fontsize=13, fontweight='bold')
+    ax2.set_xticks(x_pos)
+    ax2.set_xticklabels(ic_types, rotation=45, ha='right')
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3, axis='y')
+    
+    # Panel 3: Overall distribution (violin plot)
+    ax3 = fig.add_subplot(gs[1, 0])
+    
+    data_to_plot = [mvar_metrics['r2'].values, lstm_metrics['r2'].values]
+    positions = [1, 2]
+    
+    parts = ax3.violinplot(data_to_plot, positions=positions, showmeans=True, showmedians=True)
+    ax3.set_xticks(positions)
+    ax3.set_xticklabels(['MVAR', 'LSTM'])
+    ax3.set_ylabel('R²', fontsize=12)
+    ax3.set_title('R² Distribution (All Tests)', fontsize=13, fontweight='bold')
+    ax3.grid(True, alpha=0.3, axis='y')
+    ax3.axhline(y=0, color='red', linestyle='--', alpha=0.5)
+    
+    # Panel 4: Summary statistics
+    ax4 = fig.add_subplot(gs[1, 1])
+    ax4.axis('off')
+    
+    # Calculate statistics
+    mvar_mean = mvar_metrics['r2'].mean()
+    mvar_std = mvar_metrics['r2'].std()
+    mvar_rmse_mean = mvar_metrics['rmse'].mean()
+    
+    lstm_mean = lstm_metrics['r2'].mean()
+    lstm_std = lstm_metrics['r2'].std()
+    lstm_rmse_mean = lstm_metrics['rmse'].mean()
+    
+    diff = mvar_mean - lstm_mean
+    percent_diff = (diff / abs(lstm_mean)) * 100 if lstm_mean != 0 else 0
+    
+    summary_text = f"""
+    SUMMARY STATISTICS
+    ═══════════════════════════════════
+    
+    MVAR Performance:
+      • Mean R²:    {mvar_mean:7.4f} ± {mvar_std:.4f}
+      • Mean RMSE:  {mvar_rmse_mean:7.4f}
+      • N tests:    {len(mvar_metrics)}
+    
+    LSTM Performance:
+      • Mean R²:    {lstm_mean:7.4f} ± {lstm_std:.4f}
+      • Mean RMSE:  {lstm_rmse_mean:7.4f}
+      • N tests:    {len(lstm_metrics)}
+    
+    ───────────────────────────────────
+    
+    Comparison:
+      • R² Difference:  {diff:+.4f}
+      • Relative:       {percent_diff:+.1f}%
+      • Winner:         {'MVAR' if diff > 0 else 'LSTM' if diff < 0 else 'TIE'}
+    """
+    
+    ax4.text(0.1, 0.5, summary_text, fontsize=11, family='monospace',
+             verticalalignment='center', transform=ax4.transAxes)
+    
+    plt.suptitle('MVAR vs LSTM: Comprehensive Comparison', fontsize=16, fontweight='bold', y=0.98)
+    
+    output_path = plots_dir / "mvar_lstm_comparison.png"
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"   ✓ Saved: {output_path.name}")
 
 
 def main():
@@ -46,7 +210,28 @@ def main():
     
     TRAIN_DIR = DATA_DIR / "train"
     TEST_DIR = DATA_DIR / "test"
-    MVAR_DIR = DATA_DIR / "mvar"
+    
+    # Detect structure: old (mvar/) or unified (rom_common/, MVAR/, LSTM/)
+    OLD_MVAR_DIR = DATA_DIR / "mvar"
+    ROM_COMMON_DIR = DATA_DIR / "rom_common"
+    MVAR_DIR = DATA_DIR / "MVAR"
+    LSTM_DIR = DATA_DIR / "LSTM"
+    
+    # Determine which structure we're using
+    use_unified_structure = ROM_COMMON_DIR.exists()
+    
+    if use_unified_structure:
+        print(f"\n🔍 Detected unified multi-model structure")
+        POD_DIR = ROM_COMMON_DIR
+        MODEL_DIRS = {}
+        if MVAR_DIR.exists():
+            MODEL_DIRS['mvar'] = MVAR_DIR
+        if LSTM_DIR.exists():
+            MODEL_DIRS['lstm'] = LSTM_DIR
+    else:
+        print(f"\n🔍 Detected legacy single-model structure")
+        POD_DIR = OLD_MVAR_DIR
+        MODEL_DIRS = {'mvar': OLD_MVAR_DIR}
     
     BEST_RUNS_DIR = OUTPUT_DIR / "best_runs"
     PLOTS_DIR = OUTPUT_DIR / "plots"
@@ -69,9 +254,13 @@ def main():
         print(f"   python run_data_generation.py --experiment_name {args.experiment_name}")
         return
     
-    if not TRAIN_DIR.exists() or not TEST_DIR.exists() or not MVAR_DIR.exists():
-        print(f"\n❌ ERROR: Missing train/test/mvar directories in {DATA_DIR}")
-        print("   Expected structure: train/, test/, mvar/")
+    if not TRAIN_DIR.exists() or not TEST_DIR.exists():
+        print(f"\n❌ ERROR: Missing train/test directories in {DATA_DIR}")
+        return
+    
+    if not OLD_MVAR_DIR.exists() and not ROM_COMMON_DIR.exists():
+        print(f"\n❌ ERROR: No model directories found in {DATA_DIR}")
+        print("   Expected either: mvar/ (old) or rom_common/ (unified)")
         return
     
     pipeline_start = time.time()
@@ -92,8 +281,8 @@ def main():
     with open(TEST_DIR / "metadata.json", "r") as f:
         test_metadata = json.load(f)
     
-    # Load POD model
-    pod_data_raw = np.load(MVAR_DIR / "pod_basis.npz")
+    # Load POD model from appropriate directory
+    pod_data_raw = np.load(POD_DIR / "pod_basis.npz")
     U = pod_data_raw["U"]
     singular_values = pod_data_raw["singular_values"]
     all_singular_values = pod_data_raw["all_singular_values"]
@@ -101,14 +290,42 @@ def main():
     cumulative_ratio = pod_data_raw["cumulative_ratio"]
     R_POD = U.shape[1]
     
-    # Load MVAR model
-    mvar_data_raw = np.load(MVAR_DIR / "mvar_model.npz")
-    P_LAG = int(mvar_data_raw["p"])
-    train_r2 = float(mvar_data_raw["train_r2"])
-    train_rmse = float(mvar_data_raw["train_rmse"])
+    # Load X_train_mean from appropriate directory
+    if use_unified_structure:
+        X_train_mean = np.load(ROM_COMMON_DIR / "X_train_mean.npy")
+    else:
+        X_train_mean = np.load(OLD_MVAR_DIR / "X_train_mean.npy")
     
-    # Load X_train_mean for R² calculation
-    X_train_mean = np.load(MVAR_DIR / "X_train_mean.npy")
+    # Load model-specific data
+    models_data = {}
+    
+    # Load MVAR data if available
+    if 'mvar' in MODEL_DIRS:
+        mvar_dir = MODEL_DIRS['mvar']
+        mvar_data_raw = np.load(mvar_dir / "mvar_model.npz")
+        models_data['mvar'] = {
+            'p_lag': int(mvar_data_raw["p"]),
+            'train_r2': float(mvar_data_raw["train_r2"]),
+            'train_rmse': float(mvar_data_raw["train_rmse"]),
+            'dir': mvar_dir
+        }
+        P_LAG = models_data['mvar']['p_lag']
+        train_r2 = models_data['mvar']['train_r2']
+        train_rmse = models_data['mvar']['train_rmse']
+    
+    # Load LSTM data if available
+    if 'lstm' in MODEL_DIRS:
+        lstm_dir = MODEL_DIRS['lstm']
+        # Load training log
+        if (lstm_dir / "training_log.csv").exists():
+            lstm_training_log = pd.read_csv(lstm_dir / "training_log.csv")
+        else:
+            lstm_training_log = None
+        
+        models_data['lstm'] = {
+            'training_log': lstm_training_log,
+            'dir': lstm_dir
+        }
     
     # Load simulation config from first training run
     first_run_data = np.load(TRAIN_DIR / train_metadata[0]["run_name"] / "density.npz")
@@ -134,16 +351,27 @@ def main():
         'singular_values': singular_values,
         'all_singular_values': all_singular_values,
         'cumulative_energy': cumulative_ratio,
-        'p_lag': P_LAG,
-        'train_r2': train_r2,
-        'train_rmse': train_rmse
     }
+    
+    # Add MVAR params if available (for backward compatibility)
+    if 'mvar' in models_data:
+        pod_data['p_lag'] = models_data['mvar']['p_lag']
+        pod_data['train_r2'] = models_data['mvar']['train_r2']
+        pod_data['train_rmse'] = models_data['mvar']['train_rmse']
     
     print(f"\n✓ Loaded data:")
     print(f"   Training: {N_TRAIN} runs")
     print(f"   Test: {M_TEST} runs")
     print(f"   POD: {R_POD} modes ({actual_energy*100:.2f}% energy)")
-    print(f"   MVAR: p={P_LAG}, R²={train_r2:.4f}")
+    
+    if 'mvar' in models_data:
+        print(f"   MVAR: p={models_data['mvar']['p_lag']}, R²={models_data['mvar']['train_r2']:.4f}")
+    if 'lstm' in models_data:
+        if models_data['lstm']['training_log'] is not None:
+            final_val_loss = models_data['lstm']['training_log']['val_loss'].iloc[-1]
+            print(f"   LSTM: final val_loss={final_val_loss:.4f}")
+        else:
+            print(f"   LSTM: loaded")
     
     # =============================================================================
     # STEP 1: POD Plots
@@ -163,32 +391,75 @@ def main():
     print("STEP 2: Computing Test Metrics")
     print("="*80)
     
-    metrics_df, test_predictions, ic_metrics = compute_test_metrics(
-        test_metadata=test_metadata,
-        test_dir=TEST_DIR,
-        x_train_mean=X_train_mean,
-        ic_types=IC_TYPES,
-        output_dir=OUTPUT_DIR
-    )
+    # Compute metrics for each model
+    all_metrics = {}
+    all_test_predictions = {}
+    all_ic_metrics = {}
+    
+    for model_name, model_info in models_data.items():
+        print(f"\n   Computing metrics for {model_name.upper()}...")
+        
+        # For unified structure, check if test_results.csv exists
+        # For legacy structure, always compute from density files
+        test_results_path = model_info['dir'] / "test_results.csv"
+        
+        # Always compute metrics from density files (works for both old and new structure)
+        metrics_df, test_predictions, ic_metrics = compute_test_metrics(
+            test_metadata=test_metadata,
+            test_dir=TEST_DIR,
+            x_train_mean=X_train_mean,
+            ic_types=IC_TYPES,
+            output_dir=OUTPUT_DIR,
+            model_name=model_name
+        )
+        
+        all_metrics[model_name] = metrics_df
+        all_test_predictions[model_name] = test_predictions
+        all_ic_metrics[model_name] = ic_metrics
+    
+    # Check if we have any metrics
+    if not all_metrics:
+        print("\n❌ ERROR: No metrics computed for any model")
+        return
+    
+    # Use primary model (mvar if available, else first model) for main visualizations
+    primary_model = 'mvar' if 'mvar' in all_metrics else list(all_metrics.keys())[0]
+    metrics_df = all_metrics[primary_model]
+    test_predictions = all_test_predictions[primary_model]
+    ic_metrics = all_ic_metrics[primary_model]
     
     # =============================================================================
-    # STEP 3: Best Run Visualizations
+    # STEP 3: Best Run Visualizations (per model)
     # =============================================================================
     
     print("\n" + "="*80)
     print("STEP 3: Generating Best Run Visualizations")
     print("="*80)
     
-    top_4_runs = generate_best_run_visualizations(
-        metrics_df=metrics_df,
-        test_predictions=test_predictions,
-        ic_metrics=ic_metrics,
-        test_dir=TEST_DIR,
-        best_runs_dir=BEST_RUNS_DIR,
-        base_config_sim=BASE_CONFIG_SIM,
-        p_lag=P_LAG,
-        n_top=4
-    )
+    all_top_runs = {}
+    for model_name in all_metrics.keys():
+        print(f"\n   Generating best runs for {model_name.upper()}...")
+        
+        model_best_runs_dir = BEST_RUNS_DIR / model_name.upper()
+        model_best_runs_dir.mkdir(exist_ok=True, parents=True)
+        
+        # Get p_lag for this model (MVAR only)
+        model_p_lag = models_data[model_name].get('p_lag', 5) if model_name == 'mvar' else 5
+        
+        top_runs = generate_best_run_visualizations(
+            metrics_df=all_metrics[model_name],
+            test_predictions=all_test_predictions[model_name],
+            ic_metrics=all_ic_metrics[model_name],
+            test_dir=TEST_DIR,
+            best_runs_dir=model_best_runs_dir,
+            base_config_sim=BASE_CONFIG_SIM,
+            p_lag=model_p_lag,
+            n_top=4
+        )
+        all_top_runs[model_name] = top_runs
+    
+    # Use primary model for backward compatibility
+    top_4_runs = all_top_runs[primary_model]
     
     # =============================================================================
     # STEP 4: Summary Plots
@@ -201,20 +472,34 @@ def main():
     generate_summary_plots(metrics_df, IC_TYPES, PLOTS_DIR)
     
     # =============================================================================
-    # STEP 5: Time-Resolved Analysis
+    # STEP 5: Time-Resolved Analysis (per model)
     # =============================================================================
     
     print("\n" + "="*80)
     print("STEP 5: Time-Resolved Analysis")
     print("="*80)
     
-    degradation_info = generate_time_resolved_analysis(
-        test_metadata=test_metadata,
-        test_dir=TEST_DIR,
-        mvar_dir=MVAR_DIR,
-        data_dir=DATA_DIR,
-        time_analysis_dir=TIME_ANALYSIS_DIR
-    )
+    all_degradation_info = {}
+    for model_name in all_metrics.keys():
+        print(f"\n   Analyzing time evolution for {model_name.upper()}...")
+        
+        model_time_dir = TIME_ANALYSIS_DIR / model_name.upper()
+        model_time_dir.mkdir(exist_ok=True, parents=True)
+        
+        model_dir = models_data[model_name]['dir']
+        
+        degradation_info = generate_time_resolved_analysis(
+            test_metadata=test_metadata,
+            test_dir=TEST_DIR,
+            mvar_dir=model_dir,
+            data_dir=DATA_DIR,
+            time_analysis_dir=model_time_dir,
+            model_name=model_name
+        )
+        all_degradation_info[model_name] = degradation_info
+    
+    # Use primary model for backward compatibility
+    degradation_info = all_degradation_info.get(primary_model, {})
     
     # =============================================================================
     # STEP 6: Summary JSON
@@ -233,8 +518,42 @@ def main():
         test_metadata=test_metadata,
         base_config_sim=BASE_CONFIG_SIM,
         degradation_info=degradation_info,
-        output_dir=OUTPUT_DIR
+        output_dir=OUTPUT_DIR,
+        all_metrics=all_metrics,
+        models_data=models_data
     )
+    
+    # =============================================================================
+    # STEP 7: LSTM Training Plot (if LSTM model exists)
+    # =============================================================================
+    
+    if 'lstm' in models_data and models_data['lstm']['training_log'] is not None:
+        print("\n" + "="*80)
+        print("STEP 7: Generating LSTM Training Plot")
+        print("="*80)
+        
+        generate_lstm_training_plot(
+            training_log=models_data['lstm']['training_log'],
+            plots_dir=PLOTS_DIR
+        )
+    
+    # =============================================================================
+    # STEP 8: MVAR vs LSTM Comparison (if both models exist)
+    # =============================================================================
+    
+    if 'mvar' in all_metrics and 'lstm' in all_metrics:
+        print("\n" + "="*80)
+        print("STEP 8: Generating MVAR vs LSTM Comparison")
+        print("="*80)
+        
+        generate_mvar_lstm_comparison(
+            mvar_metrics=all_metrics['mvar'],
+            lstm_metrics=all_metrics['lstm'],
+            mvar_ic_metrics=all_ic_metrics['mvar'],
+            lstm_ic_metrics=all_ic_metrics['lstm'],
+            ic_types=IC_TYPES,
+            plots_dir=PLOTS_DIR
+        )
     
     # =============================================================================
     # COMPLETE
@@ -254,21 +573,38 @@ def main():
     best_run_r2 = metrics_df["r2"].max()
     print(f"   • Best run: {best_run_name} (R²={best_run_r2:.4f})")
     
-    print(f"\n🎬 Top 4 Runs by R² ({BEST_RUNS_DIR.name}/):")
-    for idx, row in top_4_runs.iterrows():
-        print(f"   • {row[df_ic_key]}/ - {row['run_name']} (R²={row['r2']:.4f})")
+    print(f"\n🎬 Top 4 Runs by R²:")
+    for model_name, top_runs in all_top_runs.items():
+        print(f"   {model_name.upper()} ({BEST_RUNS_DIR.name}/{model_name.upper()}/)")
+        for idx, row in top_runs.iterrows():
+            print(f"      • {row[df_ic_key]}/ - {row['run_name']} (R²={row['r2']:.4f})")
     
     print(f"\n📊 Summary Plots ({PLOTS_DIR.name}/):")
     print(f"   • POD singular values + energy spectrum")
     print(f"   • R² and error by IC type")
     
-    if degradation_info:
-        print(f"\n⏱️  Time-Resolved Analysis ({TIME_ANALYSIS_DIR.name}/):")
-        print(f"   • R² evolution over time (mean, detailed, survival curves)")
-        if 'best_r2' in degradation_info:
-            print(f"   • Best performance: t={degradation_info['best_time']:.1f}s (R²={degradation_info['best_r2']:.3f})")
-        if 'mean_r2_below_0.5' in degradation_info:
-            print(f"   • R² drops below 0.5 at t={degradation_info['mean_r2_below_0.5']:.1f}s")
+    if 'lstm' in models_data:
+        print(f"   • LSTM training convergence")
+    
+    if 'mvar' in all_metrics and 'lstm' in all_metrics:
+        print(f"   • MVAR vs LSTM comparison (4 panels)")
+        mvar_mean = all_metrics['mvar']['r2'].mean()
+        lstm_mean = all_metrics['lstm']['r2'].mean()
+        diff = mvar_mean - lstm_mean
+        print(f"     - MVAR: R²={mvar_mean:.4f}")
+        print(f"     - LSTM: R²={lstm_mean:.4f}")
+        print(f"     - Difference: {diff:+.4f}")
+    
+    if all_degradation_info:
+        print(f"\n⏱️  Time-Resolved Analysis:")
+        for model_name, deg_info in all_degradation_info.items():
+            if deg_info:
+                print(f"   {model_name.upper()} ({TIME_ANALYSIS_DIR.name}/{model_name.upper()}/)")
+                print(f"      • R² evolution over time (mean, detailed, survival curves)")
+                if 'best_r2' in deg_info:
+                    print(f"      • Best: t={deg_info['best_time']:.1f}s (R²={deg_info['best_r2']:.3f})")
+                if 'mean_r2_below_0.5' in deg_info:
+                    print(f"      • R² < 0.5 at t={deg_info['mean_r2_below_0.5']:.1f}s")
     
     print(f"\n⏱️  Visualization time: {total_time//60:.0f}m {total_time%60:.1f}s")
     print("\n✅ Pipeline complete!")

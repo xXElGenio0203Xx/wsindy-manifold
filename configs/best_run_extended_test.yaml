@@ -203,15 +203,37 @@ density:
   bandwidth: 2.0
 
 # ============================================================================
-# ROM SETTINGS: EXACT MATCH TO BEST RUN
+# ROM SETTINGS: EXTENDED SCHEMA WITH MVAR AND LSTM MODELS
 # ============================================================================
 rom:
+  # General POD / ROM settings
   subsample: 1              # No temporal subsampling
   pod_energy: 0.995         # Target 99.5% energy
   fixed_modes: 25           # FORCE exactly 25 modes (from best run)
-  mvar_lag: 20              # Lag = 20 (UNCHANGED from best run)
-  ridge_alpha: 1.0e-6       # Ridge = 1e-6 (UNCHANGED from best run)
   eigenvalue_threshold: 0.995  # Scale eigenvalues if spectral radius > 0.995
+  
+  # Model configurations
+  models:
+    # MVAR (Multivariate Autoregressive) model
+    mvar:
+      enabled: true         # Enable MVAR model
+      lag: 20               # Lag = 20 (UNCHANGED from best run)
+      ridge_alpha: 1.0e-6   # Ridge = 1e-6 (UNCHANGED from best run)
+    
+    # LSTM (Long Short-Term Memory) model
+    lstm:
+      enabled: false        # Disable LSTM by default
+      lag: 20               # Number of time steps to look back
+      hidden_units: 64      # Number of LSTM units per layer
+      num_layers: 2         # Number of LSTM layers
+      activation: "tanh"    # Activation function (tanh, relu, etc.)
+      batch_size: 32        # Batch size for training
+      learning_rate: 0.001  # Learning rate for optimizer
+      max_epochs: 100       # Maximum training epochs
+      patience: 10          # Early stopping patience
+      weight_decay: 0.0     # L2 regularization weight decay
+      gradient_clip: 1.0    # Gradient clipping threshold
+      loss: "mse"           # Loss function (mse, mae, etc.)
 
 # ============================================================================
 # TIME-RESOLVED EVALUATION SETTINGS

@@ -1,0 +1,236 @@
+# ============================================================================
+# QUICK VISUALIZATION TEST – MVAR + LSTM
+# ============================================================================
+# Purpose: Fast test to verify all outputs and visualizations work correctly
+# - Short durations: T_train = 2.0s, T_test = 2.0s
+# - Small dataset: 40 training runs, 10 test runs
+# - Both MVAR and LSTM enabled
+# - Proper window management with lag = 5
+# - All visualization outputs enabled
+# ============================================================================
+
+model:
+  type: discrete
+  speed: 1.0
+  speed_mode: constant_with_forces
+
+# ----------------------------------------------------------------------------
+# SIMULATION PARAMETERS
+# ----------------------------------------------------------------------------
+
+sim:
+  N: 40                      # 40 agents (small for speed)
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+  T: 2.0                     # SHORT: 2 seconds for training
+  dt: 0.1                    # 0.1s timestep → 20 steps per trajectory
+  save_every: 1
+  neighbor_rebuild: 5
+  integrator: "euler"
+
+params:
+  R: 2.0                     # interaction radius
+  alpha: 1.5                 # alignment strength
+  beta: 0.5                  # velocity coupling
+
+noise:
+  kind: "gaussian"
+  eta: 0.3                   # noise level
+  match_variance: true
+
+forces:
+  enabled: false             # No Morse forces for speed
+
+alignment:
+  enabled: true
+
+# ----------------------------------------------------------------------------
+# OUTPUTS
+# ----------------------------------------------------------------------------
+
+outputs:
+  run_name: "quick_viz_test"
+  order_parameters: true     # compute φ, angular momentum, etc.
+  save_npz: true
+  fps: 20
+  density_resolution: 32     # Lower resolution for speed
+  density_bandwidth: 2.0
+
+# ----------------------------------------------------------------------------
+# TRAINING INITIAL CONDITIONS (40 runs total)
+# ----------------------------------------------------------------------------
+
+train_ic:
+  type: "mixed_comprehensive"
+  
+  # Gaussian distributions (20 runs = 50%)
+  gaussian:
+    enabled: true
+    n_runs: 20
+    
+    # 2×2 spatial grid (4 positions)
+    positions_x: [5.0, 10.0]
+    positions_y: [5.0, 10.0]
+    
+    # 2 variances per position
+    variances: [1.0, 2.0]
+    
+    # Calculation: 2×2 positions × 2 variances × 2.5 samples ≈ 20 runs
+    n_samples_per_config: 2
+  
+  # Uniform distributions (10 runs = 25%)
+  uniform:
+    enabled: true
+    n_runs: 10
+    n_samples: 10
+  
+  # Ring distributions (10 runs = 25%)
+  ring:
+    enabled: true
+    n_runs: 10
+    
+    # 2 different radii
+    radii: [3.0, 4.0]
+    
+    # 1 width per radius
+    widths: [0.5]
+    
+    # Calculation: 2 radii × 1 width × 5 samples = 10 runs
+    n_samples_per_config: 5
+
+# ----------------------------------------------------------------------------
+# TEST INITIAL CONDITIONS (10 runs total)
+# ----------------------------------------------------------------------------
+
+test_ic:
+  type: "mixed_test_comprehensive"
+  
+  # Gaussian tests (5 runs)
+  gaussian:
+    enabled: true
+    n_runs: 5
+    positions_x: [7.5]
+    positions_y: [7.5]
+    variances: [1.5]
+    n_samples_per_config: 5
+  
+  # Uniform tests (3 runs)
+  uniform:
+    enabled: true
+    n_runs: 3
+    n_samples: 3
+  
+  # Ring tests (2 runs)
+  ring:
+    enabled: true
+    n_runs: 2
+    radii: [3.5]
+    widths: [0.5]
+    n_samples_per_config: 2
+
+# ----------------------------------------------------------------------------
+# TEST SIMULATION SETTINGS
+# ----------------------------------------------------------------------------
+
+test_sim:
+  T: 2.0                     # Same 2 seconds for test
+  dt: 0.1                    # Same timestep
+
+# ----------------------------------------------------------------------------
+# DENSITY ESTIMATION
+# ----------------------------------------------------------------------------
+
+density:
+  enabled: true
+  nx: 32                     # Lower resolution for speed
+  ny: 32
+  method: "kde"
+  bandwidth: 2.0
+
+# ----------------------------------------------------------------------------
+# ROM SETTINGS – POD + MVAR + LSTM
+# ----------------------------------------------------------------------------
+# Window management:
+# - T = 2.0s, dt = 0.1s → 20 timesteps per trajectory
+# - subsample = 2 → 10 ROM timesteps per trajectory
+# - lag = 5 → 5 ROM timesteps for initial condition window
+# - Available windows per trajectory: 10 - 5 = 5 windows
+# - Total training samples: 40 trajectories × 5 windows = 200 samples
+#
+# MVAR parameters:
+# - d = 15 latent modes (fixed)
+# - lag = 5
+# - Parameters: d^2 * lag = 15^2 * 5 = 1,125
+# - Samples: 200 (might be underdetermined, but OK for quick test)
+#
+# LSTM parameters:
+# - hidden_units = 16
+# - num_layers = 1
+# - Lightweight for fast training
+# ----------------------------------------------------------------------------
+
+rom:
+  subsample: 2                 # Use every 2nd snapshot (ROM dt = 0.2s)
+  pod_energy: 0.95             # Target 95% energy capture
+  fixed_modes: 15              # Fixed latent dimension d = 15
+  eigenvalue_threshold: 0.999  # Gentle stabilization
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5                   # MVAR lag window
+      ridge_alpha: 1.0e-4      # Ridge regularization
+
+    lstm:
+      enabled: true
+      lag: 5                   # SAME lag as MVAR
+      hidden_units: 16         # Small network for fast training
+      num_layers: 1            # Single layer
+      batch_size: 32           # Small batch size
+      learning_rate: 1.0e-3    # Adam learning rate
+      max_epochs: 50           # Low max for quick test (early stopping will cut)
+      patience: 10             # Early stopping patience
+      weight_decay: 0.0        # No weight decay
+      gradient_clip: 1.0       # Gradient clipping
+
+# ----------------------------------------------------------------------------
+# EVALUATION SETTINGS
+# ----------------------------------------------------------------------------
+
+evaluation:
+  forecast_start: 1.0          # Start forecast at t = 1.0s (midpoint)
+  forecast_end: 2.0            # Forecast to end of 2.0s trajectory
+  save_time_resolved: true     # Save R²(t) curves for visualization
+
+# ----------------------------------------------------------------------------
+# NOTES
+# ----------------------------------------------------------------------------
+# Expected execution time:
+# - Training sims: ~2-3 minutes (40 runs × 2s each)
+# - Test sims: ~30s (10 runs × 2s each)
+# - POD: <10s
+# - MVAR training: <5s
+# - LSTM training: ~1-2 minutes (depends on early stopping)
+# - Evaluation: ~30s
+# TOTAL: ~5-8 minutes for complete pipeline
+#
+# Expected outputs:
+# - oscar_output/quick_viz_test/rom_common/pod_basis.npz
+# - oscar_output/quick_viz_test/rom_common/latent_dataset.npz
+# - oscar_output/quick_viz_test/MVAR/mvar_model.npz
+# - oscar_output/quick_viz_test/MVAR/test_results.csv
+# - oscar_output/quick_viz_test/LSTM/lstm_state_dict.pt
+# - oscar_output/quick_viz_test/LSTM/training_log.csv
+# - oscar_output/quick_viz_test/LSTM/test_results.csv
+# - oscar_output/quick_viz_test/test/test_000/ through test_009/
+#   - Each test dir has: trajectory.npz, density_true.npz, density_pred.npz,
+#     metrics_summary.json, order_params.csv, r2_vs_time.csv
+# - oscar_output/quick_viz_test/summary.json
+#
+# Ready for visualization scripts:
+# - All necessary .npz files present
+# - All metrics computed
+# - Time-resolved data saved
+# - Order parameters available
+# ============================================================================

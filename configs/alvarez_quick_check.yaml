@@ -1,16 +1,15 @@
 # ============================================================================
-# ALVAREZ-STYLE ROM CONFIG - QUICK TEST VERSION
+# ALVAREZ-STYLE ROM CONFIG - QUICK CHECK (MINIMAL VERIFICATION)
 # ============================================================================
-# Well-conditioned MVAR design with short test run (T=1.0s)
-# After verification, use alvarez_style_production.yaml with T=8.0s
-#
-# Key design principles:
-#   - Small latent space: d = 20 (fixed_modes)
-#   - More KDE smoothing: bandwidth = 3.0 grid cells
-#   - Short MVAR lag: w = 5 (good memory/parameter balance)
-#   - Strong ridge regularization: alpha = 1e-4
-#   - Mild eigenvalue scaling: threshold = 0.999
-#   - Identifiability ratio ρ ≈ 15 (30,000 windows / 2,000 params)
+# Minimal test to verify production config format works before 4-hour run
+# 
+# Minimal parameters:
+#   T: 1.0s (vs production 8.0s)
+#   Training: 4 runs (vs production 400)
+#   Test: 4 runs (vs production 40)
+#   POD modes: 4 (vs production 20) - to ensure fast computation
+#   
+# Same structure as production to verify config format
 # ============================================================================
 
 # ---------------------------------------------------------------------------
@@ -21,97 +20,100 @@ sim:
   Lx: 15.0
   Ly: 15.0
   bc: "periodic"
-  T: 1.0                    # QUICK TEST: 1 second only
+  T: 1.0                    # Reduced from 8.0s
   dt: 0.1
   v0: 1.0
   R: 2.0
   eta: 0.3
 
 # ---------------------------------------------------------------------------
-# DENSITY COMPUTATION (higher smoothing)
+# DENSITY COMPUTATION
 # ---------------------------------------------------------------------------
 density:
   nx: 64
   ny: 64
-  bandwidth: 3.0            # More smoothing → lower effective rank
+  bandwidth: 3.0
 
 # ---------------------------------------------------------------------------
-# TRAINING ICs (reduced counts for quick test)
+# TRAINING ICs (1 per distribution type = 4 total)
 # ---------------------------------------------------------------------------
 train_ic:
   gaussian:
     enabled: true
-    n_runs: 5
+    n_runs: 1
     positions_x: [7.5]
     positions_y: [7.5]
-    variances: [1.5]
-    n_samples_per_config: 5
+    variances: [1.0]
+    n_samples_per_config: 1
   
   uniform:
     enabled: true
-    n_runs: 5
-    n_samples: 5
+    n_runs: 1
   
   ring:
     enabled: true
-    n_runs: 5
-    radii: [4.0]
-    widths: [0.5]
-    n_samples_per_config: 5
+    n_runs: 1
+    radii: [3.0]
+    widths: [0.3]
+    n_samples_per_config: 1
   
   two_clusters:
     enabled: true
-    n_runs: 5
-    separations: [6.0]
-    sigmas: [1.2]
-    n_samples_per_config: 5
+    n_runs: 1
+    separations: [4.5]
+    sigmas: [0.8]
+    n_samples_per_config: 1
 
 # ---------------------------------------------------------------------------
-# TEST ICs (reduced counts for quick test)
+# TEST ICs (1 per type = 4 total)
 # ---------------------------------------------------------------------------
 test_ic:
   gaussian:
     enabled: true
-    n_runs: 2
-    test_positions_x: [9.0]
-    test_positions_y: [9.0]
+    n_runs: 1
+    test_positions_x: [5.5]
+    test_positions_y: [5.5]
     test_variances: [1.5]
   
   uniform:
     enabled: true
-    n_runs: 2
+    n_runs: 1
   
   ring:
     enabled: true
-    n_runs: 2
-    test_radii: [3.5]
-    test_widths: [0.5]
-    n_samples_per_config: 2
+    n_runs: 1
+    test_radii: [2.5]
+    test_widths: [0.45]
+    n_samples_per_config: 1
   
   two_clusters:
     enabled: true
-    n_runs: 2
-    test_separations: [5.0]
-    test_sigmas: [1.2]
+    n_runs: 1
+    test_separations: [3.75]
+    test_sigmas: [1.1]
+
+test_sim:
+  T: 1.0                    # Reduced from 10.0s
 
 # ---------------------------------------------------------------------------
-# ROM: ALVAREZ-STYLE PARAMETERS
+# ROM: MINIMAL TEST
 # ---------------------------------------------------------------------------
 rom:
-  fixed_modes: 20           # FIXED: d = 20 modes (Alvarez principle)
+  fixed_modes: 4            # Reduced from 20 for fast computation
 
 mvar:
-  order: 5                  # Lag w = 5
-  ridge_alpha: 1.0e-4       # Strong ridge regularization
+  order: 5
+  ridge_alpha: 1.0e-4
   enforce_stability: true
-  eigenvalue_threshold: 0.999  # Mild scaling
+  eigenvalue_threshold: 0.999
   train_fraction: 0.8
 
 # ---------------------------------------------------------------------------
 # EVALUATION
 # ---------------------------------------------------------------------------
 eval:
-  forecast_dt: 1            # Evaluate every time step
+  forecast_dt: 1
+  save_time_resolved: true
   metrics:
     - "mse"
     - "mae"

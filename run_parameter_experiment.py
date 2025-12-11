@@ -34,7 +34,7 @@ experiments/
         ├── ring/
         └── two_clusters/
 
-Author: Maria
+Author: Eugenio
 Date: December 2025
 """
 

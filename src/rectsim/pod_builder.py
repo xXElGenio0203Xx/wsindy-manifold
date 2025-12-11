@@ -28,7 +28,8 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
         - subsample: temporal subsampling factor (default: 1)
         - fixed_modes: fixed number of modes (optional, takes priority)
         - fixed_d: fallback name for fixed_modes
-        - pod_energy: energy threshold (default: 0.995)
+        - pod_energy / energy_threshold: energy threshold (default: 0.995)
+        Priority: fixed_modes/fixed_d > energy_threshold
     density_key : str
         Key for density data in npz files (default: 'rho')
     
@@ -84,12 +85,12 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
     U, S, Vt = np.linalg.svd(X_centered.T, full_matrices=False)
     
     # Determine number of modes
-    # Priority: fixed_modes/fixed_d (if specified) > pod_energy (threshold)
+    # Priority: fixed_modes/fixed_d (if specified) > pod_energy/energy_threshold (threshold)
     FIXED_D = rom_config.get('fixed_modes', None)  # Check 'fixed_modes' first (standard name)
     if FIXED_D is None:
         FIXED_D = rom_config.get('fixed_d', None)  # Fall back to 'fixed_d' for backward compatibility
     
-    TARGET_ENERGY = rom_config.get('pod_energy', 0.995)
+    TARGET_ENERGY = rom_config.get('pod_energy', rom_config.get('energy_threshold', 0.995))
     
     total_energy = np.sum(S**2)
     cumulative_energy = np.cumsum(S**2) / total_energy

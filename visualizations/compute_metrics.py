@@ -12,7 +12,7 @@ from tqdm import tqdm
 from rectsim.legacy_functions import compute_frame_metrics, compute_summary_metrics
 
 
-def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output_dir):
+def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output_dir, model_name='mvar'):
     """
     Compute evaluation metrics for all test runs.
     
@@ -28,6 +28,8 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         List of IC type names
     output_dir : Path
         Directory to save metrics
+    model_name : str, optional
+        Name of the model ('mvar' or 'lstm'), used for file naming
     
     Returns
     -------
@@ -57,7 +59,14 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         
         # Load densities
         true_data = np.load(run_dir / "density_true.npz")
-        pred_data = np.load(run_dir / "density_pred.npz")
+        
+        # Load model-specific predictions
+        pred_file = run_dir / f"density_pred_{model_name}.npz"
+        if not pred_file.exists():
+            # Fallback to generic density_pred.npz for backward compatibility
+            pred_file = run_dir / "density_pred.npz"
+        
+        pred_data = np.load(pred_file)
         
         rho_true = true_data["rho"]
         rho_pred = pred_data["rho"]
@@ -93,6 +102,11 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
             x_train_mean,
             frame_metrics
         )
+        
+        # Add RMSE (root mean squared error)
+        mse = np.mean((rho_true_flat - rho_pred_flat) ** 2)
+        summary["rmse"] = np.sqrt(mse)
+        
         summary["run_name"] = run_name
         summary["ic_type"] = meta[ic_key]
         
@@ -121,15 +135,18 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
     
     # Convert to DataFrame
     metrics_df = pd.DataFrame(all_metrics)
-    metrics_df.to_csv(output_dir / "metrics_all_runs.csv", index=False)
+    
+    # Save with model-specific name
+    metrics_csv = output_dir / f"metrics_all_runs_{model_name}.csv"
+    metrics_df.to_csv(metrics_csv, index=False)
     
     # Overall metrics
-    print("\n📊 Overall Metrics:")
+    print(f"\n📊 Overall Metrics ({model_name.upper()}):")
     print(f"   R²:              {metrics_df['r2'].mean():.4f} ± {metrics_df['r2'].std():.4f}")
     print(f"   Median L² error: {metrics_df['median_e2'].mean():.4f} ± {metrics_df['median_e2'].std():.4f}")
     
     # Metrics by IC type
-    print("\n📊 Metrics by IC Type:")
+    print(f"\n📊 Metrics by IC Type ({model_name.upper()}):")
     ic_metrics = {}
     
     for ic_type in ic_types:
@@ -142,9 +159,10 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         ic_stats = {
             "ic_type": ic_type,
             "n_runs": len(ic_data),
-            "r2_mean": ic_data["r2"].mean(),
-            "r2_std": ic_data["r2"].std(),
-            "r2_median": ic_data["r2"].median(),
+            "mean_r2": ic_data["r2"].mean(),
+            "std_r2": ic_data["r2"].std(),
+            "median_r2": ic_data["r2"].median(),
+            "mean_rmse": ic_data["rmse"].mean(),
             "best_run": ic_data.loc[ic_data["r2"].idxmax(), "run_name"],
             "best_r2": ic_data["r2"].max(),
         }
@@ -153,10 +171,11 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         
         print(f"\n   {ic_type}:")
         print(f"      Runs: {ic_stats['n_runs']}")
-        print(f"      R²: {ic_stats['r2_mean']:.4f} ± {ic_stats['r2_std']:.4f}")
+        print(f"      R²: {ic_stats['mean_r2']:.4f} ± {ic_stats['std_r2']:.4f}")
         print(f"      Best run: {ic_stats['best_run']} (R² = {ic_stats['best_r2']:.4f})")
     
-    # Save IC metrics
-    pd.DataFrame(ic_metrics.values()).to_csv(output_dir / "metrics_by_ic_type.csv", index=False)
+    # Save IC metrics with model-specific name
+    ic_csv = output_dir / f"metrics_by_ic_type_{model_name}.csv"
+    pd.DataFrame(ic_metrics.values()).to_csv(ic_csv, index=False)
     
     return metrics_df, test_predictions, ic_metrics

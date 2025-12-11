@@ -1,0 +1,143 @@
+# ============================================================================
+# ALVAREZ-STYLE ROM CONFIG - LOCAL TEST (MINIMAL)
+# ============================================================================
+# Very small test to verify pipeline works locally before Oscar run
+# 
+# Minimal parameters:
+#   N: 20 particles (Oscar: 40)
+#   T: 1.0s (same)
+#   Training: 4 runs total (1 per IC type) (Oscar test: 20, Production: 400)
+#   Test: 4 runs total (1 per IC type) (Oscar test: 8, Production: 40)
+#   Domain: 10×10 (Oscar: 15×15)
+#   Resolution: 32×32 (Oscar: 64×64)
+#   
+# Alvarez parameters (same as production):
+#   d: 20 latent modes
+#   w: 5 MVAR lags
+#   ridge: 1e-4
+#   bandwidth: 3.0
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# MICRO MODEL
+# ---------------------------------------------------------------------------
+sim:
+  N: 20                     # Reduced from 40
+  Lx: 10.0                  # Reduced from 15.0
+  Ly: 10.0                  # Reduced from 15.0
+  bc: "periodic"
+  T: 1.0
+  dt: 0.1
+  v0: 1.0
+  R: 2.0
+  eta: 0.3
+
+# ---------------------------------------------------------------------------
+# DENSITY COMPUTATION
+# ---------------------------------------------------------------------------
+density:
+  nx: 32                    # Reduced from 64
+  ny: 32                    # Reduced from 64
+  bandwidth: 3.0            # Same (Alvarez principle)
+
+# ---------------------------------------------------------------------------
+# TRAINING ICs (1 per type = 4 total)
+# ---------------------------------------------------------------------------
+train_ic:
+  gaussian:
+    enabled: true
+    n_runs: 1
+    positions_x: [5.0]
+    positions_y: [5.0]
+    variances: [1.5]
+    n_samples_per_config: 1
+  
+  uniform:
+    enabled: true
+    n_runs: 1
+    n_samples: 1
+  
+  ring:
+    enabled: true
+    n_runs: 1
+    radii: [3.0]
+    widths: [0.5]
+    n_samples_per_config: 1
+  
+  two_clusters:
+    enabled: true
+    n_runs: 1
+    separations: [4.0]
+    sigmas: [1.0]
+    n_samples_per_config: 1
+
+# ---------------------------------------------------------------------------
+# TEST ICs (1 per type = 4 total)
+# ---------------------------------------------------------------------------
+test_ic:
+  gaussian:
+    enabled: true
+    n_runs: 1
+    test_positions_x: [6.0]
+    test_positions_y: [6.0]
+    test_variances: [1.5]
+  
+  uniform:
+    enabled: true
+    n_runs: 1
+  
+  ring:
+    enabled: true
+    n_runs: 1
+    test_radii: [2.5]
+    test_widths: [0.5]
+    n_samples_per_config: 1
+  
+  two_clusters:
+    enabled: true
+    n_runs: 1
+    test_separations: [3.5]
+    test_sigmas: [1.0]
+
+# ---------------------------------------------------------------------------
+# ROM: ALVAREZ-STYLE PARAMETERS (same as production)
+# ---------------------------------------------------------------------------
+rom:
+  fixed_modes: 20           # Fixed d=20 (Alvarez principle - takes priority over energy_threshold)
+
+mvar:
+  order: 5                  # w=5 (Alvarez principle)
+  ridge_alpha: 1.0e-4       # Strong ridge (Alvarez principle)
+  enforce_stability: true
+  eigenvalue_threshold: 0.999
+  train_fraction: 0.8
+
+# ---------------------------------------------------------------------------
+# EVALUATION
+# ---------------------------------------------------------------------------
+eval:
+  forecast_dt: 1
+  save_time_resolved: true
+  metrics:
+    - "mse"
+    - "mae"
+    - "r2"
+    - "mass_conservation"
+
+# ---------------------------------------------------------------------------
+# PARAMETER COMPARISON
+# ---------------------------------------------------------------------------
+# LOCAL TEST vs OSCAR TEST vs PRODUCTION:
+#
+# Parameter      | Local | Oscar Test | Production
+# ---------------|-------|------------|------------
+# N particles    |   20  |     40     |     40
+# Domain (LxL)   |   10  |     15     |     15
+# Resolution     | 32×32 |   64×64    |   64×64
+# Training runs  |    4  |     20     |    400
+# Test runs      |    4  |      8     |     40
+# T (training)   |  1.0s |    1.0s    |    8.0s
+# T (test)       |  1.0s |    1.0s    |   10.0s
+#
+# Alvarez params (same across all):
+#   d = 20, w = 5, ridge = 1e-4, bandwidth = 3.0

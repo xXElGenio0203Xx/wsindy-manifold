@@ -19,7 +19,9 @@ def generate_summary_json(
     test_metadata,
     base_config_sim,
     degradation_info,
-    output_dir
+    output_dir,
+    all_metrics=None,
+    models_data=None
 ):
     """
     Generate comprehensive summary JSON with all pipeline results.
@@ -27,9 +29,9 @@ def generate_summary_json(
     Parameters
     ----------
     metrics_df : pd.DataFrame
-        Test metrics for all runs
+        Test metrics for all runs (primary model)
     ic_metrics : dict
-        Aggregated metrics by IC type
+        Aggregated metrics by IC type (primary model)
     ic_types : list
         List of IC types
     pod_data : dict
@@ -44,6 +46,10 @@ def generate_summary_json(
         Time-resolved degradation statistics
     output_dir : Path
         Directory to save summary JSON
+    all_metrics : dict, optional
+        Dictionary of metrics DataFrames for all models (e.g., {'mvar': df, 'lstm': df})
+    models_data : dict, optional
+        Dictionary of model-specific data (e.g., {'mvar': {...}, 'lstm': {...}})
     
     Returns
     -------
@@ -201,6 +207,53 @@ def generate_summary_json(
     # Add time-resolved degradation info if available
     if degradation_info:
         summary["time_resolved_analysis"] = degradation_info
+    
+    # Add multi-model comparison if multiple models were run
+    if all_metrics and models_data and len(all_metrics) > 1:
+        model_comparison = {}
+        
+        for model_name, model_metrics_df in all_metrics.items():
+            model_comparison[model_name] = {
+                "mean_r2": float(model_metrics_df["r2"].mean()),
+                "std_r2": float(model_metrics_df["r2"].std()),
+                "mean_rmse": float(model_metrics_df["rmse"].mean()),
+                "best_r2": float(model_metrics_df["r2"].max()),
+                "worst_r2": float(model_metrics_df["r2"].min())
+            }
+            
+            # Add model-specific training info
+            if model_name in models_data:
+                if model_name == 'mvar' and 'p_lag' in models_data[model_name]:
+                    model_comparison[model_name]["training"] = {
+                        "lag_order": int(models_data[model_name]['p_lag']),
+                        "train_r2": float(models_data[model_name]['train_r2']),
+                        "train_rmse": float(models_data[model_name]['train_rmse'])
+                    }
+                elif model_name == 'lstm' and models_data[model_name].get('training_log') is not None:
+                    training_log = models_data[model_name]['training_log']
+                    model_comparison[model_name]["training"] = {
+                        "n_epochs": int(len(training_log)),
+                        "final_train_loss": float(training_log['train_loss'].iloc[-1]),
+                        "final_val_loss": float(training_log['val_loss'].iloc[-1]),
+                        "best_val_loss": float(training_log['val_loss'].min())
+                    }
+        
+        summary["model_comparison"] = {
+            "models_evaluated": list(all_metrics.keys()),
+            "results_by_model": model_comparison
+        }
+        
+        # Add ranking
+        if 'mvar' in model_comparison and 'lstm' in model_comparison:
+            mvar_r2 = model_comparison['mvar']['mean_r2']
+            lstm_r2 = model_comparison['lstm']['mean_r2']
+            diff = mvar_r2 - lstm_r2
+            
+            summary["model_comparison"]["comparison"] = {
+                "mvar_vs_lstm_r2_difference": float(diff),
+                "percent_difference": float((diff / abs(lstm_r2)) * 100) if lstm_r2 != 0 else 0,
+                "winner": "MVAR" if diff > 0 else "LSTM" if diff < 0 else "TIE"
+            }
     
     # Save summary JSON
     summary_path = output_dir / "pipeline_summary.json"

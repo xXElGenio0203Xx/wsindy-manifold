@@ -1,50 +1,50 @@
 # ============================================================================
-# ALVAREZ-STYLE ROM CONFIG - PRODUCTION VERSION
+# HIGH CAPACITY ROM CONFIG - PRODUCTION VERSION
 # ============================================================================
-# Well-conditioned MVAR design following Alvarez et al. principles
+# Higher resolution, more particles, energy-based POD selection
 #
 # Key design principles:
-#   - Longer training horizon: T = 8.0s (more windows per trajectory)
-#   - Micro dt = 0.1s (unchanged)
-#   - KDE bandwidth: 3.0 grid cells (more smoothing, lower effective rank)
-#   - POD: small latent space d = 35 (fixed_modes)
-#   - MVAR: short lag w = 5 (good memory vs. parameter count balance)
+#   - Training horizon: T = 10.0s (100 timesteps)
+#   - N = 100 particles (2.5x increase)
+#   - KDE bandwidth: 4.0 grid cells (stronger smoothing)
+#   - Density grid: 32×32 (coarser, faster)
+#   - POD: energy_threshold = 0.99 (adaptive mode selection)
+#   - MVAR: lag w = 4 (shorter memory)
 #   - Ridge: alpha = 1e-4 (strong regularization)
-#   - Eigenvalue scaling: very mild, threshold = 0.999
-#   - Test horizon: 20s (12s extrapolation beyond 8s conditioning)
+#   - Test horizon: 25s (15s extrapolation beyond 10s conditioning)
 #
-# Identifiability:
-#   K = T/dt = 8.0/0.1 = 80 steps per run
-#   Windows per run ≈ K - w = 75
-#   Total windows: 1008 runs × 75 ≈ 75,600
-#   Parameters: d²×w = 35²×5 = 6,125
-#   Ratio ρ ≈ 75,600/6,125 ≈ 12.3 ✓ (well-conditioned)
+# Identifiability (estimated for d≈30-40 modes):
+#   K = T/dt = 10.0/0.1 = 100 steps per run
+#   Windows per run ≈ K - w = 96
+#   Total windows: 1008 runs × 96 ≈ 96,768
+#   Parameters (d=35): d²×w = 35²×4 = 4,900
+#   Ratio ρ ≈ 96,768/4,900 ≈ 19.7 ✓ (well-conditioned)
 # ============================================================================
 
 # ---------------------------------------------------------------------------
 # MICRO MODEL
 # ---------------------------------------------------------------------------
 sim:
-  N: 40
+  N: 100                    # 100 particles (increased from 40)
   Lx: 15.0
   Ly: 15.0
   bc: "periodic"
-  T: 8.0                    # Training horizon: 8 seconds
+  T: 10.0                   # Training horizon: 10 seconds
   dt: 0.1
   v0: 1.0
   R: 2.0                    # Vicsek interaction radius
   eta: 0.3                  # Noise level
 
 # ---------------------------------------------------------------------------
-# DENSITY COMPUTATION (higher smoothing for stability)
+# DENSITY COMPUTATION (coarser grid, more smoothing)
 # ---------------------------------------------------------------------------
 density:
-  nx: 64
-  ny: 64
-  bandwidth: 3.0            # 3 grid cells → more smoothing, lower effective rank
+  nx: 32                    # 32×32 grid (coarser, faster)
+  ny: 32
+  bandwidth: 4.0            # 4 grid cells → strong smoothing
 
 # ---------------------------------------------------------------------------
-# TRAINING ICs (rich mix, 400 runs total)
+# TRAINING ICs (rich mix, 1008 runs total)
 # ---------------------------------------------------------------------------
 train_ic:
   gaussian:
@@ -74,7 +74,7 @@ train_ic:
     n_samples_per_config: 25  # 4x25 = 100 runs
 
 # ---------------------------------------------------------------------------
-# TEST ICs (10s trajectories, out-of-training configurations)
+# TEST ICs (out-of-training configurations)
 # ---------------------------------------------------------------------------
 test_ic:
   gaussian:
@@ -102,24 +102,24 @@ test_ic:
     test_sigmas: [1.1, 1.1, 1.1]
 
 test_sim:
-  T: 20.0                   # Test horizon: 20 seconds (2.5x training, 12s forecast window!)
+  T: 25.0                   # Test horizon: 25 seconds (2.5x training, 15s forecast!)
 
 # ---------------------------------------------------------------------------
-# ROM: ALVAREZ-STYLE PARAMETERS WITH MODEL CONFIGURATION
+# ROM: ENERGY-BASED POD SELECTION WITH MODEL CONFIGURATION
 # ---------------------------------------------------------------------------
 rom:
-  fixed_modes: 35           # FIXED: d = 35 modes (Alvarez principle - takes priority over energy_threshold)
+  energy_threshold: 0.99    # Adaptive: select modes capturing 99% energy
   eigenvalue_threshold: 0.999  # Mild eigenvalue scaling (safety net)
   
   models:
     mvar:
       enabled: true         # Enable MVAR model
-      lag: 5                # Lag w = 5 (good memory without too many params)
+      lag: 4                # Lag w = 4 (shorter memory, fewer parameters)
       ridge_alpha: 1.0e-4   # Strong ridge regularization (key for stability)
     
     lstm:
       enabled: false        # Disable LSTM by default
-      lag: 5
+      lag: 4
       hidden_units: 64
       num_layers: 2
       activation: "tanh"
@@ -133,7 +133,7 @@ rom:
 
 # Legacy MVAR settings (for backward compatibility, will be deprecated)
 mvar:
-  order: 5                  # Lag w = 5 (good memory without too many params)
+  order: 4                  # Lag w = 4 (shorter memory, fewer parameters)
   ridge_alpha: 1.0e-4       # Strong ridge regularization (key for stability)
   enforce_stability: true
   eigenvalue_threshold: 0.999  # Mild eigenvalue scaling (safety net)
@@ -154,9 +154,9 @@ eval:
 # ---------------------------------------------------------------------------
 # QUALITATIVE EFFECTS
 # ---------------------------------------------------------------------------
-# - Larger bandwidth (3.0) smooths high-frequency noise → steeper POD spectrum
-# - Fixed d=35 captures more detailed density structure than d=20
-# - Short lag w=5 balances temporal memory with parameter efficiency
-# - Strong ridge alpha=1e-4 regularizes fit, reduces overfitting
-# - Mild eigenvalue threshold is safety net, not primary stabilization
-# - Result: Well-conditioned MVAR with identifiability ratio ρ ≈ 12.3
+# - More particles (N=100) → richer dynamics, more complex patterns
+# - Coarser grid (32×32) → faster computation, less memory
+# - Larger bandwidth (4.0) → stronger smoothing, lower effective rank
+# - Energy-based POD (0.99) → adaptive mode count based on data complexity
+# - Shorter lag (w=4) → fewer parameters, better identifiability
+# - Longer forecast (15s) → tests long-term stability and extrapolation

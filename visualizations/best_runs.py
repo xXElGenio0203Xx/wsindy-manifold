@@ -301,32 +301,73 @@ def _plot_density_order_parameters(df_order, output_dir, ic_type, ic_stats):
 
 
 def _plot_particle_order_parameters(order_params_path, output_dir, ic_type, ic_stats):
-    """Plot particle-based order parameters."""
+    """Plot all particle-based order parameters on one unified figure."""
     df_order_traj = pd.read_csv(order_params_path)
     
-    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+    # Load density metrics for true vs pred comparison
+    density_metrics_path = order_params_path.parent / "density_metrics.csv"
+    has_density_comparison = density_metrics_path.exists()
+    if has_density_comparison:
+        df_density = pd.read_csv(density_metrics_path)
     
-    axes[0].plot(df_order_traj['t'], df_order_traj['phi'], 'b-', linewidth=2)
-    axes[0].set_ylabel('Polarization Φ', fontsize=12, fontweight='bold')
+    # Create figure with all order parameters
+    fig, axes = plt.subplots(5, 1, figsize=(14, 14), sharex=True)
+    
+    # 1. Polarization
+    axes[0].plot(df_order_traj['t'], df_order_traj['phi'], 'b-', linewidth=2.5, alpha=0.85)
+    axes[0].set_ylabel('Polarization Φ\n(Velocity Alignment)', fontsize=12, fontweight='bold')
     axes[0].grid(True, alpha=0.3)
     axes[0].set_ylim([0, 1.05])
     median_phi = df_order_traj['phi'].iloc[-len(df_order_traj)//4:].median()
     axes[0].axhline(median_phi, color='r', linestyle='--', alpha=0.5,
                    label=f'Final median: {median_phi:.3f}')
     axes[0].legend(loc='best', fontsize=10)
-    axes[0].set_title(f'Order Parameters (Particles) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
+    axes[0].set_title(f'Order Parameters - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
                      fontsize=14, fontweight='bold')
     
-    axes[1].plot(df_order_traj['t'], df_order_traj['mean_speed'], 'g-', linewidth=2)
-    axes[1].set_ylabel('Mean Speed', fontsize=12, fontweight='bold')
+    # 2. Mean speed
+    axes[1].plot(df_order_traj['t'], df_order_traj['mean_speed'], 'g-', linewidth=2.5, alpha=0.85)
+    axes[1].set_ylabel('Mean Speed\n(Kinetic Energy)', fontsize=12, fontweight='bold')
     axes[1].grid(True, alpha=0.3)
+    axes[1].axhline(df_order_traj['mean_speed'].mean(), color='k', linestyle='--', alpha=0.4,
+                   label=f'Mean: {df_order_traj["mean_speed"].mean():.3f}')
+    axes[1].legend(loc='best', fontsize=10)
     
-    axes[2].plot(df_order_traj['t'], df_order_traj['nematic'], 'm-', linewidth=2)
-    axes[2].set_ylabel('Nematic Order Q', fontsize=12, fontweight='bold')
-    axes[2].set_xlabel('Time (s)', fontsize=12)
-    axes[2].grid(True, alpha=0.3)
-    axes[2].set_ylim([-0.05, 1.05])
+    # 3. Angular momentum
+    if 'angular_momentum' in df_order_traj.columns:
+        axes[2].plot(df_order_traj['t'], df_order_traj['angular_momentum'], 'c-', linewidth=2.5, alpha=0.85)
+        axes[2].set_ylabel('Angular Momentum\n(Milling/Rotation)', fontsize=12, fontweight='bold')
+        axes[2].grid(True, alpha=0.3)
+    
+    # 4. Density variance (clustering) - TRUE VS PREDICTED COMPARISON!
+    if has_density_comparison and 'density_variance_true' in df_density.columns:
+        axes[3].plot(df_density['t'], df_density['density_variance_true'], 'b-', linewidth=2.5, alpha=0.85, label='Ground Truth')
+        axes[3].plot(df_density['t'], df_density['density_variance_pred'], 'r--', linewidth=2.5, alpha=0.85, label='Predicted')
+        axes[3].set_ylabel('Density Variance\n(Clustering)', fontsize=12, fontweight='bold')
+        axes[3].grid(True, alpha=0.3)
+        axes[3].legend(loc='best', fontsize=11)
+    elif 'density_variance' in df_order_traj.columns:
+        # Fallback if no density comparison
+        axes[3].plot(df_order_traj['t'], df_order_traj['total_mass'], 'orange', linewidth=2.5, alpha=0.85)
+        axes[3].set_ylabel('Density Variance\n(Clustering)', fontsize=12, fontweight='bold')
+        axes[3].grid(True, alpha=0.3)
+    
+    # 5. Total mass - TRUE VS PREDICTED COMPARISON!
+    if has_density_comparison and 'mass_true' in df_density.columns:
+        axes[4].plot(df_density['t'], df_density['mass_true'], 'b-', linewidth=2.5, alpha=0.85, label='Ground Truth')
+        axes[4].plot(df_density['t'], df_density['mass_pred'], 'r--', linewidth=2.5, alpha=0.85, label='Predicted')
+        axes[4].set_ylabel('Total Mass\n(Conservation)', fontsize=12, fontweight='bold')
+        axes[4].set_xlabel('Time (s)', fontsize=12, fontweight='bold')
+        axes[4].grid(True, alpha=0.3)
+        axes[4].legend(loc='best', fontsize=11)
+    elif 'total_mass' in df_order_traj.columns:
+        # Fallback if no density comparison
+        axes[4].plot(df_order_traj['t'], df_order_traj['total_mass'], 'purple', linewidth=2.5, alpha=0.85)
+        axes[4].set_ylabel('Total Mass\n(Conservation)', fontsize=12, fontweight='bold')
+        axes[4].set_xlabel('Time (s)', fontsize=12, fontweight='bold')
+        axes[4].grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(output_dir / "order_parameters_particles.png", dpi=150, bbox_inches='tight')
+    plt.savefig(output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
     plt.close()
+
