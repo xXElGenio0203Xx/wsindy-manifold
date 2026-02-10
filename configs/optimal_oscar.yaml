@@ -1,0 +1,215 @@
+---
+# ============================================================================
+# OPTIMAL OSCAR CONFIG — Production-quality MVAR & LSTM comparison
+# ============================================================================
+#
+# Design philosophy:
+#   1. More data → both models train better
+#   2. Longer simulations → richer temporal dynamics per run
+#   3. Finer resolution → better density fields for POD
+#   4. More POD modes → better reconstruction fidelity
+#   5. Balanced samples-per-parameter ratios for both models
+#   6. Strong but not excessive regularization
+#   7. Long forecast horizon → stress-test autoregressive stability
+#
+# ============================================================================
+# DATA BUDGET CALCULATION
+# ============================================================================
+#
+# Simulation:
+#   N = 30 particles, T = 8.0s, dt = 0.04 → 201 frames/run
+#   Density: 64×64 = 4,096 spatial DOFs
+#
+# Training:
+#   60 runs × 201 frames = 12,060 total density snapshots
+#   POD: subsample = 1 → T_rom = 201 frames/run
+#   Windowed dataset: 60 × (201 - lag) = 60 × 193 = 11,580 samples
+#
+# POD modes:
+#   fixed_modes = 15 → d = 15
+#
+# MVAR (lag=8):
+#   Parameters: p × d² + d = 8 × 225 + 15 = 1,815
+#   Samples / params = 11,580 / 1,815 = 6.4× ← excellent
+#
+# LSTM (hidden=32, layers=1, lag=8):
+#   LSTM gate params: 4 × 32 × (15 + 32 + 1) = 6,144
+#   Output layer: 32 × 15 + 15 = 495
+#   Total: 6,639 parameters
+#   Samples / params = 11,580 / 6,639 = 1.7× ← workable with regularization
+#
+# LSTM (hidden=48, layers=1, lag=8):
+#   LSTM gate params: 4 × 48 × (15 + 48 + 1) = 12,288
+#   Output layer: 48 × 15 + 15 = 735
+#   Total: 13,023 parameters
+#   Samples / params = 11,580 / 13,023 = 0.89× ← too data-starved
+#
+# → Use hidden=32 for best balance.
+#
+# Forecast:
+#   forecast_start = 0.4s → 10 conditioning frames (matches lag=8 + 2 extra)
+#   Forecast: (8.0 - 0.4) / 0.04 = 190 steps → long enough to test stability
+#
+# ============================================================================
+
+experiment_name: "optimal_oscar"
+
+# ============================================================================
+# SIMULATION PARAMETERS
+# ============================================================================
+sim:
+  N: 30                    # More particles → richer interactions & clustering
+  T: 8.0                   # 8 seconds — longer dynamics, more data per run
+  dt: 0.04                 # Fine timestep → 201 frames/run
+  Lx: 10.0
+  Ly: 10.0
+  bc: "periodic"
+
+  model: "vicsek_morse_discrete"
+  speed: 1.0
+  rcut: 2.0
+  noise:
+    kind: "gaussian"
+    eta: 0.3
+
+  forces:
+    enabled: false
+
+# ============================================================================
+# DENSITY FIELD
+# ============================================================================
+density:
+  nx: 64                   # Higher resolution → better spatial features
+  ny: 64
+  bandwidth: 1.5           # Slightly tighter KDE → crisper density fields
+
+outputs:
+  density_resolution: 64
+  density_bandwidth: 1.5
+
+# ============================================================================
+# TRAINING: 4 families × 15 variants = 60 runs
+# ============================================================================
+# Wide IC coverage ensures the POD basis spans the reachable manifold.
+# 15 variants per family provides dense coverage within each family.
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  # Family 1: Gaussian clusters — sweep center positions (15 runs)
+  gaussian:
+    enabled: true
+    positions_x: [1.5, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]
+    positions_y: [5.0]
+    variances: [1.0]
+    n_samples_per_config: 1
+
+  # Family 2: Uniform random — 15 independent random seeds
+  uniform:
+    enabled: true
+    n_runs: 15
+
+  # Family 3: Ring formations — sweep radii (15 runs)
+  ring:
+    enabled: true
+    radii: [0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6, 4.0, 4.4, 4.8, 5.2, 5.6, 6.0, 6.4]
+    widths: [0.5]
+    n_samples_per_config: 1
+
+  # Family 4: Two-cluster configurations — sweep separations (15 runs)
+  two_clusters:
+    enabled: true
+    separations: [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0]
+    sigmas: [0.8]
+    n_samples_per_config: 1
+
+# ============================================================================
+# TEST: 5 per family = 20 runs (all unseen parameters)
+# ============================================================================
+# Test ICs are deliberately interpolated between training values to
+# measure true generalization, not memorization.
+# ============================================================================
+test_ic:
+  type: "mixed_comprehensive"
+
+  # Gaussian — unseen centers (interpolated between training values)
+  gaussian:
+    enabled: true
+    test_positions_x: [2.0, 3.8, 5.3, 6.8, 8.3]
+    test_positions_y: [5.0]
+    test_variances: [1.2]            # Also unseen variance
+
+  # Uniform — 5 new random seeds
+  uniform:
+    enabled: true
+    n_runs: 5
+
+  # Ring — unseen radii (interpolated)
+  ring:
+    enabled: true
+    test_radii: [1.0, 2.2, 3.4, 4.6, 5.8]
+    test_widths: [0.5]
+    n_samples_per_config: 1
+
+  # Two clusters — unseen separations (interpolated)
+  two_clusters:
+    enabled: true
+    test_separations: [1.8, 3.2, 4.8, 6.2, 7.8]
+    test_sigmas: [0.8]
+
+# ============================================================================
+# ROM CONFIGURATION — Tuned for production quality
+# ============================================================================
+rom:
+  subsample: 1             # Use every frame — maximum data utilization
+  fixed_modes: 15          # 15 POD modes — captures richer dynamics than 10
+
+  models:
+    # ------------------------------------------------------------------
+    # MVAR: Linear autoregressive model (strong baseline)
+    # ------------------------------------------------------------------
+    # Design: p=8 gives the model access to 0.32s of history (8 × 0.04s)
+    #   - This is enough to capture the Vicsek alignment timescale
+    #   - Ridge α=5e-4: moderate regularization (not too strong, not too weak)
+    #   - We saw α=1e-3 on local was perhaps too aggressive; α=1e-6 too weak
+    #   - With 6.4× samples/params ratio, α=5e-4 is well-calibrated
+    # ------------------------------------------------------------------
+    mvar:
+      enabled: true
+      lag: 8                # p=8 → 1,815 params
+      ridge_alpha: 5.0e-4   # Balanced regularization
+
+    # ------------------------------------------------------------------
+    # LSTM: Neural autoregressive model
+    # ------------------------------------------------------------------
+    # Design: h=32, L=1 gives 6,639 params with 1.7× samples ratio
+    #   - Much better than the 0.03× ratio that caused failure before
+    #   - hidden=32 gives enough capacity to learn nonlinear dynamics
+    #   - 1 layer avoids overfitting with limited data
+    #   - epochs=500: OSCAR has time; let the optimizer converge fully
+    #   - patience=40: generous patience — don't early-stop prematurely
+    #   - lr=0.001: standard Adam rate, with cosine annealing in mind
+    #   - weight_decay=5e-4: moderate L2 regularization
+    #   - batch_size=128: larger batches for stable gradients on 11k samples
+    # ------------------------------------------------------------------
+    lstm:
+      enabled: true
+      lag: 8                # Must match MVAR (shared in pipeline)
+      hidden_units: 32      # 32 hidden → 6,639 params
+      num_layers: 1         # Single layer — sufficient capacity
+      max_epochs: 500       # OSCAR can afford long training
+      patience: 40          # Generous early stopping
+      batch_size: 128       # Stable gradients
+      learning_rate: 0.001  # Standard Adam rate
+      weight_decay: 5.0e-4  # Moderate L2 regularization
+      gradient_clip: 5.0    # Gradient clipping for stability
+
+# ============================================================================
+# EVALUATION — Long forecast horizon
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  forecast_start: 0.4       # Condition on first 0.4s (10 frames at dt=0.04)
+                             # Forecast remaining 7.6s → 190 frames
+                             # This is a much harder test than the local 96-frame forecast

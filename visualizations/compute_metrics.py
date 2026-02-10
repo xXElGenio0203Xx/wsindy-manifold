@@ -115,11 +115,21 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         traj = traj_data["traj"]
         traj_times = traj_data["times"]
         
-        # Subsample trajectory to match density timesteps
+        # Align trajectory to the prediction time window
+        # The trajectory covers the full simulation, but predictions only cover the forecast period
+        # Find the trajectory indices that match the prediction times
         if traj.shape[0] != T_pred:
-            ROM_SUBSAMPLE = 5
-            traj = traj[::ROM_SUBSAMPLE][:T_pred]
-            traj_times = traj_times[::ROM_SUBSAMPLE][:T_pred]
+            # First try: align by matching time ranges (pred starts at forecast_start)
+            pred_start_time = times[0]
+            traj_start_idx = np.argmin(np.abs(traj_times - pred_start_time))
+            traj = traj[traj_start_idx:traj_start_idx + T_pred]
+            traj_times = traj_times[traj_start_idx:traj_start_idx + T_pred]
+            
+            # If still mismatched (e.g., due to ROM subsampling), subsample to match
+            if traj.shape[0] != T_pred:
+                subsample_factor = max(1, traj.shape[0] // T_pred)
+                traj = traj[::subsample_factor][:T_pred]
+                traj_times = traj_times[::subsample_factor][:T_pred]
         
         # Store for visualization
         test_predictions[run_name] = {

@@ -1,0 +1,156 @@
+---
+# ============================================================================
+# OPTIMAL LOCAL CONFIG — Best possible MVAR & LSTM for local testing
+# ============================================================================
+# Strategy: Maximize samples-per-parameter ratio while keeping runtime <5 min
+#
+# Key insight: LSTM failed before because 520 samples / 16,020 params = 0.03×
+# This config targets:
+#   - ~3,000+ training samples
+#   - MVAR: 500 params  → 6× ratio (excellent)
+#   - LSTM: ~1,900 params → 1.6× ratio (workable with strong regularization)
+#
+# Data budget: 32 runs × ~96 usable timesteps = 3,072 samples
+# ============================================================================
+
+experiment_name: "optimal_local"
+
+sim:
+  N: 15                   # Moderate particles
+  T: 5.0                  # 5 seconds — more data per run than before (3s)
+  dt: 0.05                # Finer timestep → 101 frames per run
+  Lx: 10.0
+  Ly: 10.0
+  bc: "periodic"
+
+  model: "vicsek_morse_discrete"
+  speed: 1.0
+  rcut: 2.0
+  noise:
+    kind: "gaussian"
+    eta: 0.3
+
+  forces:
+    enabled: false
+
+density:
+  nx: 32
+  ny: 32
+  bandwidth: 2.0
+
+outputs:
+  density_resolution: 32
+  density_bandwidth: 2.0
+
+# ============================================================================
+# TRAINING: 4 families × 8 variants = 32 runs
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  # Family 1: Gaussian clusters (8 runs)
+  gaussian:
+    enabled: true
+    positions_x: [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+    positions_y: [5.0]
+    variances: [1.0]
+    n_samples_per_config: 1
+
+  # Family 2: Uniform random (8 runs)
+  uniform:
+    enabled: true
+    n_runs: 8
+
+  # Family 3: Ring formations (8 runs)
+  ring:
+    enabled: true
+    radii: [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]
+    widths: [0.5]
+    n_samples_per_config: 1
+
+  # Family 4: Two-cluster configurations (8 runs)
+  two_clusters:
+    enabled: true
+    separations: [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5]
+    sigmas: [0.8]
+    n_samples_per_config: 1
+
+# ============================================================================
+# TEST: 3 per family = 12 runs (unseen parameters)
+# ============================================================================
+test_ic:
+  type: "mixed_comprehensive"
+
+  # Gaussian — unseen centers + variance
+  gaussian:
+    enabled: true
+    test_positions_x: [2.5, 5.5, 8.5]
+    test_positions_y: [5.0]
+    test_variances: [1.5]
+
+  # Uniform — 3 new random seeds
+  uniform:
+    enabled: true
+    n_runs: 3
+
+  # Ring — unseen radii (interpolation)
+  ring:
+    enabled: true
+    test_radii: [1.2, 2.8, 4.2]
+    test_widths: [0.5]
+    n_samples_per_config: 1
+
+  # Two clusters — unseen separations (interpolation)
+  two_clusters:
+    enabled: true
+    test_separations: [2.0, 5.0, 7.0]
+    test_sigmas: [0.8]
+
+# ============================================================================
+# ROM Configuration — Tuned for best performance
+# ============================================================================
+rom:
+  subsample: 1
+  fixed_modes: 10          # 10 POD modes (~84% energy) — sweet spot for small data
+
+  models:
+    # ------------------------------------------------------------------
+    # MVAR: Linear autoregressive — naturally strong in low-data regime
+    # ------------------------------------------------------------------
+    mvar:
+      enabled: true
+      lag: 5                # p=5 → 500 params (5 × 10 × 10)
+      ridge_alpha: 1.0e-3   # Stronger regularization (was 1e-6) for generalization
+
+    # ------------------------------------------------------------------
+    # LSTM: Minimal architecture to match data budget
+    # ------------------------------------------------------------------
+    # With ~3,072 samples and 1,962 params → 1.6× ratio
+    # Key changes from before:
+    #   - hidden 32→16 (cuts params 4×)
+    #   - layers 2→1 (cuts params 2×)
+    #   - epochs 50→300 (was still learning at 50)
+    #   - weight_decay 1e-5→1e-3 (strong regularization)
+    #   - patience 10→25 (let it train longer)
+    #   - lr 0.001→0.003 (faster convergence)
+    # ------------------------------------------------------------------
+    lstm:
+      enabled: true
+      lag: 5                # Must match MVAR (shared in pipeline)
+      hidden_units: 16      # Small: matches data budget
+      num_layers: 1         # Single layer — sufficient for this
+      max_epochs: 300       # Much more training (was 50)
+      patience: 25          # More patience before early stopping
+      batch_size: 64        # Larger batches for stable gradients
+      learning_rate: 0.003  # Faster convergence
+      weight_decay: 1.0e-3  # Strong L2 regularization
+      gradient_clip: 5.0
+
+# ============================================================================
+# Evaluation — forecast from t=0.25s onward
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  forecast_start: 0.25      # Condition on first 0.25s (5 frames at dt=0.05)
+                             # Forecast remaining 4.75s → 95 frames for videos
