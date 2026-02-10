@@ -219,7 +219,16 @@ def evaluate_test_runs(
             r2_df.to_csv(test_run_dir / "r2_vs_time.csv", index=False)
         
         # Save predicted density (REQUIRED for visualization pipeline)
-        # Use same format as stable pipeline
+        # Save model-specific file so MVAR and LSTM don't overwrite each other
+        model_tag = model_name.lower()
+        np.savez_compressed(
+            test_run_dir / f"density_pred_{model_tag}.npz",
+            rho=pred_physical,
+            xgrid=xgrid,
+            ygrid=ygrid,
+            times=forecast_times
+        )
+        # Also save generic for backward compatibility (single-model case)
         np.savez_compressed(
             test_run_dir / "density_pred.npz",
             rho=pred_physical,
