@@ -42,7 +42,6 @@ set -u  # Exit on undefined variable
 CONFIG_FILE="configs/optimal_oscar.yaml"
 EXPERIMENT_NAME="optimal_oscar"
 REPO_DIR="/users/emaciaso/wsindy-manifold"
-CONDA_ENV="wsindy"
 
 # ==============================================================================
 # Job Info
@@ -65,17 +64,15 @@ echo ""
 # ==============================================================================
 echo "Setting up environment..."
 
-# Load miniconda module
-module load miniconda3/23.11.0s
+# Load modules
+module load python/3.11.0s-ixrhc3q
+module load ffmpeg/7.0-xny2fb2
 
-# Initialize conda
-source /oscar/runtime/software/external/miniconda3/23.11.0/etc/profile.d/conda.sh
-
-# Activate environment
-conda activate "$CONDA_ENV"
+# Activate virtual environment
+source ~/wsindy_env/bin/activate
 
 echo "✓ Python: $(which python)"
-echo "✓ Conda env: $CONDA_ENV"
+echo "✓ Python version: $(python --version)"
 echo ""
 
 # Navigate to repository
