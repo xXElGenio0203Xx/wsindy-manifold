@@ -458,7 +458,8 @@ def main():
             best_runs_dir=model_best_runs_dir,
             base_config_sim=BASE_CONFIG_SIM,
             p_lag=model_p_lag,
-            n_top=4
+            n_top=4,
+            model_name=model_name
         )
         all_top_runs[model_name] = top_runs
     

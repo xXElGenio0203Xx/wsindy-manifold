@@ -137,6 +137,12 @@ def evaluate_test_runs(
         pred_physical = (pred_latent @ U_r.T) + X_mean
         pred_physical = pred_physical.reshape(-1, density_nx, density_ny)
         
+        # Clamp negative density values (POD can produce unphysical negatives)
+        neg_frac = np.mean(pred_physical < 0) * 100
+        if neg_frac > 0:
+            pred_physical = np.maximum(pred_physical, 0.0)
+            print(f"   ℹ️  Clamped {neg_frac:.1f}% negative density pixels to 0")
+        
         # Ground truth (forecasted region)
         true_physical = test_density[T_train:]
         

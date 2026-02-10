@@ -25,7 +25,8 @@ def generate_best_run_visualizations(
     best_runs_dir,
     base_config_sim,
     p_lag,
-    n_top=4
+    n_top=4,
+    model_name='mvar'
 ):
     """
     Generate detailed visualizations for the best test runs.
@@ -85,7 +86,7 @@ def generate_best_run_visualizations(
         
         # Generate visualizations
         _generate_trajectory_video(pred, ic_output_dir, ic_type, base_config_sim)
-        _generate_density_comparison(pred, ic_output_dir)
+        _generate_density_comparison(pred, ic_output_dir, model_name=model_name)
         _generate_error_timeseries(pred, summary, ic_output_dir, ic_type, ic_stats, p_lag)
         _generate_error_distributions(pred, ic_output_dir, ic_type)
         _generate_order_parameters(run_dir, ic_output_dir, ic_type, ic_stats)
@@ -110,8 +111,9 @@ def _generate_trajectory_video(pred, output_dir, ic_type, base_config_sim):
     )
 
 
-def _generate_density_comparison(pred, output_dir):
+def _generate_density_comparison(pred, output_dir, model_name='mvar'):
     """Generate side-by-side density comparison video."""
+    model_label = model_name.upper()
     side_by_side_video(
         path=output_dir,
         left_frames=pred["rho_true"],
@@ -120,7 +122,7 @@ def _generate_density_comparison(pred, output_dir):
         name="density_truth_vs_pred",
         fps=10,
         cmap='hot',
-        titles=('Ground Truth', 'MVAR-ROM Prediction')
+        titles=('Ground Truth', f'{model_label}-ROM Prediction')
     )
 
 
