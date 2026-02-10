@@ -1,0 +1,205 @@
+---
+# ============================================================================
+# SYNTHESIS V1 — Combining best lessons from all experiments
+# ============================================================================
+#
+# LESSONS INCORPORATED:
+#
+# 1. POD CEILING IS THE BOTTLENECK (from heavyweight analysis)
+#    - 4 modes at 47% energy → 63% first-frame error, no chance of recovery
+#    - Need higher energy capture: target 90%+ with bandwidth smoothing
+#    - pod_energy=0.90 should give ~17 modes with smooth density fields
+#
+# 2. ROM SUBSAMPLING SMOOTHS DYNAMICS (from parameter_regime_change)
+#    - rom_subsample=3 → Δt_ROM = 0.12s instead of 0.04s
+#    - Slower latent dynamics are easier for MVAR to capture
+#    - Also reduces forecast steps by 3× for same time horizon
+#
+# 3. SHORTER FORECAST HORIZON (from parameter_regime_change R²=0.51)
+#    - T=10-15s → 225-350 forecast steps was too many
+#    - T=5s with subsample=3 → ~42 ROM frames, ~37 forecast steps
+#    - Autoregressive error accumulates much less
+#
+# 4. MIXED IC TYPES IMPROVE GENERALIZATION (from parameter_regime_change)
+#    - Uniform ICs scored R²=0.64, gaussian only 0.45
+#    - Include gaussian + uniform + two_clusters for diversity
+#
+# 5. MODERATE LAG + COMPACT MODES (from MVAR theory)
+#    - lag=5 with ~17 modes → 1,462 params (very manageable)
+#    - 200 runs × 37 samples/run = 7,400 training samples
+#    - Ratio: 0.20 (well over-determined)
+#
+# 6. WIDER BANDWIDTH = SMOOTHER DENSITY = FASTER SVD DECAY
+#    - bandwidth=4.0 (wider than 3.0) → very smooth KDE fields
+#    - Fewer modes needed for same energy capture
+#    - Better POD ceiling with fewer modes
+#
+# EXPECTED RESULTS:
+#   ROM frames/run: 126/3 = 42
+#   MVAR samples/run: 42 - 5 = 37
+#   Total samples: 200 × 37 = 7,400
+#   MVAR params: 17² × 5 + 17 = 1,462
+#   Params/data ratio: 0.20 (excellent!)
+#   Forecast steps: ~34 (from forecast_start=0.6s → frame 5)
+#
+# ============================================================================
+
+experiment_name: "synthesis_v1"
+
+# ============================================================================
+# SIMULATION PARAMETERS
+# ============================================================================
+sim:
+  N: 100                   # 100 particles → smooth density fields
+  T: 5.0                   # 5 seconds — SHORT to limit forecast horizon
+  dt: 0.04                 # 126 frames/run
+  Lx: 15.0                 # LARGER domain (15×15 like param_regime_change)
+  Ly: 15.0                 # Sparser particles → smoother density → better POD
+  bc: "periodic"
+
+# Model type and speed (top-level — required by config_loader)
+model:
+  type: "discrete"
+  speed: 1.5               # Moderate speed — not too fast, not too slow
+  speed_mode: "constant_with_forces"
+
+# Alignment parameters
+params:
+  R: 2.5                   # Interaction radius
+
+# Noise (top-level — required by config_loader)
+noise:
+  kind: "gaussian"
+  eta: 0.2                 # Moderate noise — some alignment but not rigid
+  match_variance: true
+
+# Morse forces — clustering behavior
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8                # Moderate attraction
+    Cr: 0.3                # Repulsion
+    la: 1.5                # Attraction length scale
+    lr: 0.5                # Repulsion length scale
+    mu_t: 0.3              # Force influence on heading
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY FIELD — Very smooth for fast SVD decay
+# ============================================================================
+density:
+  nx: 48                   # 48×48 grid
+  ny: 48
+  bandwidth: 4.0           # WIDER bandwidth → very smooth → fewer POD modes needed
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING: 200 runs, mixed IC types (like parameter_regime_change)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  # Gaussian distributions (120 runs = 60%)
+  gaussian:
+    enabled: true
+    n_runs: 120
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 2        # 4×4×3×2 = 96, pad to 120 with random
+
+  # Uniform distributions (50 runs = 25%)
+  uniform:
+    enabled: true
+    n_runs: 50
+    n_samples: 50
+
+  # Two-cluster distributions (30 runs = 15%)
+  two_clusters:
+    enabled: true
+    n_runs: 30
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 5        # 3×2×5 = 30
+
+  # Ring disabled to keep it simpler
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST: 30 runs, mixed IC types
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  # Gaussian test (15 runs)
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1        # 3×3×1 = 9, plus 6 extrapolation
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0], [7.5, 1.5], [1.5, 7.5]]
+    extrapolation_variance: [1.2]
+
+  # Uniform test (8 runs)
+  uniform:
+    enabled: true
+    n_runs: 8
+
+  # Two-cluster test (7 runs)
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 3
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM CONFIGURATION — compact, well-conditioned
+# ============================================================================
+rom:
+  subsample: 3             # KEY: every 3rd frame → Δt_ROM = 0.12s (smoother dynamics)
+  pod_energy: 0.90         # Target 90% energy → ~15-20 modes with wide bandwidth
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5               # Moderate lag — 5 ROM steps = 0.6s of history
+      ridge_alpha: 1.0e-4  # Light regularization (well over-determined)
+
+    lstm:
+      enabled: true
+      lag: 5               # Same lag as MVAR for fair comparison
+      hidden_units: 64     # Moderate: ~53k params vs ~7.4k samples
+      num_layers: 2
+      max_epochs: 1500
+      patience: 50
+      batch_size: 256
+      learning_rate: 5.0e-4
+      weight_decay: 1.0e-3
+      gradient_clip: 1.0
+      dropout: 0.1
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60     # Condition on 0.6s = 5 ROM frames (= lag)
+                            # Forecast: 42 - 5 = 37 ROM frames = 4.4s

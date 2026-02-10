@@ -131,51 +131,63 @@ def evaluate_test_runs(
         
         # Forecast using generic forecast function
         n_forecast_steps = T_test - T_train
-        pred_latent = forecast_fn(ic_window, n_forecast_steps)
+        pred_latent_forecast = forecast_fn(ic_window, n_forecast_steps)
         
-        # Reconstruct to physical space
-        pred_physical = (pred_latent @ U_r.T) + X_mean
-        pred_physical = pred_physical.reshape(-1, density_nx, density_ny)
+        # Build full prediction: conditioning window (POD-reconstructed truth) + forecast
+        # This ensures the video starts from a good match and transitions to the forecast
+        cond_latent = test_latent[:T_train]  # Conditioning window (ground truth in latent space)
+        pred_latent_full = np.vstack([cond_latent, pred_latent_forecast])
+        
+        # Reconstruct full prediction to physical space
+        pred_physical_full = (pred_latent_full @ U_r.T) + X_mean
+        pred_physical_full = pred_physical_full.reshape(-1, density_nx, density_ny)
+        
+        # Also reconstruct forecast-only for R² computation
+        pred_physical_forecast = (pred_latent_forecast @ U_r.T) + X_mean
+        pred_physical_forecast = pred_physical_forecast.reshape(-1, density_nx, density_ny)
         
         # Clamp negative density values (POD can produce unphysical negatives)
-        neg_frac = np.mean(pred_physical < 0) * 100
+        neg_frac_full = np.mean(pred_physical_full < 0) * 100
+        if neg_frac_full > 0:
+            pred_physical_full = np.maximum(pred_physical_full, 0.0)
+        neg_frac = np.mean(pred_physical_forecast < 0) * 100
         if neg_frac > 0:
-            pred_physical = np.maximum(pred_physical, 0.0)
+            pred_physical_forecast = np.maximum(pred_physical_forecast, 0.0)
             print(f"   ℹ️  Clamped {neg_frac:.1f}% negative density pixels to 0")
         
-        # Ground truth (forecasted region)
+        # Ground truth (forecasted region only — for R² computation)
         true_physical = test_density[T_train:]
         
-        # Compute R² metrics
+        # Compute R² metrics (on FORECAST region only — fair evaluation)
         # 1. Reconstructed (physical space)
-        ss_res_phys = np.sum((true_physical.flatten() - pred_physical.flatten())**2)
+        ss_res_phys = np.sum((true_physical.flatten() - pred_physical_forecast.flatten())**2)
         ss_tot_phys = np.sum((true_physical.flatten() - true_physical.flatten().mean())**2)
         r2_reconstructed = 1 - ss_res_phys / ss_tot_phys
         
         # 2. Latent (ROM space)
-        true_latent = test_latent[T_train:]
-        ss_res_lat = np.sum((true_latent.flatten() - pred_latent.flatten())**2)
-        ss_tot_lat = np.sum((true_latent.flatten() - true_latent.flatten().mean())**2)
+        true_latent_forecast = test_latent[T_train:]
+        ss_res_lat = np.sum((true_latent_forecast.flatten() - pred_latent_forecast.flatten())**2)
+        ss_tot_lat = np.sum((true_latent_forecast.flatten() - true_latent_forecast.flatten().mean())**2)
         r2_latent = 1 - ss_res_lat / ss_tot_lat
         
         # 3. POD reconstruction quality (using true latent)
-        true_reconstructed = (true_latent @ U_r.T) + X_mean
+        true_reconstructed = (true_latent_forecast @ U_r.T) + X_mean
         true_reconstructed = true_reconstructed.reshape(-1, density_nx, density_ny)
         ss_res_pod = np.sum((true_physical.flatten() - true_reconstructed.flatten())**2)
         r2_pod = 1 - ss_res_pod / ss_tot_phys
         
-        # Compute RMSE metrics (for compatibility)
-        rmse_recon = np.sqrt(np.mean((true_physical.flatten() - pred_physical.flatten())**2))
-        rmse_latent = np.sqrt(np.mean((true_latent.flatten() - pred_latent.flatten())**2))
+        # Compute RMSE metrics (for compatibility) — forecast region only
+        rmse_recon = np.sqrt(np.mean((true_physical.flatten() - pred_physical_forecast.flatten())**2))
+        rmse_latent = np.sqrt(np.mean((true_latent_forecast.flatten() - pred_latent_forecast.flatten())**2))
         rmse_pod = np.sqrt(np.mean((true_physical.flatten() - true_reconstructed.flatten())**2))
         
         # Compute relative errors
         rel_error_recon = rmse_recon / (np.mean(np.abs(true_physical.flatten())) + 1e-10)
         rel_error_pod = rmse_pod / (np.mean(np.abs(true_physical.flatten())) + 1e-10)
         
-        # Compute mass conservation violation
+        # Compute mass conservation violation (forecast region)
         true_mass = np.sum(true_physical, axis=(1, 2))
-        pred_mass = np.sum(pred_physical, axis=(1, 2))
+        pred_mass = np.sum(pred_physical_forecast, axis=(1, 2))
         mass_violations = np.abs(pred_mass - true_mass) / (true_mass + 1e-10)
         max_mass_violation = np.max(mass_violations)
         
@@ -191,7 +203,8 @@ def evaluate_test_runs(
             'rel_error_recon': rel_error_recon,
             'rel_error_pod': rel_error_pod,
             'max_mass_violation': max_mass_violation,
-            'T_forecast': len(pred_latent)
+            'T_forecast': len(pred_latent_forecast),
+            'T_conditioning': T_train
         }
         
         # Save metrics summary JSON (REQUIRED for visualization pipeline)
@@ -211,12 +224,13 @@ def evaluate_test_runs(
         
         # Define forecast times (needed for predictions and optional for time-resolved)
         forecast_times = test_times[T_train:]
+        all_times = test_times[:T_train + len(pred_latent_forecast)]
         
         # Time-resolved analysis (if requested)
-        if save_time_resolved and len(pred_latent) > 0:
+        if save_time_resolved and len(pred_latent_forecast) > 0:
             r2_vs_time = _compute_time_resolved_r2(
-                true_physical, pred_physical,
-                true_latent, pred_latent,
+                true_physical, pred_physical_forecast,
+                true_latent_forecast, pred_latent_forecast,
                 true_reconstructed, forecast_times
             )
             
@@ -225,22 +239,25 @@ def evaluate_test_runs(
             r2_df.to_csv(test_run_dir / "r2_vs_time.csv", index=False)
         
         # Save predicted density (REQUIRED for visualization pipeline)
-        # Save model-specific file so MVAR and LSTM don't overwrite each other
+        # Save FULL trajectory: conditioning window (POD truth) + forecast
+        # This ensures videos start with a good match and transition to forecast
         model_tag = model_name.lower()
         np.savez_compressed(
             test_run_dir / f"density_pred_{model_tag}.npz",
-            rho=pred_physical,
+            rho=pred_physical_full,
             xgrid=xgrid,
             ygrid=ygrid,
-            times=forecast_times
+            times=all_times,
+            forecast_start_idx=T_train  # Index where forecast begins
         )
         # Also save generic for backward compatibility (single-model case)
         np.savez_compressed(
             test_run_dir / "density_pred.npz",
-            rho=pred_physical,
+            rho=pred_physical_full,
             xgrid=xgrid,
             ygrid=ygrid,
-            times=forecast_times
+            times=all_times,
+            forecast_start_idx=T_train
         )
         
         # Compute order parameters from trajectory for visualization
@@ -294,12 +311,12 @@ def evaluate_test_runs(
             density_variance_true = np.std(test_density, axis=(1, 2))  # Spatial std per timestep
             density_variance_pred_full = np.zeros(T_test)
             density_variance_pred_full[:T_train] = density_variance_true[:T_train]  # Use true during conditioning
-            density_variance_pred_full[T_train:] = np.std(pred_physical, axis=(1, 2))  # Use pred during forecast
+            density_variance_pred_full[T_train:] = np.std(pred_physical_forecast, axis=(1, 2))  # Use pred during forecast
             
             mass_true = np.sum(test_density, axis=(1, 2))
             mass_pred_full = np.zeros(T_test)
             mass_pred_full[:T_train] = mass_true[:T_train]
-            mass_pred_full[T_train:] = np.sum(pred_physical, axis=(1, 2))
+            mass_pred_full[T_train:] = np.sum(pred_physical_forecast, axis=(1, 2))
             
             # Save density-based comparison metrics
             density_metrics_df = pd.DataFrame({
