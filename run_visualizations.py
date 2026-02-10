@@ -21,6 +21,10 @@ import json
 import pandas as pd
 import argparse
 import time
+import sys
+
+# Add src to path for rectsim modules
+sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 # Import visualization modules
 from visualizations import (
