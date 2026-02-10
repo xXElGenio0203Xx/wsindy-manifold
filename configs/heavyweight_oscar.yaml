@@ -1,0 +1,225 @@
+---
+# ============================================================================
+# HEAVYWEIGHT OSCAR — Maximum quality, Gaussian-only, smoother physics
+# ============================================================================
+#
+# WHAT CHANGED from optimal_oscar.yaml and WHY:
+#
+# 1. GAUSSIAN-ONLY ICs
+#    Problem: 4 IC families → POD basis must span very different dynamics.
+#             Ring, uniform, two_clusters all produce different manifolds.
+#    Fix:     100% Gaussian clusters with varied (x,y) positions AND
+#             varied variances. The dynamics stay in one family → the POD
+#             basis is MUCH tighter and generalizes better within-family.
+#
+# 2. N=100 PARTICLES (was 30)
+#    Problem: N=30 → spiky density fields, KDE has isolated peaks that
+#             jump frame-to-frame. This injects high-frequency noise
+#             into POD modes, making them nearly unpredictable.
+#    Fix:     N=100 → smoother, more continuous density fields.
+#             KDE peaks overlap → lower-rank structure → fewer modes needed.
+#
+# 3. BANDWIDTH=3.0 (was 1.5)
+#    Problem: bandwidth=1.5 with N=30 → each particle is a sharp spike.
+#    Fix:     bandwidth=3.0 → much smoother KDE. Each particle's kernel
+#             is wider, creating gentle rolling density hills instead of
+#             sharp needles. The density field becomes inherently low-rank.
+#
+# 4. POD at 45% ENERGY (was 95%)
+#    Problem: 249 modes → models forecast in 249D where 200+ dimensions
+#             are noise. Autoregressive errors accumulate in all 249 dims.
+#    Fix:     ~5-8 modes. The leading modes capture the dominant spatial
+#             patterns (cluster position, spread). The reconstruction
+#             ceiling drops, but the DYNAMICS become dramatically easier
+#             to forecast because d is tiny and the modes are smooth.
+#
+# 5. LONGER SIMULATIONS: T=15s (was 8s)
+#    Problem: 8s × 60 runs = limited data. MVAR and LSTM both
+#             data-starved at high d.
+#    Fix:     15s × 100 runs = 5× more data. At d≈6, MVAR has ~300 params
+#             and 36,000 samples → 120× ratio. LSTM with h=64 has ~3,000
+#             params → 12× ratio. Both models are data-RICH.
+#
+# 6. BIGGER LSTM: h=64, L=2, 2000 epochs, scheduler, dropout
+#    Problem: h=32 L=1 with 500 epochs couldn't learn the dynamics.
+#    Fix:     h=64 gives 4× more hidden state. L=2 adds depth for
+#             nonlinear feature composition. 2000 epochs with patience=80
+#             ensures convergence. ReduceLROnPlateau halves LR when stuck.
+#             Dropout=0.1 prevents overfitting with abundant data.
+#
+# 7. MVAR lag=12 (was 8)
+#    Problem: lag=8 at dt=0.04 = 0.32s of history. Might miss slower
+#             cluster migration timescales.
+#    Fix:     lag=12 → 0.48s of history. With d≈6, MVAR params = 12×36+6
+#             = 438 parameters. With 36,000 samples → 82× ratio. Can use
+#             very light regularization (ridge=1e-5) since so over-determined.
+#
+# 8. SHORTER FORECAST: forecast_start=0.5 → ~362 steps
+#    Keep it long to stress-test, but now with d≈6 the autoregressive
+#    error accumulates much slower because there are fewer dimensions
+#    to drift in.
+#
+# ============================================================================
+# DATA BUDGET CALCULATION
+# ============================================================================
+#
+# Simulation:
+#   N = 100 particles, T = 15.0s, dt = 0.04 → 376 frames/run
+#   Density: 48×48 = 2,304 spatial DOFs (smaller grid, smoother → less waste)
+#
+# Training:
+#   100 runs × 376 frames = 37,600 total density snapshots
+#   Windowed dataset: 100 × (376 - 12) = 100 × 364 = 36,400 samples
+#
+# POD modes at 45% energy:
+#   With N=100 and bandwidth=3.0, expect d ≈ 5–8 modes
+#   The density field will be very smooth → fast energy decay
+#
+# MVAR (lag=12, d≈6):
+#   Parameters: 12 × 36 + 6 = 438
+#   Samples / params = 36,400 / 438 = 83× ← massively over-determined
+#   Ridge α = 1e-5 (very light — data alone regularizes)
+#
+# LSTM (hidden=64, layers=2, lag=12, d≈6):
+#   Layer 1: 4 × 64 × (6 + 64 + 1) = 18,176
+#   Layer 2: 4 × 64 × (64 + 64 + 1) = 33,024
+#   Output: 64 × 6 + 6 = 390
+#   Total: ~51,590 parameters
+#   Samples / params = 36,400 / 51,590 = 0.7× ← under-determined
+#   → weight_decay=1e-3 + dropout=0.1 regularize strongly
+#   → But the DYNAMICS are only 6D, so the LSTM's job is much easier
+#
+# ============================================================================
+
+experiment_name: "heavyweight_oscar"
+
+# ============================================================================
+# SIMULATION PARAMETERS
+# ============================================================================
+sim:
+  N: 100                   # 100 particles → smooth density fields
+  T: 15.0                  # 15 seconds — long, data-rich trajectories
+  dt: 0.04                 # 376 frames/run
+  Lx: 10.0
+  Ly: 10.0
+  bc: "periodic"
+
+  model: "vicsek_morse_discrete"
+  speed: 1.0
+  rcut: 2.0
+  noise:
+    kind: "gaussian"
+    eta: 0.3
+
+  forces:
+    enabled: false
+
+# ============================================================================
+# DENSITY FIELD — Smooth and low-rank
+# ============================================================================
+density:
+  nx: 48                   # 48×48 — enough resolution for smooth fields
+  ny: 48                   #   (64×64 was overkill with bandwidth=3.0)
+  bandwidth: 3.0           # Wide kernels → smooth, low-rank density
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 3.0
+
+# ============================================================================
+# TRAINING: Gaussian-only, 100 runs
+# ============================================================================
+# Strategy: sweep (x, y, variance) systematically
+#   - 5 x-positions × 4 y-positions × 5 variances = 100 configurations
+#   - All Gaussian → the POD basis only needs to represent one family
+#   - Varied variance creates different spread dynamics
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    positions_x: [2.0, 3.5, 5.0, 6.5, 8.0]           # 5 x-positions
+    positions_y: [2.5, 4.2, 5.8, 7.5]                  # 4 y-positions
+    variances: [0.5, 1.0, 1.5, 2.0, 2.5]               # 5 variances
+    n_samples_per_config: 1                              # 5×4×5 = 100 runs
+
+  # All other families disabled
+  uniform:
+    enabled: false
+  ring:
+    enabled: false
+  two_clusters:
+    enabled: false
+
+# ============================================================================
+# TEST: Gaussian-only, 25 runs (interpolated parameters)
+# ============================================================================
+# Test positions and variances are deliberately between training values.
+# ============================================================================
+test_ic:
+  type: "mixed_comprehensive"
+
+  # 5 x-positions × 5 y-positions × 1 variance = 25 test runs
+  # All parameters interpolated between training values
+  gaussian:
+    enabled: true
+    test_positions_x: [2.8, 4.2, 5.8, 7.2, 9.0]       # 5 unseen x
+    test_positions_y: [3.3, 5.0, 6.7, 8.3, 1.5]        # 5 unseen y
+    test_variances: [1.75]                               # 1 unseen variance (midpoint)
+
+  uniform:
+    enabled: false
+  ring:
+    enabled: false
+  two_clusters:
+    enabled: false
+
+# ============================================================================
+# ROM CONFIGURATION — Optimized for smooth, low-dimensional dynamics
+# ============================================================================
+rom:
+  subsample: 1             # Use every frame
+  pod_energy: 0.45         # ~5-8 modes — aggressive truncation for clean dynamics
+
+  models:
+    # ------------------------------------------------------------------
+    # MVAR: With d≈6, this becomes a tiny well-determined linear model
+    # ------------------------------------------------------------------
+    # lag=12 → 12×36+6 = 438 params with 36,400 samples (83×)
+    # Very light ridge since data is abundant
+    # ------------------------------------------------------------------
+    mvar:
+      enabled: true
+      lag: 12               # 0.48s of history — captures slow cluster dynamics
+      ridge_alpha: 1.0e-5   # Very light — 83× over-determined
+
+    # ------------------------------------------------------------------
+    # LSTM: Powerful nonlinear model for 6D dynamics
+    # ------------------------------------------------------------------
+    # h=64, L=2 → plenty of capacity for 6D→6D mapping
+    # 2000 epochs with patience=80 and LR scheduling
+    # dropout=0.1 prevents overfitting
+    # ------------------------------------------------------------------
+    lstm:
+      enabled: true
+      lag: 12               # Same history window as MVAR
+      hidden_units: 64      # 4× bigger hidden state
+      num_layers: 2         # 2 layers for nonlinear depth
+      max_epochs: 2000      # Long training — OSCAR has time
+      patience: 80          # Very generous early stopping
+      batch_size: 256       # Larger batches — plenty of data
+      learning_rate: 5.0e-4 # Slightly lower LR for stability with 2 layers
+      weight_decay: 1.0e-3  # Strong L2 — model is under-determined
+      gradient_clip: 1.0    # Tighter clipping for 2-layer stability
+      dropout: 0.1          # Regularize between layers
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  forecast_start: 0.5      # Condition on first 0.5s (12.5 frames → rounds to 12)
+                            # Forecast remaining 14.5s → ~362 steps
+                            # Long horizon but d≈6 makes autoregression stable

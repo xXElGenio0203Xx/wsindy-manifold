@@ -60,7 +60,7 @@ class LatentLSTMROM(nn.Module):
     torch.Size([16, 25])
     """
     
-    def __init__(self, d, hidden_units=16, num_layers=1):
+    def __init__(self, d, hidden_units=16, num_layers=1, dropout=0.0):
         """
         Initialize the LatentLSTMROM model.
         
@@ -72,22 +72,28 @@ class LatentLSTMROM(nn.Module):
             Number of LSTM hidden units (Nh). Default: 16.
         num_layers : int, optional
             Number of stacked LSTM layers. Default: 1.
+        dropout : float, optional
+            Dropout probability between LSTM layers. Default: 0.0.
+            Only applied if num_layers > 1.
         """
         super().__init__()
         self.d = d
         self.hidden_units = hidden_units
         self.num_layers = num_layers
+        self.dropout_rate = dropout
         
         # LSTM block:
         #   input_size  = d  (latent dimension)
         #   hidden_size = hidden_units
         #   num_layers  = num_layers
+        #   dropout     = dropout (between layers, only if num_layers > 1)
         #   batch_first = True so input is [batch, seq_len, d]
         self.lstm = nn.LSTM(
             input_size=d,
             hidden_size=hidden_units,
             num_layers=num_layers,
-            batch_first=True
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0.0
         )
         
         # Linear output layer:
@@ -148,6 +154,7 @@ class LatentLSTMROM(nn.Module):
             f"  d={self.d},\n"
             f"  hidden_units={self.hidden_units},\n"
             f"  num_layers={self.num_layers},\n"
+            f"  dropout={self.dropout_rate},\n"
             f"  total_params={sum(p.numel() for p in self.parameters())}\n"
             f")"
         )
@@ -243,6 +250,7 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
         max_epochs = lstm_config.max_epochs
         patience = lstm_config.patience
         gradient_clip = getattr(lstm_config, 'gradient_clip', 5.0)
+        dropout = getattr(lstm_config, 'dropout', 0.0)
     else:
         lstm_config = config['rom']['models']['lstm']
         batch_size = lstm_config['batch_size']
@@ -253,6 +261,7 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
         max_epochs = lstm_config['max_epochs']
         patience = lstm_config['patience']
         gradient_clip = lstm_config.get('gradient_clip', 5.0)
+        dropout = lstm_config.get('dropout', 0.0)
     
     print(f"\nHyperparameters:")
     print(f"  Batch size:      {batch_size}")
@@ -263,6 +272,7 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     print(f"  Max epochs:      {max_epochs}")
     print(f"  Patience:        {patience}")
     print(f"  Gradient clip:   {gradient_clip}")
+    print(f"  Dropout:         {dropout}")
     
     # Create DataLoaders
     train_ds = TensorDataset(X_train, Y_train)
@@ -274,7 +284,7 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\nDevice: {device}")
     
-    model = LatentLSTMROM(d=d, hidden_units=hidden_units, num_layers=num_layers)
+    model = LatentLSTMROM(d=d, hidden_units=hidden_units, num_layers=num_layers, dropout=dropout)
     model.to(device)
     
     total_params = sum(p.numel() for p in model.parameters())
@@ -286,6 +296,11 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
         model.parameters(),
         lr=learning_rate,
         weight_decay=weight_decay
+    )
+    
+    # Learning rate scheduler: reduce LR by 0.5 when val_loss plateaus for 20 epochs
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6, verbose=False
     )
     
     # Training setup
@@ -359,6 +374,10 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
         with open(log_path, 'a') as f:
             f.write(f"{epoch},{train_loss:.8f},{val_loss:.8f}\n")
         
+        # Step the LR scheduler
+        scheduler.step(val_loss)
+        current_lr = optimizer.param_groups[0]['lr']
+        
         # Early stopping logic
         is_best = val_loss < best_val_loss
         if is_best:
@@ -371,8 +390,9 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
             patience_counter += 1
             best_marker = ""
         
-        # Print progress
-        print(f"{epoch+1:6d} {train_loss:12.6f} {val_loss:12.6f} {best_marker:6s} {patience_counter:3d}/{patience:3d}")
+        # Print progress (show LR if it changed from initial)
+        lr_info = f" lr={current_lr:.1e}" if current_lr < learning_rate else ""
+        print(f"{epoch+1:6d} {train_loss:12.6f} {val_loss:12.6f} {best_marker:6s} {patience_counter:3d}/{patience:3d}{lr_info}")
         
         # Check early stopping
         if patience_counter >= patience:
