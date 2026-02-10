@@ -104,36 +104,63 @@ def train_mvar_model(pod_data, rom_config):
     print(f"✓ Training R² = {r2_train:.4f}")
     print(f"✓ Training RMSE = {train_rmse:.6f}")
     
-    # Optional: Eigenvalue stability check and scaling
+    # Optional: Eigenvalue stability check via FULL companion matrix
     eigenvalue_threshold = rom_config.get('eigenvalue_threshold', None)
+    # Also check in mvar config block
+    if eigenvalue_threshold is None and 'models' in rom_config and 'mvar' in rom_config['models']:
+        eigenvalue_threshold = rom_config['models']['mvar'].get('eigenvalue_threshold', None)
+    
     scale_factor = 1.0
     rho_before = 0.0
     rho_after = 0.0
     
     if eigenvalue_threshold is not None:
-        # Reshape MVAR coefficients to transition matrix form
+        # Build FULL companion matrix for VAR(p):
+        #   C = [A_1  A_2  ...  A_p]
+        #       [ I    0   ...   0 ]
+        #       [ 0    I   ...   0 ]
+        #       [ ...            0 ]
+        # where A_k are the (R_POD × R_POD) coefficient matrices
         A_coef = mvar_model.coef_  # Shape: (R_POD, P_LAG * R_POD)
         
-        # For MVAR(p), create companion matrix form
-        # This is approximate - full companion form would be larger
-        # Here we just check the largest lag coefficient matrix
-        A_p = A_coef[:, -R_POD:]  # Last lag coefficients
+        companion_dim = P_LAG * R_POD
+        C = np.zeros((companion_dim, companion_dim))
         
-        eigenvalues = np.linalg.eigvals(A_p)
-        rho_before = np.max(np.abs(eigenvalues))
+        # First block row: the A matrices
+        C[:R_POD, :] = A_coef  # [A_1, A_2, ..., A_p]
         
-        print(f"\nStability check:")
-        print(f"   Max |eigenvalue| = {rho_before:.4f}")
+        # Identity blocks on the sub-diagonal
+        for k in range(P_LAG - 1):
+            C[(k+1)*R_POD:(k+2)*R_POD, k*R_POD:(k+1)*R_POD] = np.eye(R_POD)
+        
+        eigenvalues = np.linalg.eigvals(C)
+        moduli = np.abs(eigenvalues)
+        rho_before = np.max(moduli)
+        n_unstable = np.sum(moduli > 1.0)
+        
+        print(f"\nStability check (FULL companion matrix {companion_dim}×{companion_dim}):")
+        print(f"   Spectral radius ρ = {rho_before:.6f}")
+        print(f"   Unstable eigenvalues (|λ|>1): {n_unstable}/{companion_dim}")
         
         if rho_before > eigenvalue_threshold:
-            scale_factor = eigenvalue_threshold / rho_before
-            print(f"   ⚠️  Scaling coefficients by {scale_factor:.4f} to enforce stability")
-            mvar_model.coef_ *= scale_factor
-            if mvar_model.intercept_ is not None:
-                mvar_model.intercept_ *= scale_factor
-            rho_after = eigenvalue_threshold
+            # Scale ALL coefficients uniformly to bring spectral radius to threshold
+            # For companion matrix: scaling coefs by s scales eigenvalues by s
+            # (identity blocks stay, so this is approximate — iterate to converge)
+            for iteration in range(10):
+                scale = eigenvalue_threshold / np.max(np.abs(np.linalg.eigvals(C)))
+                C[:R_POD, :] *= scale
+                mvar_model.coef_ *= scale
+                if mvar_model.intercept_ is not None:
+                    mvar_model.intercept_ *= scale
+                current_rho = np.max(np.abs(np.linalg.eigvals(C)))
+                if current_rho <= eigenvalue_threshold:
+                    break
+            
+            rho_after = np.max(np.abs(np.linalg.eigvals(C)))
+            print(f"   ⚠️  Scaled coefficients: ρ {rho_before:.4f} → {rho_after:.4f} (threshold={eigenvalue_threshold})")
+            print(f"   Iterations: {iteration + 1}")
         else:
-            print(f"   ✓ Model is stable (threshold={eigenvalue_threshold})")
+            print(f"   ✓ Model is stable (ρ={rho_before:.4f} ≤ {eigenvalue_threshold})")
             rho_after = rho_before
     
     # Reshape MVAR coefficients to match stable pipeline format
