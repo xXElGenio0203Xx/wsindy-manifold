@@ -64,12 +64,11 @@ echo ""
 # ==============================================================================
 echo "Setting up environment..."
 
-# Load modules
-module load python/3.11.0s-ixrhc3q
-module load ffmpeg/7.0-xny2fb2
+# Load python module and activate virtual environment
+module load python/3.11.11-5e66
 
 # Activate virtual environment
-source ~/wsindy_env/bin/activate
+source ~/wsindy_env_new/bin/activate
 
 echo "✓ Python: $(which python)"
 echo "✓ Python version: $(python --version)"
