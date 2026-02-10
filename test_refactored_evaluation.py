@@ -141,7 +141,7 @@ def test_evaluation_integration_mock():
     """
     Mock test of evaluation integration.
     
-    Simulates what happens in run_unified_rom_pipeline.py when calling
+    Simulates what happens in ROM_pipeline.py when calling
     evaluate_test_runs() with both MVAR and LSTM forecast functions.
     """
     print("\n" + "="*80)

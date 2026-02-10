@@ -14,7 +14,7 @@ Successfully integrated MVAR and LSTM into a unified ROM pipeline that:
 
 ### New Files
 
-1. **`run_unified_rom_pipeline.py`** (460 lines)
+1. **`ROM_pipeline.py`** (460 lines)
    - Main unified pipeline script
    - Replaces `run_unified_mvar_pipeline.py` with multi-model support
    - Supports all model enable combinations
@@ -142,7 +142,7 @@ rom:
 ```
 
 ```bash
-python run_unified_rom_pipeline.py \
+python ROM_pipeline.py \
     --config config.yaml \
     --experiment_name mvar_only_test
 ```
@@ -172,7 +172,7 @@ rom:
 ```
 
 ```bash
-python run_unified_rom_pipeline.py \
+python ROM_pipeline.py \
     --config config.yaml \
     --experiment_name lstm_only_test
 ```
@@ -204,7 +204,7 @@ rom:
 ```
 
 ```bash
-python run_unified_rom_pipeline.py \
+python ROM_pipeline.py \
     --config config.yaml \
     --experiment_name mvar_vs_lstm
 ```

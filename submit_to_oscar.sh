@@ -39,7 +39,7 @@ echo ""
 FILES_TO_TRANSFER=(
     "configs/vicsek_rom_joint_optimal.yaml"
     "slurm_scripts/run_vicsek_joint_optimal.slurm"
-    "run_unified_rom_pipeline.py"
+    "ROM_pipeline.py"
     "src/rom/"
     "src/rectsim/forecast_utils.py"
     "src/rectsim/rom_data_utils.py"

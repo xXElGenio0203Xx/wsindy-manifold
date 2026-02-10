@@ -1,0 +1,140 @@
+---
+# Runtime Comparison Configuration — 4 IC Families × 5 Variants
+# ================================================================
+# Training: 20 runs (4 families × 5 each)
+#   - Gaussian cluster:  5 runs (different centers + variances)
+#   - Uniform:           5 runs (random seeds)
+#   - Ring:              5 runs (different radii + widths)
+#   - Two clusters:      5 runs (different separations + sigmas)
+#
+# Test: 8 runs (2 per family, unseen parameters)
+# ================================================================
+
+experiment_name: "runtime_comparison"
+
+sim:
+  N: 15                   # Moderate particle count
+  T: 3.0                  # 3 second simulation
+  dt: 0.1                 # 30 timesteps
+  Lx: 10.0
+  Ly: 10.0
+  bc: "periodic"
+
+  model: "vicsek_morse_discrete"
+  speed: 1.0
+  rcut: 2.0
+  noise:
+    kind: "gaussian"
+    eta: 0.3
+
+  forces:
+    enabled: false
+
+density:
+  nx: 32
+  ny: 32
+  bandwidth: 2.0
+
+outputs:
+  density_resolution: 32
+  density_bandwidth: 2.0
+
+# ============================================================================
+# TRAINING: 4 families × 5 variants = 20 runs
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  # Family 1: Gaussian clusters (5 runs)
+  # 5 positions × 1 variance × 1 sample = 5
+  gaussian:
+    enabled: true
+    positions_x: [2.0, 4.0, 5.0, 6.0, 8.0]
+    positions_y: [5.0]
+    variances: [1.0]
+    n_samples_per_config: 1
+
+  # Family 2: Uniform random (5 runs)
+  uniform:
+    enabled: true
+    n_runs: 5
+
+  # Family 3: Ring formations (5 runs)
+  # 5 radii × 1 width × 1 sample = 5
+  ring:
+    enabled: true
+    radii: [1.5, 2.0, 2.5, 3.0, 3.5]
+    widths: [0.5]
+    n_samples_per_config: 1
+
+  # Family 4: Two-cluster configurations (5 runs)
+  # 5 separations × 1 sigma × 1 sample = 5
+  two_clusters:
+    enabled: true
+    separations: [2.0, 3.0, 4.0, 5.0, 6.0]
+    sigmas: [0.8]
+    n_samples_per_config: 1
+
+# ============================================================================
+# TEST: 2 per family = 8 runs (unseen parameters)
+# ============================================================================
+test_ic:
+  type: "mixed_comprehensive"
+
+  # Family 1: Gaussian — unseen centers & variance (interpolation test)
+  gaussian:
+    enabled: true
+    test_positions_x: [3.0, 7.0]
+    test_positions_y: [5.0]
+    test_variances: [1.5]
+
+  # Family 2: Uniform — 2 unseen random seeds
+  uniform:
+    enabled: true
+    n_runs: 2
+
+  # Family 3: Ring — unseen radii
+  ring:
+    enabled: true
+    test_radii: [1.8, 3.2]
+    test_widths: [0.5]
+    n_samples_per_config: 1
+
+  # Family 4: Two clusters — unseen separations
+  two_clusters:
+    enabled: true
+    test_separations: [2.5, 5.5]
+    test_sigmas: [0.8]
+
+# ============================================================================
+# ROM Configuration
+# ============================================================================
+rom:
+  subsample: 1
+  pod_energy: 0.95
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5
+      ridge_alpha: 1.0e-6
+
+    lstm:
+      enabled: true
+      lag: 5
+      hidden_units: 32
+      num_layers: 2
+      max_epochs: 50
+      patience: 10
+      batch_size: 32
+      learning_rate: 0.001
+      weight_decay: 1.0e-5
+      gradient_clip: 5.0
+
+# ============================================================================
+# Evaluation
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  forecast_start: 0.5        # Condition on first 0.5s, forecast remaining 2.5s

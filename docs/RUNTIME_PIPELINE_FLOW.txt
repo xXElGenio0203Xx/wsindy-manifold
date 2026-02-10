@@ -1,0 +1,254 @@
+# Runtime Analysis Pipeline Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     UNIFIED ROM PIPELINE                            │
+│                  (ROM_pipeline.py)                      │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STEP 1: Generate Training Data                                    │
+│  • Create N simulations with varied ICs                            │
+│  • Compute density fields via KDE                                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STEP 2: Build POD Basis                                           │
+│  • Compute global POD from all training densities                  │
+│  • Compress to latent space (dimension d)                          │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STEP 3: Build Latent Dataset                                      │
+│  • Extract latent trajectories from POD projection                 │
+│  • Create windowed samples (X, Y) for supervised learning          │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    ▼                         ▼
+    ┌──────────────────────────┐  ┌──────────────────────────┐
+    │  STEP 4a: Train MVAR     │  │  STEP 4b: Train LSTM     │
+    │                          │  │                          │
+    │  with RuntimeAnalyzer    │  │  with RuntimeAnalyzer    │
+    │  ┌────────────────────┐  │  │  ┌────────────────────┐  │
+    │  │ START TIMER        │  │  │  │ START TIMER        │  │
+    │  │ train_mvar_model() │  │  │  │ train_lstm_rom()   │  │
+    │  │ STOP TIMER         │  │  │  │ STOP TIMER         │  │
+    │  │ training_time → T₁ │  │  │  │ training_time → T₂ │  │
+    │  └────────────────────┘  │  │  └────────────────────┘  │
+    │                          │  │                          │
+    │  Output:                 │  │  Output:                 │
+    │  • mvar_model.npz        │  │  • lstm_state_dict.pt    │
+    │  • training_time: T₁     │  │  • training_time: T₂     │
+    └──────────────────────────┘  └──────────────────────────┘
+                    │                         │
+                    └────────────┬────────────┘
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STEP 4.5: Runtime Benchmarking                           ⭐ NEW!  │
+│                                                                     │
+│  RuntimeAnalyzer.benchmark_inference()                             │
+│                                                                     │
+│  ┌─────────────────────┐         ┌─────────────────────┐          │
+│  │  Benchmark MVAR     │         │  Benchmark LSTM     │          │
+│  ├─────────────────────┤         ├─────────────────────┤          │
+│  │ • 50 trials         │         │ • 50 trials         │          │
+│  │ • Single-step time  │         │ • Single-step time  │          │
+│  │ • Full traj time    │         │ • Full traj time    │          │
+│  │ • Memory usage      │         │ • Memory usage      │          │
+│  │ • Parameter count   │         │ • Parameter count   │          │
+│  │ • Throughput        │         │ • Throughput        │          │
+│  │ • Complexity (O)    │         │ • Complexity (O)    │          │
+│  └─────────────────────┘         └─────────────────────┘          │
+│           │                               │                        │
+│           ▼                               ▼                        │
+│  runtime_profile.json          runtime_profile.json               │
+│  (MVAR directory)              (LSTM directory)                    │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────┐          │
+│  │  Compare Models (if both enabled)                    │          │
+│  ├─────────────────────────────────────────────────────┤          │
+│  │  • Training time ratio                               │          │
+│  │  • Inference speedup                                 │          │
+│  │  • Memory ratio                                      │          │
+│  │  • Winner determination                              │          │
+│  └─────────────────────────────────────────────────────┘          │
+│                          │                                         │
+│                          ▼                                         │
+│               runtime_comparison.json                              │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STEP 5: Generate Test Data                                        │
+│  • Create test simulations with unseen ICs                         │
+│  • Compute test density fields                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STEP 6: Evaluate Models                                           │
+│  • Forecast with MVAR/LSTM                                         │
+│  • Compute R², RMSE, mass conservation                             │
+│  • Generate test_results.csv                                       │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  FINAL: Save Summary                                               │
+│                                                                     │
+│  summary.json (includes runtime_analysis section)    ⭐ ENHANCED! │
+│  ├─ experiment_name                                                │
+│  ├─ timestamp                                                      │
+│  ├─ model parameters (POD, MVAR, LSTM)                            │
+│  ├─ test metrics (R², RMSE)                                        │
+│  └─ runtime_analysis:                            ← NEW SECTION     │
+│      ├─ profiles: [MVAR_profile, LSTM_profile]                    │
+│      └─ comparison: {...}                                          │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+OUTPUT STRUCTURE:
+═══════════════════════════════════════════════════════════════════════
+
+oscar_output/<experiment>/
+│
+├── summary.json                        ⭐ Includes runtime_analysis
+├── config_used.yaml
+│
+├── runtime_comparison.json             ⭐ NEW (if both models enabled)
+│
+├── rom_common/
+│   ├── pod_basis.npz
+│   └── latent_dataset.npz
+│
+├── MVAR/
+│   ├── mvar_model.npz
+│   ├── runtime_profile.json            ⭐ NEW
+│   └── test_results.csv
+│
+├── LSTM/
+│   ├── lstm_state_dict.pt
+│   ├── training_log.csv
+│   ├── runtime_profile.json            ⭐ NEW
+│   └── test_results.csv
+│
+├── train/
+│   └── run_*/
+│       ├── trajectory.npz
+│       └── density.npz
+│
+└── test/
+    └── run_*/
+        ├── trajectory.npz
+        └── density_true.npz
+
+
+RUNTIME PROFILE STRUCTURE:
+═══════════════════════════════════════════════════════════════════════
+
+{
+  "model_name": "MVAR" | "LSTM",
+  
+  "training": {
+    "total_seconds": 12.5                    ← Measured during training
+  },
+  
+  "inference": {
+    "single_step": {                         ← Benchmark: 50 trials
+      "mean_seconds": 0.00023,               │  per single step
+      "std_seconds": 0.00005,                │
+      "min_seconds": 0.00018,                │
+      "max_seconds": 0.00045,                │
+      "samples": 50                          ┘
+    },
+    "full_trajectory": {                     ← Benchmark: 50 trials
+      "mean_seconds": 0.023,                 │  per 100-step forecast
+      "std_seconds": 0.002,                  │
+      "samples": 50                          ┘
+    }
+  },
+  
+  "memory": {
+    "model_parameters": 2020,                ← Count from model
+    "parameter_memory_mb": 0.016,            ← Computed from params
+    "current_mb": 234.1,                     ← Process memory
+    "peak_mb": 245.3                         ← Peak usage
+  },
+  
+  "throughput": {                            ← Derived from inference
+    "steps_per_second": 4347.8,              │  timing
+    "predictions_per_second": 86956.5,       │
+    "seconds_per_step": 0.00023,             │
+    "microseconds_per_step": 230.0           ┘
+  },
+  
+  "complexity": {                            ← Model-specific analysis
+    "total_parameters": 2020,                │
+    "latent_dimension": 20,                  │
+    "lag_order": 5,                          │  (MVAR)
+    "inference_flops_per_step": 4000,        │
+    "training_complexity": "O(N*p*d²)",      │
+    "inference_complexity": "O(p*d²)"        ┘
+  }
+}
+
+
+COMPARISON STRUCTURE:
+═══════════════════════════════════════════════════════════════════════
+
+{
+  "models": ["MVAR", "LSTM"],
+  
+  "training_time_ratio": {
+    "LSTM_vs_MVAR": 3.45                     ← LSTM takes 3.45× longer
+  },
+  
+  "inference_speedup": {
+    "LSTM_vs_MVAR": 0.82                     ← LSTM is 0.82× as fast
+  },                                         │  (18% slower)
+  
+  "memory_ratio": {
+    "LSTM_vs_MVAR": 2.15                     ← LSTM uses 2.15× memory
+  },
+  
+  "parameter_ratio": {
+    "LSTM_vs_MVAR": 2.15                     ← LSTM has 2.15× params
+  },
+  
+  "winners": {                               ← Summary of winners
+    "fastest_training": "MVAR",              │
+    "fastest_inference": "MVAR",             │
+    "smallest_memory": "MVAR"                ┘
+  }
+}
+
+
+USAGE:
+═══════════════════════════════════════════════════════════════════════
+
+# Automatic (just run pipeline as usual)
+python ROM_pipeline.py \
+    --config configs/vicsek_morse_base.yaml \
+    --experiment_name production_test
+
+# Runtime analysis happens automatically in Step 4.5
+# Results appear in summary.json and separate profile files
+
+# Manual (custom scripts)
+from rectsim.runtime_analyzer import quick_benchmark
+
+profile = quick_benchmark(
+    model_name='MVAR',
+    forecast_fn=mvar_forecast,
+    z0=initial_state,
+    training_time=12.5,
+    model_params=2020,
+    latent_dim=20,
+    lag=5
+)
+```

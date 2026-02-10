@@ -605,10 +605,10 @@ The full pipeline integrates Vicsek dynamics with Morse forces through a multi-s
 process: microsimulation → density fields → POD compression → latent dynamics learning
 → forecasting → reconstruction. This section explains how all components fit together.
 
-PIPELINE OVERVIEW (run_unified_rom_pipeline.py)
+PIPELINE OVERVIEW (ROM_pipeline.py)
 ================================================
 
-Main Entry Point: python run_unified_rom_pipeline.py --config CONFIG --experiment_name NAME
+Main Entry Point: python ROM_pipeline.py --config CONFIG --experiment_name NAME
 
 The pipeline executes 7 sequential stages:
 
@@ -1006,7 +1006,7 @@ Input: configs/vicsek_rom_joint_optimal.yaml
     - Defines: Vicsek params, force params, ICs, ROM settings
 
 Command:
-    python run_unified_rom_pipeline.py \\
+    python ROM_pipeline.py \\
         --config configs/vicsek_rom_joint_optimal.yaml \\
         --experiment_name vicsek_joint_optimal
 

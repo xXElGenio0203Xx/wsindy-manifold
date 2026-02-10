@@ -124,6 +124,113 @@ def mean_speed(velocities):
     return float(np.mean(speeds))
 
 
+def nematic_order(velocities, eps=1e-10):
+    """
+    Compute nematic order parameter Q.
+    
+    Q-tensor: 𝐐 = (1/N) Σᵢ (𝐧ᵢ ⊗ 𝐧ᵢ - 𝐈/d)
+    where 𝐧ᵢ = 𝐯ᵢ/‖𝐯ᵢ‖ (unit heading vectors)
+    
+    Nematic order: Q = λₘₐₓ(𝐐)
+    
+    Measures second-order alignment, insensitive to head-tail polarity.
+    Critical for detecting bidirectional patterns:
+    - High Q with low Φ → Lane formation (bidirectional flow)
+    - High Q with high Φ → Polar flocking
+    - Low Q → Disordered/isotropic
+    
+    Parameters
+    ----------
+    velocities : ndarray, shape (N, 2)
+        Velocity vectors
+    eps : float, optional
+        Small constant to avoid division by zero (default: 1e-10)
+        
+    Returns
+    -------
+    float
+        Nematic order parameter in [0, 1] (2D)
+        
+    Notes
+    -----
+    The Q-tensor is the second moment of the orientation distribution.
+    Its largest eigenvalue quantifies alignment along the principal axis,
+    regardless of polarity (+/- direction).
+    
+    References
+    ----------
+    - Vicsek & Zafeiris, Phys. Rep. 517, 71-140 (2012)
+    - Chaté et al., Phys. Rev. E 77, 046113 (2008)
+    """
+    N, d = velocities.shape
+    
+    if N == 0:
+        return 0.0
+    
+    if d != 2:
+        raise ValueError(f"nematic_order requires 2D velocities, got shape {velocities.shape}")
+    
+    # Normalize to unit vectors
+    speeds = np.linalg.norm(velocities, axis=1, keepdims=True)
+    n = velocities / (speeds + eps)
+    
+    # Compute Q-tensor: (1/N) Σᵢ (nᵢ ⊗ nᵢ) - I/d
+    Q = np.zeros((d, d))
+    for i in range(N):
+        Q += np.outer(n[i], n[i])
+    Q = Q / N - np.eye(d) / d
+    
+    # Nematic order = largest eigenvalue
+    eigvals = np.linalg.eigvalsh(Q)
+    return float(np.max(eigvals))
+
+
+def spatial_order(density_field):
+    """
+    Compute spatial order parameter from density field.
+    
+    Spatial order quantifies spatial heterogeneity via the standard deviation
+    of the density field over all grid cells:
+    
+    S_spatial = std(ρ(x,y)) = sqrt(Var(ρ))
+    
+    where ρ is the discretized density field on a 2D grid.
+    
+    Interpretation:
+    - High spatial order: particles clustered in specific regions (strong spatial structure)
+    - Low spatial order: uniform spatial distribution (homogeneous)
+    
+    This metric is particularly useful for ROM evaluation, as it can be computed
+    directly from predicted density fields without access to particle trajectories.
+    
+    Parameters
+    ----------
+    density_field : ndarray, shape (nx, ny)
+        2D density field ρ(x,y) on discretized grid
+        
+    Returns
+    -------
+    float
+        Standard deviation of density values across spatial grid
+        
+    Notes
+    -----
+    This is equivalent to computing:
+    
+    S = sqrt( (1/(nx*ny)) * Σᵢⱼ (ρᵢⱼ - ρ̄)² )
+    
+    where ρ̄ = (1/(nx*ny)) * Σᵢⱼ ρᵢⱼ is the spatial mean density.
+    
+    References
+    ----------
+    Used for density-based order parameter visualization in ROM validation.
+    """
+    if density_field.ndim != 2:
+        raise ValueError(f"spatial_order requires 2D density field, got shape {density_field.shape}")
+    
+    return float(np.std(density_field))
+
+
 def total_mass(positions, domain_bounds, resolution=50,
                bandwidth_mode="manual", manual_H=(3.0, 2.0),
                periodic_x=False, boundary_condition="periodic"):
@@ -205,7 +312,8 @@ def density_variance(positions, domain_bounds, resolution=50, bandwidth=None,
 
 def compute_all_metrics(positions, velocities, domain_bounds, 
                         resolution=50, bandwidth=None, boundary_condition="periodic",
-                        bandwidth_mode="manual", manual_H=(3.0, 2.0)):
+                        bandwidth_mode="manual", manual_H=(3.0, 2.0),
+                        density_field=None):
     """
     Compute all standard order parameters for a single frame.
     
@@ -227,6 +335,9 @@ def compute_all_metrics(positions, velocities, domain_bounds,
         "silverman" or "manual" (default: "manual")
     manual_H : tuple, optional
         Manual bandwidth (h_x, h_y) when bandwidth_mode="manual"
+    density_field : ndarray, shape (nx, ny), optional
+        Pre-computed density field for spatial_order calculation.
+        If None, spatial_order will be None.
         
     Returns
     -------
@@ -235,13 +346,16 @@ def compute_all_metrics(positions, velocities, domain_bounds,
         - 'polarization': Φ(t)
         - 'angular_momentum': L(t)
         - 'mean_speed': ⟨|v|⟩(t)
+        - 'nematic_order': Q(t)
         - 'density_variance': Var(ρ)(t)
         - 'total_mass': ∫ρ (should be ≈ 1.0)
+        - 'spatial_order': std(ρ) if density_field provided, else None
     """
-    return {
+    metrics = {
         'polarization': polarization(velocities),
         'angular_momentum': angular_momentum(positions, velocities),
         'mean_speed': mean_speed(velocities),
+        'nematic_order': nematic_order(velocities),
         'density_variance': density_variance(positions, domain_bounds, 
                                             resolution, bandwidth,
                                             bandwidth_mode=bandwidth_mode,
@@ -253,12 +367,20 @@ def compute_all_metrics(positions, velocities, domain_bounds,
                                 manual_H=manual_H,
                                 boundary_condition=boundary_condition)
     }
+    
+    # Add spatial order if density field provided
+    if density_field is not None:
+        metrics['spatial_order'] = spatial_order(density_field)
+    else:
+        metrics['spatial_order'] = None
+    
+    return metrics
 
 
 def compute_metrics_series(trajectory, velocities, domain_bounds,
                           resolution=50, bandwidth=None, verbose=False,
                           boundary_condition="periodic", bandwidth_mode="manual",
-                          manual_H=(3.0, 2.0)):
+                          manual_H=(3.0, 2.0), density_movie=None):
     """
     Compute time series of all metrics for entire simulation.
     
@@ -282,6 +404,9 @@ def compute_metrics_series(trajectory, velocities, domain_bounds,
         "silverman" or "manual" (default: "manual")
     manual_H : tuple, optional
         Manual bandwidth (h_x, h_y) when bandwidth_mode="manual"
+    density_movie : ndarray, shape (T, nx, ny), optional
+        Pre-computed density field time series for spatial_order calculation.
+        If None, spatial_order will be filled with NaN.
         
     Returns
     -------
@@ -290,8 +415,10 @@ def compute_metrics_series(trajectory, velocities, domain_bounds,
         - 'polarization': array of shape (T,)
         - 'angular_momentum': array of shape (T,)
         - 'mean_speed': array of shape (T,)
+        - 'nematic_order': array of shape (T,)
         - 'density_variance': array of shape (T,)
         - 'total_mass': array of shape (T,)
+        - 'spatial_order': array of shape (T,) if density_movie provided, else NaN
     """
     T = len(trajectory)
     
@@ -299,22 +426,29 @@ def compute_metrics_series(trajectory, velocities, domain_bounds,
         'polarization': np.zeros(T),
         'angular_momentum': np.zeros(T),
         'mean_speed': np.zeros(T),
+        'nematic_order': np.zeros(T),
         'density_variance': np.zeros(T),
-        'total_mass': np.zeros(T)
+        'total_mass': np.zeros(T),
+        'spatial_order': np.full(T, np.nan)
     }
     
     for t in range(T):
         if verbose and t % max(1, T // 10) == 0:
             print(f"Computing metrics: {t}/{T} ({100*t//T}%)")
         
+        # Get density field for this timestep if available
+        density_t = density_movie[t] if density_movie is not None else None
+        
         frame_metrics = compute_all_metrics(
             trajectory[t], velocities[t], domain_bounds,
             resolution, bandwidth, boundary_condition=boundary_condition,
-            bandwidth_mode=bandwidth_mode, manual_H=manual_H
+            bandwidth_mode=bandwidth_mode, manual_H=manual_H,
+            density_field=density_t
         )
         
         for key in metrics:
-            metrics[key][t] = frame_metrics[key]
+            val = frame_metrics[key]
+            metrics[key][t] = val if val is not None else np.nan
     
     if verbose:
         print(f"Computing metrics: {T}/{T} (100%)")

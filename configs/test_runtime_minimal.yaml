@@ -1,0 +1,92 @@
+---
+# Minimal Test Configuration for Runtime Analysis Validation
+# Ultra-lightweight for fast local testing
+
+experiment_name: "runtime_test_minimal"
+
+sim:
+  N: 3                    # Minimal particles
+  T: 1.0                  # 1 second simulation
+  dt: 0.1                 # 10 timesteps total
+  Lx: 10.0
+  Ly: 10.0
+  bc: "periodic"
+  
+  model: "vicsek_morse_discrete"
+  speed: 1.0
+  rcut: 2.0
+  noise:
+    kind: "gaussian"
+    eta: 0.3
+  
+  forces:
+    enabled: false
+
+density:
+  nx: 16                  # Minimal resolution
+  ny: 16
+  bandwidth: 2.0
+
+# ============================================================================
+# TRAINING: Ultra-minimal (2 runs)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  
+  gaussian:
+    enabled: false
+  
+  uniform:
+    enabled: true
+    n_runs: 2             # Just 2 training runs
+
+  rings:
+    enabled: false
+
+  clusters:
+    enabled: false
+
+# ============================================================================
+# TEST: Ultra-minimal (2 runs)
+# ============================================================================
+test_ic:
+  type: "mixed_comprehensive"
+  
+  gaussian:
+    enabled: false
+  
+  uniform:
+    enabled: true
+    n_runs: 2             # Just 2 test runs
+
+  rings:
+    enabled: false
+
+  clusters:
+    enabled: false
+
+rom:
+  subsample: 1            # No subsampling
+  pod_energy: 0.95        # Lower threshold for speed
+  
+  models:
+    mvar:
+      enabled: true
+      lag: 2              # Minimal lag
+      ridge_alpha: 1.0e-6
+    
+    lstm:
+      enabled: true
+      lag: 2              # Minimal lag
+      hidden_units: 8     # Minimal hidden units
+      num_layers: 1       # Single layer
+      max_epochs: 5       # Just 5 epochs
+      patience: 5         # Patience for early stopping
+      batch_size: 8
+      learning_rate: 0.001
+      weight_decay: 1.0e-5
+      gradient_clip: 5.0
+
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true

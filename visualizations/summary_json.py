@@ -21,7 +21,8 @@ def generate_summary_json(
     degradation_info,
     output_dir,
     all_metrics=None,
-    models_data=None
+    models_data=None,
+    runtime_profiles=None
 ):
     """
     Generate comprehensive summary JSON with all pipeline results.
@@ -50,6 +51,8 @@ def generate_summary_json(
         Dictionary of metrics DataFrames for all models (e.g., {'mvar': df, 'lstm': df})
     models_data : dict, optional
         Dictionary of model-specific data (e.g., {'mvar': {...}, 'lstm': {...}})
+    runtime_profiles : list, optional
+        List of RuntimeProfile objects from runtime analysis
     
     Returns
     -------
@@ -254,6 +257,21 @@ def generate_summary_json(
                 "percent_difference": float((diff / abs(lstm_r2)) * 100) if lstm_r2 != 0 else 0,
                 "winner": "MVAR" if diff > 0 else "LSTM" if diff < 0 else "TIE"
             }
+    
+    # Add runtime analysis if available
+    if runtime_profiles:
+        runtime_data = {
+            "profiles": [profile.to_dict() for profile in runtime_profiles]
+        }
+        
+        # Add comparison if multiple models were profiled
+        if len(runtime_profiles) >= 2:
+            from rectsim.runtime_analyzer import RuntimeAnalyzer
+            analyzer = RuntimeAnalyzer()
+            comparison = analyzer.compare_models(runtime_profiles)
+            runtime_data["comparison"] = comparison
+        
+        summary["runtime_analysis"] = runtime_data
     
     # Save summary JSON
     summary_path = output_dir / "pipeline_summary.json"

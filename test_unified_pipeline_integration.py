@@ -119,7 +119,7 @@ def test_scenario(name, mvar_enabled, lstm_enabled):
             print(f"    - training_log.csv")
         
         print(f"\n✓ Test scenario configured")
-        print(f"  To run: python run_unified_rom_pipeline.py \\")
+        print(f"  To run: python ROM_pipeline.py \\")
         print(f"            --config {config_path} \\")
         print(f"            --experiment_name test_integration_{name}")
     
@@ -299,7 +299,7 @@ def main():
     print("\nTo run full pipeline:")
     print("  1. Create config YAML with rom.models.mvar and rom.models.lstm sections")
     print("  2. Set enabled: true/false for each model")
-    print("  3. Run: python run_unified_rom_pipeline.py --config <yaml> --experiment_name <name>")
+    print("  3. Run: python ROM_pipeline.py --config <yaml> --experiment_name <name>")
     
     print("\nExample configs:")
     print("  configs/best_run_extended_test.yaml  - Both models enabled")

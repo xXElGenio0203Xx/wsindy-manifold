@@ -253,11 +253,12 @@ def evaluate_test_runs(
                 Ly = base_config_test['sim']['Ly']
                 domain_bounds = (0, Lx, 0, Ly)
                 
-                # Compute order parameters for all timesteps
+                # Compute order parameters for all timesteps (with density movie)
                 order_params = compute_metrics_series(
                     x, v, domain_bounds, 
                     resolution=density_nx,
-                    verbose=False
+                    verbose=False,
+                    density_movie=test_density
                 )
                 
                 # Save to CSV with time column
@@ -266,8 +267,10 @@ def evaluate_test_runs(
                     'phi': order_params['polarization'],
                     'mean_speed': order_params['mean_speed'],
                     'angular_momentum': order_params['angular_momentum'],
+                    'nematic_order': order_params['nematic_order'],
                     'density_variance': order_params['density_variance'],
-                    'total_mass': order_params['total_mass']
+                    'total_mass': order_params['total_mass'],
+                    'spatial_order': order_params['spatial_order']
                 })
                 op_df.to_csv(test_run_dir / "order_params.csv", index=False)
                 

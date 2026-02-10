@@ -44,6 +44,9 @@ from rectsim.forecast_utils import mvar_forecast_fn_factory
 from rectsim.rom_data_utils import build_latent_dataset
 from rom.lstm_rom import LatentLSTMROM, train_lstm_rom, lstm_forecast_fn_factory
 
+# Import runtime analysis
+from rectsim.runtime_analyzer import RuntimeAnalyzer, compute_mvar_params, compute_lstm_params
+
 
 def main():
     parser = argparse.ArgumentParser(description='Unified ROM pipeline (MVAR + LSTM)')
@@ -77,6 +80,10 @@ def main():
     
     # Save config for reference
     shutil.copy(args.config, OUTPUT_DIR / "config_used.yaml")
+    
+    # Initialize runtime analyzer
+    runtime_analyzer = RuntimeAnalyzer()
+    runtime_profiles = []
     
     # Check which models are enabled
     models_cfg = rom_config.get('models', {})
@@ -206,25 +213,26 @@ def main():
     # =========================================================================
     
     mvar_data = None
+    mvar_training_time = None
     if mvar_enabled:
         print(f"\n{'='*80}")
         print("STEP 4a: Training MVAR ROM")
         print("="*80)
         
-        # Train MVAR using existing trainer
-        mvar_data = train_mvar_model(pod_data, rom_config)
+        # Train MVAR using existing trainer (with timing)
+        with runtime_analyzer.time_operation('mvar_training') as timer:
+            mvar_data = train_mvar_model(pod_data, rom_config)
+        mvar_training_time = timer.elapsed
+        
         save_mvar_model(mvar_data, MVAR_DIR)
         
         print(f"\n✓ MVAR model saved to {MVAR_DIR}/")
         print(f"   Lag: {mvar_data['P_LAG']}")
         print(f"   Ridge α: {mvar_data['RIDGE_ALPHA']}")
         print(f"   Training R²: {mvar_data['r2_train']:.4f}")
-    
-    # =========================================================================
-    # STEP 5: Train LSTM ROM (if enabled)
-    # =========================================================================
-    
+        print(f"   Training time: {mvar_training_time:.2f}s")
     lstm_data = None
+    lstm_training_time = None
     if lstm_enabled:
         print(f"\n{'='*80}")
         print("STEP 4b: Training LSTM ROM")
@@ -235,27 +243,17 @@ def main():
         print(f"   Hidden units: {lstm_config['hidden_units']}, Num layers: {lstm_config['num_layers']}")
         print(f"   Lag: {lstm_config['lag']}")
         
-        # Create config object for train_lstm_rom
-        # It expects config.rom.models.lstm.* structure
-        class ConfigWrapper:
-            def __init__(self, rom_config):
-                self.rom = type('obj', (object,), {
-                    'models': type('obj', (object,), {
-                        'lstm': type('obj', (object,), rom_config['models']['lstm'])()
-                    })()
-                })()
+        # Train LSTM (with timing) - pass rom_config dict directly
+        with runtime_analyzer.time_operation('lstm_training') as timer:
+            lstm_model_path, lstm_val_loss = train_lstm_rom(
+                X_all=X_all,
+                Y_all=Y_all,
+                config={'rom': rom_config},  # Wrap in expected structure
+                out_dir=str(LSTM_DIR)
+            )
+        lstm_training_time = timer.elapsed
         
-        config_wrapper = ConfigWrapper(rom_config)
-        
-        # Train LSTM
-        lstm_model_path, lstm_val_loss = train_lstm_rom(
-            X_all=X_all,
-            Y_all=Y_all,
-            config=config_wrapper,
-            out_dir=str(LSTM_DIR)
-        )
-        
-        # Store LSTM data for evaluation
+        # Store LSTM data for later use
         lstm_data = {
             'model_path': lstm_model_path,
             'val_loss': lstm_val_loss,
@@ -265,11 +263,139 @@ def main():
         }
         
         print(f"\n✓ LSTM model saved to {LSTM_DIR}/")
-        print(f"   Model: {lstm_model_path}")
         print(f"   Validation loss: {lstm_val_loss:.6f}")
+        print(f"   Training time: {lstm_training_time:.2f}s")
     
     # =========================================================================
-    # STEP 6: Generate Test Data
+    # STEP 4.5: Runtime Benchmarking
+    # =========================================================================
+    
+    if mvar_enabled or lstm_enabled:
+        print(f"\n{'='*80}")
+        print("STEP 4.5: Runtime Benchmarking")
+        print("="*80)
+        
+        # Get a sample initial condition window for benchmarking
+        # Need lag timesteps to initialize the forecast
+        z0_window = X_latent[:lag, :]  # First lag timesteps from training data
+        benchmark_steps = 100
+        benchmark_trials = 50
+        
+        # Benchmark MVAR
+        if mvar_enabled:
+            print(f"\n🔬 Benchmarking MVAR inference...")
+            
+            # Load MVAR model for benchmarking
+            mvar_model_data = np.load(MVAR_DIR / "mvar_model.npz")
+            
+            # Create a simple predictor class for the forecast function
+            class MVARPredictor:
+                def __init__(self, A_companion):
+                    self.coef_ = A_companion
+                
+                def predict(self, X):
+                    """Predict next step(s) using MVAR coefficients."""
+                    return X @ self.coef_.T
+            
+            mvar_predictor = MVARPredictor(mvar_model_data['A_companion'])
+            
+            # Create forecast function with lag
+            mvar_forecast_fn = mvar_forecast_fn_factory(mvar_predictor, lag=lag)
+            
+            # Count parameters
+            mvar_params = compute_mvar_params(mvar_model_data)
+            
+            # Benchmark inference
+            mvar_inference_times = runtime_analyzer.benchmark_inference(
+                mvar_forecast_fn,
+                z0_window,
+                n_steps=benchmark_steps,
+                n_trials=benchmark_trials
+            )
+            
+            # Build profile
+            mvar_profile = runtime_analyzer.build_profile(
+                model_name='MVAR',
+                training_time=mvar_training_time,
+                inference_times=mvar_inference_times,
+                model_params=mvar_params,
+                latent_dim=R_POD,
+                n_forecast_steps=benchmark_steps,
+                lag=int(mvar_data['P_LAG'])
+            )
+            
+            runtime_profiles.append(mvar_profile)
+            runtime_analyzer.save_profile(mvar_profile, MVAR_DIR / "runtime_profile.json")
+            
+            print(f"✓ MVAR runtime profile saved")
+            print(f"   Parameters: {mvar_params:,}")
+            print(f"   Inference: {mvar_inference_times['single_step'].mean_seconds*1000:.2f}ms per step")
+        
+        # Benchmark LSTM
+        if lstm_enabled:
+            print(f"\n🔬 Benchmarking LSTM inference...")
+            
+            # Load LSTM model for benchmarking
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            lstm_model = LatentLSTMROM(
+                d=R_POD,
+                hidden_units=lstm_data['hidden_units'],
+                num_layers=lstm_data['num_layers']
+            )
+            lstm_model.load_state_dict(torch.load(lstm_data['model_path'], map_location=device))
+            lstm_model.to(device)
+            lstm_model.eval()
+            
+            # Create forecast function
+            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model)
+            
+            # Count parameters
+            lstm_params = compute_lstm_params(lstm_model)
+            
+            # Benchmark inference
+            lstm_inference_times = runtime_analyzer.benchmark_inference(
+                lstm_forecast_fn,
+                z0_window,
+                n_steps=benchmark_steps,
+                n_trials=benchmark_trials
+            )
+            
+            # Build profile
+            lstm_profile = runtime_analyzer.build_profile(
+                model_name='LSTM',
+                training_time=lstm_training_time,
+                inference_times=lstm_inference_times,
+                model_params=lstm_params,
+                latent_dim=R_POD,
+                n_forecast_steps=benchmark_steps,
+                lag=int(lstm_data['lag']),
+                hidden_dim=lstm_data['hidden_units'],
+                n_layers=lstm_data['num_layers']
+            )
+            
+            runtime_profiles.append(lstm_profile)
+            runtime_analyzer.save_profile(lstm_profile, LSTM_DIR / "runtime_profile.json")
+            
+            print(f"✓ LSTM runtime profile saved")
+            print(f"   Parameters: {lstm_params:,}")
+            print(f"   Inference: {lstm_inference_times['single_step'].mean_seconds*1000:.2f}ms per step")
+        
+        # Generate comparison if both models are enabled
+        if mvar_enabled and lstm_enabled:
+            comparison = runtime_analyzer.compare_models(runtime_profiles)
+            runtime_analyzer.save_comparison(comparison, OUTPUT_DIR / "runtime_comparison.json")
+            
+            print(f"\n✓ Runtime comparison saved: {OUTPUT_DIR}/runtime_comparison.json")
+            print(f"\n📊 Quick Comparison:")
+            print(f"   Training time ratio (LSTM/MVAR): {comparison['training_time_ratio']['LSTM_vs_MVAR']:.2f}x")
+            print(f"   Inference speedup (LSTM vs MVAR): {comparison['inference_speedup']['LSTM_vs_MVAR']:.2f}x")
+            print(f"   Parameter ratio (LSTM/MVAR): {comparison['parameter_ratio']['LSTM_vs_MVAR']:.2f}x")
+            print(f"   Winners: Training={comparison['winners']['fastest_training']}, "
+                  f"Inference={comparison['winners']['fastest_inference']}, "
+                  f"Memory={comparison['winners']['smallest_memory']}")
+    
+    # =========================================================================
+    # STEP 5: Generate Test Data
     # =========================================================================
     
     print(f"\n{'='*80}")
@@ -384,7 +510,6 @@ def main():
             lstm_model.eval()
             
             # Create LSTM forecast function
-            from rom.lstm_rom import lstm_forecast_fn_factory
             lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model)
             
             test_results_df = evaluate_test_runs(
@@ -461,6 +586,17 @@ def main():
         'total_time_minutes': total_time / 60
     }
     
+    # Add runtime analysis to summary
+    if runtime_profiles:
+        summary['runtime_analysis'] = {
+            'profiles': [profile.to_dict() for profile in runtime_profiles]
+        }
+        
+        # Add comparison if both models were profiled
+        if len(runtime_profiles) == 2:
+            comparison = runtime_analyzer.compare_models(runtime_profiles)
+            summary['runtime_analysis']['comparison'] = comparison
+    
     if mvar_enabled and mvar_data is not None:
         summary['mvar'] = {
             'p_lag': int(mvar_data['P_LAG']),
@@ -484,6 +620,10 @@ def main():
     
     print(f"\n✅ Pipeline completed successfully!")
     print(f"   Summary: {OUTPUT_DIR}/summary.json")
+    if runtime_profiles:
+        print(f"   Runtime profiles: {len(runtime_profiles)} model(s) benchmarked")
+        if len(runtime_profiles) == 2:
+            print(f"   Runtime comparison: {OUTPUT_DIR}/runtime_comparison.json")
     print("="*80)
 
 

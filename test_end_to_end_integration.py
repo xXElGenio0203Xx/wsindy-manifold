@@ -107,7 +107,7 @@ def run_minimal_pipeline_test():
         import subprocess
         
         cmd = [
-            "python", "run_unified_rom_pipeline.py",
+            "python", "ROM_pipeline.py",
             "--config", str(config_path),
             "--experiment_name", "minimal_test"
         ]

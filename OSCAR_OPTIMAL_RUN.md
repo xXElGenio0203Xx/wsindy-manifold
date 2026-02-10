@@ -7,7 +7,7 @@
 # From local machine
 rsync -avz configs/vicsek_rom_joint_optimal.yaml oscar:~/wsindy-manifold/configs/
 rsync -avz slurm_scripts/run_vicsek_joint_optimal.slurm oscar:~/wsindy-manifold/slurm_scripts/
-rsync -avz run_unified_rom_pipeline.py oscar:~/wsindy-manifold/
+rsync -avz ROM_pipeline.py oscar:~/wsindy-manifold/
 ```
 
 ### 2. Submit job on Oscar

@@ -57,7 +57,7 @@ def evaluate_test_runs(..., forecast_fn, lag, model_name="ROM"):
 ✓ Both interfaces identical
 ```
 
-### 3. Updated Unified Pipeline (run_unified_rom_pipeline.py)
+### 3. Updated Unified Pipeline (ROM_pipeline.py)
 
 **MVAR evaluation branch (Step 6a):**
 ```python
@@ -177,7 +177,7 @@ gradient_clip = lstm_config.get('gradient_clip', 5.0)
    - Forecasting logic (lines 113-126)
    - Documentation updated
 
-2. `run_unified_rom_pipeline.py`
+2. `ROM_pipeline.py`
    - Import added (line 40)
    - MVAR evaluation (lines 319-346)
    - LSTM evaluation (lines 353-399)
@@ -241,17 +241,17 @@ Generate plots and save results
 
 ```bash
 # MVAR only
-python run_unified_rom_pipeline.py \
+python ROM_pipeline.py \
     --config configs/my_config.yaml \
     --experiment_name test_mvar
 
 # LSTM only (set mvar.enabled=false in config)
-python run_unified_rom_pipeline.py \
+python ROM_pipeline.py \
     --config configs/lstm_only.yaml \
     --experiment_name test_lstm
 
 # Both models (default)
-python run_unified_rom_pipeline.py \
+python ROM_pipeline.py \
     --config configs/high_capacity_production.yaml \
     --experiment_name comparison_run
 ```

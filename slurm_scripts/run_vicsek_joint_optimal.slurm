@@ -64,7 +64,7 @@ echo "  - Test evaluation: 40 runs × 10s with closed-loop forecast"
 echo "======================================================================"
 echo ""
 
-python run_unified_rom_pipeline.py \
+python ROM_pipeline.py \
     --config "$CONFIG_FILE" \
     --experiment_name "$EXPERIMENT_NAME" \
     2>&1 | tee "oscar_output/${EXPERIMENT_NAME}_pipeline.log"

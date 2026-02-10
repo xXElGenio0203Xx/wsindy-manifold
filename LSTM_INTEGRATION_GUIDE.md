@@ -245,7 +245,7 @@ lstm_forecast_fn = lstm_forecast_fn_factory(model)
 Integrate both models in the main pipeline:
 
 ```python
-def run_unified_rom_pipeline(config):
+def ROM_pipeline(config):
     """
     Run unified ROM pipeline with both MVAR and LSTM.
     """
