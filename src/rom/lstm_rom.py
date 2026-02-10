@@ -300,7 +300,7 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     
     # Learning rate scheduler: reduce LR by 0.5 when val_loss plateaus for 20 epochs
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6, verbose=False
+        optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6
     )
     
     # Training setup
