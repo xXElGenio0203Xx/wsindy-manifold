@@ -21,7 +21,7 @@ source ~/wsindy_env_new/bin/activate
 cd ~/wsindy-manifold
 mkdir -p slurm_logs
 
-python ROM_pipeline.py --config configs/clustering_v2_high.yaml 2>&1
+python ROM_pipeline.py --config configs/clustering_v2_high.yaml --experiment_name clustering_v2_high 2>&1
 
 echo ""
 echo "======================================================================"

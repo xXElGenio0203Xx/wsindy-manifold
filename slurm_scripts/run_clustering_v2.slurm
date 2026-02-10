@@ -23,7 +23,7 @@ cd ~/wsindy-manifold
 mkdir -p slurm_logs
 
 # Run pipeline
-python ROM_pipeline.py --config configs/clustering_v2.yaml 2>&1
+python ROM_pipeline.py --config configs/clustering_v2.yaml --experiment_name clustering_v2 2>&1
 
 echo ""
 echo "======================================================================"
