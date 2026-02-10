@@ -1,0 +1,144 @@
+---
+# ============================================================================
+# CLUSTERING V2 HIGH — Higher POD ceiling + massive training data
+# ============================================================================
+#
+# Same physics as clustering_v2 (speed=2, eta=0.15, Morse forces)
+# but with:
+#   - pod_energy=0.80 → ~12-15 modes (higher reconstruction ceiling)
+#   - N=150 particles → even smoother density fields
+#   - T=15s → longer trajectories for more data
+#   - 200 training runs → 73,200 samples
+#   - LSTM h=48 (right-sized: 31k params vs 73k samples = 2.3×)
+#   - MVAR: 2,265 params vs 73k samples = 32× over-determined
+#
+# ============================================================================
+
+experiment_name: "clustering_v2_high"
+
+# ============================================================================
+# SIMULATION PARAMETERS
+# ============================================================================
+sim:
+  N: 150                   # 150 particles → very smooth density fields
+  T: 15.0                  # 15 seconds — long, data-rich trajectories
+  dt: 0.04                 # 376 frames/run
+  Lx: 10.0
+  Ly: 10.0
+  bc: "periodic"
+
+# Model type and speed (top-level)
+model:
+  type: "discrete"
+  speed: 2.0               # Fast particles
+  speed_mode: "constant_with_forces"
+
+# Alignment parameters
+params:
+  R: 2.0                   # Alignment radius
+
+# Noise
+noise:
+  kind: "gaussian"
+  eta: 0.15                # Low noise → strong alignment
+  match_variance: true
+
+# Morse forces — clustering behavior
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 1.0                # Attraction
+    Cr: 0.3                # Repulsion
+    la: 1.5                # Attraction length scale
+    lr: 0.5                # Repulsion length scale
+    mu_t: 0.3              # Force influence on heading
+    rcut_factor: 5.0
+
+# ============================================================================
+# DENSITY FIELD
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 3.0           # Wide KDE → smooth fields
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 3.0
+
+# ============================================================================
+# TRAINING: 200 Gaussian runs
+# ============================================================================
+# 10 x-positions × 5 y-positions × 4 variances = 200 runs
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    positions_x: [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 0.5]
+    positions_y: [1.5, 3.5, 5.0, 6.5, 8.5]
+    variances: [0.5, 1.0, 1.5, 2.0]
+    n_samples_per_config: 1           # 10×5×4 = 200 runs
+
+  uniform:
+    enabled: false
+  ring:
+    enabled: false
+  two_clusters:
+    enabled: false
+
+# ============================================================================
+# TEST: 25 Gaussian runs (interpolated)
+# ============================================================================
+test_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    test_positions_x: [2.0, 4.0, 5.5, 7.0, 9.0]
+    test_positions_y: [2.5, 4.2, 5.8, 7.5, 9.5]
+    test_variances: [1.25]
+    n_samples_per_config: 1           # 5×5×1 = 25 runs
+
+  uniform:
+    enabled: false
+  ring:
+    enabled: false
+  two_clusters:
+    enabled: false
+
+# ============================================================================
+# ROM CONFIGURATION
+# ============================================================================
+rom:
+  subsample: 1
+  pod_energy: 0.80         # ~12-15 modes — higher ceiling
+
+  models:
+    mvar:
+      enabled: true
+      lag: 10
+      ridge_alpha: 1.0e-3  # Stronger ridge for more modes
+
+    lstm:
+      enabled: true
+      lag: 10
+      hidden_units: 48     # Right-sized: 31k params vs 73k samples (2.3×)
+      num_layers: 2
+      max_epochs: 1500
+      patience: 50
+      batch_size: 256
+      learning_rate: 5.0e-4
+      weight_decay: 1.0e-3
+      gradient_clip: 1.0
+      dropout: 0.1
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  forecast_start: 1.0      # Condition on 1.0s (25 frames), forecast 14.0s (~350 steps)
