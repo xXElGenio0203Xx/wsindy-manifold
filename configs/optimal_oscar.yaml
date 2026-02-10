@@ -26,25 +26,22 @@
 #   Windowed dataset: 60 × (201 - lag) = 60 × 193 = 11,580 samples
 #
 # POD modes:
-#   fixed_modes = 15 → d = 15
+#   pod_energy = 0.95 → d ≈ 25–35 modes (auto-selected to capture 95%)
+#   From local run spectrum: 29 modes for 95% on 32×32. With 64×64
+#   density and 30 particles, expect d ≈ 25–35.
 #
-# MVAR (lag=8):
-#   Parameters: p × d² + d = 8 × 225 + 15 = 1,815
-#   Samples / params = 11,580 / 1,815 = 6.4× ← excellent
+# MVAR (lag=8, assuming d≈30):
+#   Parameters: p × d² + d = 8 × 900 + 30 = 7,230
+#   Samples / params = 11,580 / 7,230 = 1.6× ← viable with ridge
 #
-# LSTM (hidden=32, layers=1, lag=8):
-#   LSTM gate params: 4 × 32 × (15 + 32 + 1) = 6,144
-#   Output layer: 32 × 15 + 15 = 495
-#   Total: 6,639 parameters
-#   Samples / params = 11,580 / 6,639 = 1.7× ← workable with regularization
+# LSTM (hidden=32, layers=1, lag=8, assuming d≈30):
+#   LSTM gate params: 4 × 32 × (30 + 32 + 1) = 8,064
+#   Output layer: 32 × 30 + 30 = 990
+#   Total: 9,054 parameters
+#   Samples / params = 11,580 / 9,054 = 1.3× ← tight but workable
 #
-# LSTM (hidden=48, layers=1, lag=8):
-#   LSTM gate params: 4 × 48 × (15 + 48 + 1) = 12,288
-#   Output layer: 48 × 15 + 15 = 735
-#   Total: 13,023 parameters
-#   Samples / params = 11,580 / 13,023 = 0.89× ← too data-starved
-#
-# → Use hidden=32 for best balance.
+# Both models are in the data-limited regime, but regularization
+# (ridge for MVAR, weight_decay for LSTM) keeps them well-determined.
 #
 # Forecast:
 #   forecast_start = 0.4s → 10 conditioning frames (matches lag=8 + 2 extra)
@@ -162,7 +159,7 @@ test_ic:
 # ============================================================================
 rom:
   subsample: 1             # Use every frame — maximum data utilization
-  fixed_modes: 15          # 15 POD modes — captures richer dynamics than 10
+  pod_energy: 0.95         # Auto-select modes to capture 95% energy (~25-35 modes)
 
   models:
     # ------------------------------------------------------------------
@@ -172,30 +169,30 @@ rom:
     #   - This is enough to capture the Vicsek alignment timescale
     #   - Ridge α=5e-4: moderate regularization (not too strong, not too weak)
     #   - We saw α=1e-3 on local was perhaps too aggressive; α=1e-6 too weak
-    #   - With 6.4× samples/params ratio, α=5e-4 is well-calibrated
+    #   - With d≈30: 7,230 params, 1.6× ratio — ridge handles this well
     # ------------------------------------------------------------------
     mvar:
       enabled: true
-      lag: 8                # p=8 → 1,815 params
+      lag: 8                # p=8 → ~7,230 params at d≈30
       ridge_alpha: 5.0e-4   # Balanced regularization
 
     # ------------------------------------------------------------------
     # LSTM: Neural autoregressive model
     # ------------------------------------------------------------------
-    # Design: h=32, L=1 gives 6,639 params with 1.7× samples ratio
+    # Design: h=32, L=1 gives ~9,054 params at d≈30 with 1.3× ratio
     #   - Much better than the 0.03× ratio that caused failure before
     #   - hidden=32 gives enough capacity to learn nonlinear dynamics
     #   - 1 layer avoids overfitting with limited data
     #   - epochs=500: OSCAR has time; let the optimizer converge fully
     #   - patience=40: generous patience — don't early-stop prematurely
-    #   - lr=0.001: standard Adam rate, with cosine annealing in mind
+    #   - lr=0.001: standard Adam rate
     #   - weight_decay=5e-4: moderate L2 regularization
     #   - batch_size=128: larger batches for stable gradients on 11k samples
     # ------------------------------------------------------------------
     lstm:
       enabled: true
       lag: 8                # Must match MVAR (shared in pipeline)
-      hidden_units: 32      # 32 hidden → 6,639 params
+      hidden_units: 32      # 32 hidden → ~9,054 params at d≈30
       num_layers: 1         # Single layer — sufficient capacity
       max_epochs: 500       # OSCAR can afford long training
       patience: 40          # Generous early stopping

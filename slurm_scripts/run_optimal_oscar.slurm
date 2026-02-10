@@ -17,9 +17,9 @@
 #   - 60 training runs (4 IC families × 15 variants)
 #   - 20 test runs (4 IC families × 5 variants, unseen parameters)
 #   - N=30 particles, T=8s, dt=0.04, density 64×64
-#   - POD: 15 fixed modes
-#   - MVAR: lag=8, ridge=5e-4 → 1,815 params, 6.4× data ratio
-#   - LSTM: h=32, L=1, lag=8 → 6,639 params, 1.7× data ratio
+#   - POD: 95% energy threshold → auto-selects ~25-35 modes
+#   - MVAR: lag=8, ridge=5e-4 → ~7,230 params at d≈30
+#   - LSTM: h=32, L=1, lag=8 → ~9,054 params at d≈30
 #   - Forecast: 190 steps (7.6s from t=0.4s onward)
 #
 # Estimated runtime:
@@ -95,9 +95,9 @@ echo "======================================================================"
 echo ""
 echo "Training: 60 runs (4 families × 15 variants)"
 echo "  N=30 particles, T=8.0s, dt=0.04, density 64×64"
-echo "  POD: 15 modes, subsample=1"
-echo "  MVAR: lag=8, ridge_alpha=5e-4 (1,815 params)"
-echo "  LSTM: h=32, L=1, epochs≤500 (6,639 params)"
+echo "  POD: 95% energy threshold (auto-selects modes)"
+echo "  MVAR: lag=8, ridge_alpha=5e-4 (~7,230 params at d≈30)"
+echo "  LSTM: h=32, L=1, epochs≤500 (~9,054 params at d≈30)"
 echo ""
 echo "Testing: 20 runs (4 families × 5 unseen variants)"
 echo "  Forecast: 190 steps (7.6s from t=0.4s onward)"
