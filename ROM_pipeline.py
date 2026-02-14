@@ -36,13 +36,14 @@ from rectsim.config_loader import load_config
 from rectsim.ic_generator import generate_training_configs, generate_test_configs
 from rectsim.simulation_runner import run_simulations_parallel
 from rectsim.pod_builder import build_pod_basis, save_pod_basis
-from rectsim.mvar_trainer import train_mvar_model, save_mvar_model
+from rectsim.mvar_trainer import train_mvar_model, save_mvar_model, train_mvar_kstep
 from rectsim.test_evaluator import evaluate_test_runs
 from rectsim.forecast_utils import mvar_forecast_fn_factory
+import pandas as pd
 
 # Import ROM utilities
-from rectsim.rom_data_utils import build_latent_dataset
-from rom.lstm_rom import LatentLSTMROM, train_lstm_rom, lstm_forecast_fn_factory
+from rectsim.rom_data_utils import build_latent_dataset, build_multistep_latent_dataset
+from rom.lstm_rom import LatentLSTMROM, train_lstm_rom, lstm_forecast_fn_factory, load_lstm_model
 
 # Import runtime analysis
 from rectsim.runtime_analyzer import RuntimeAnalyzer, compute_mvar_params, compute_lstm_params
@@ -174,6 +175,26 @@ def main():
     T_rom = pod_data['T_rom']
     R_POD = pod_data['R_POD']
     
+    # ---- Optional latent standardization ----
+    # Standardize latent coefficients to zero-mean, unit-variance per component.
+    # This helps when POD modes have very different scales, which can cause
+    # numerical issues in MVAR/LSTM training and rollout drift.
+    latent_standardize = rom_config.get('latent_standardize', False)
+    if latent_standardize:
+        latent_mean = X_latent.mean(axis=0)  # [R_POD]
+        latent_std = X_latent.std(axis=0)    # [R_POD]
+        latent_std[latent_std < 1e-12] = 1.0  # Avoid division by zero for constant modes
+        X_latent = (X_latent - latent_mean) / latent_std
+        pod_data['X_latent'] = X_latent  # Update in-place so MVAR trainer sees standardized data
+        pod_data['latent_mean'] = latent_mean
+        pod_data['latent_std'] = latent_std
+        print(f"\n   ✓ Latent standardization ON:")
+        print(f"     mean range: [{latent_mean.min():.4f}, {latent_mean.max():.4f}]")
+        print(f"     std  range: [{latent_std.min():.4f}, {latent_std.max():.4f}]")
+    else:
+        pod_data['latent_mean'] = None
+        pod_data['latent_std'] = None
+    
     # Reshape to list of trajectories
     y_trajs = []
     for m in range(M):
@@ -198,6 +219,22 @@ def main():
     print(f"   X_all: {X_all.shape}  [N_samples, lag, d]")
     print(f"   Y_all: {Y_all.shape}  [N_samples, d]")
     print(f"   Total samples: {X_all.shape[0]:,}")
+
+    # Build multi-step targets for LSTM supervised rollout loss
+    Y_multi = None
+    X_lstm = X_all  # default: same dataset for LSTM and MVAR
+    Y_lstm = Y_all
+    if lstm_enabled:
+        lstm_ms_cfg = models_cfg.get('lstm', {})
+        ms_enabled = lstm_ms_cfg.get('multistep_loss', False)
+        ms_k = lstm_ms_cfg.get('multistep_k', 5)
+        if ms_enabled and ms_k > 1:
+            X_lstm, Y_multi = build_multistep_latent_dataset(y_trajs, lag=lag, k_steps=ms_k)
+            Y_lstm = Y_multi[:, 0, :]  # 1-step target aligned with X_lstm
+            print(f"\n✓ Multi-step targets built:")
+            print(f"   X_lstm:  {X_lstm.shape}  (aligned with Y_multi)")
+            print(f"   Y_multi: {Y_multi.shape}  [N_samples, k={ms_k}, d]")
+            print(f"   (Dropped {X_all.shape[0] - X_lstm.shape[0]} samples near trajectory ends)")
     
     # Save dataset to rom_common
     np.savez(
@@ -220,8 +257,16 @@ def main():
         print("="*80)
         
         # Train MVAR using existing trainer (with timing)
+        # Check if k-step training is requested
+        mvar_cfg = models_cfg.get('mvar', {})
+        kstep_k = mvar_cfg.get('kstep_k', 0)
+        
         with runtime_analyzer.time_operation('mvar_training') as timer:
-            mvar_data = train_mvar_model(pod_data, rom_config)
+            if kstep_k and kstep_k > 1:
+                print(f"\n   Using k-step MVAR training (k={kstep_k})")
+                mvar_data = train_mvar_kstep(pod_data, rom_config, y_trajs=y_trajs)
+            else:
+                mvar_data = train_mvar_model(pod_data, rom_config)
         mvar_training_time = timer.elapsed
         
         save_mvar_model(mvar_data, MVAR_DIR)
@@ -246,10 +291,11 @@ def main():
         # Train LSTM (with timing) - pass rom_config dict directly
         with runtime_analyzer.time_operation('lstm_training') as timer:
             lstm_model_path, lstm_val_loss = train_lstm_rom(
-                X_all=X_all,
-                Y_all=Y_all,
+                X_all=X_lstm,
+                Y_all=Y_lstm,
                 config={'rom': rom_config},  # Wrap in expected structure
-                out_dir=str(LSTM_DIR)
+                out_dir=str(LSTM_DIR),
+                Y_multi=Y_multi,
             )
         lstm_training_time = timer.elapsed
         
@@ -335,19 +381,28 @@ def main():
         if lstm_enabled:
             print(f"\n🔬 Benchmarking LSTM inference...")
             
-            # Load LSTM model for benchmarking
+            # Load LSTM model for benchmarking (new format with normalization)
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            lstm_model = LatentLSTMROM(
-                d=R_POD,
-                hidden_units=lstm_data['hidden_units'],
-                num_layers=lstm_data['num_layers']
-            )
-            lstm_model.load_state_dict(torch.load(lstm_data['model_path'], map_location=device))
-            lstm_model.to(device)
-            lstm_model.eval()
+            try:
+                lstm_model, lstm_input_mean, lstm_input_std = load_lstm_model(
+                    str(LSTM_DIR), device=str(device))
+            except (ValueError, Exception):
+                lstm_model = LatentLSTMROM(
+                    d=R_POD,
+                    hidden_units=lstm_data['hidden_units'],
+                    num_layers=lstm_data['num_layers']
+                )
+                state = torch.load(lstm_data['model_path'], map_location=device, weights_only=False)
+                if isinstance(state, dict) and 'state_dict' in state:
+                    lstm_model.load_state_dict(state['state_dict'])
+                else:
+                    lstm_model.load_state_dict(state)
+                lstm_model.to(device)
+                lstm_model.eval()
+                lstm_input_mean, lstm_input_std = None, None
             
             # Create forecast function
-            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model)
+            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model, lstm_input_mean, lstm_input_std)
             
             # Count parameters
             lstm_params = compute_lstm_params(lstm_model)
@@ -483,7 +538,8 @@ def main():
             
             mean_r2_mvar = test_results_df['r2_reconstructed'].mean()
             print(f"\n✓ MVAR evaluation complete")
-            print(f"   Mean R² (reconstructed): {mean_r2_mvar:.4f}")
+            _r2_str = f"{mean_r2_mvar:.4f}" if not pd.isna(mean_r2_mvar) else "NaN (constant signal)"
+            print(f"   Mean R² (reconstructed): {_r2_str}")
             print(f"   Results: {MVAR_DIR}/test_results.csv")
         
         # =====================================================================
@@ -504,13 +560,22 @@ def main():
             lstm_hidden = lstm_data['hidden_units']
             lstm_layers = lstm_data['num_layers']
             
-            lstm_model = LatentLSTMROM(d=R_POD, hidden_units=lstm_hidden, num_layers=lstm_layers)
-            lstm_model.load_state_dict(torch.load(lstm_data['model_path'], map_location=device))
-            lstm_model.to(device)
-            lstm_model.eval()
+            try:
+                lstm_model, lstm_input_mean, lstm_input_std = load_lstm_model(
+                    str(LSTM_DIR), device=str(device))
+            except (ValueError, Exception):
+                lstm_model = LatentLSTMROM(d=R_POD, hidden_units=lstm_hidden, num_layers=lstm_layers)
+                state = torch.load(lstm_data['model_path'], map_location=device, weights_only=False)
+                if isinstance(state, dict) and 'state_dict' in state:
+                    lstm_model.load_state_dict(state['state_dict'])
+                else:
+                    lstm_model.load_state_dict(state)
+                lstm_model.to(device)
+                lstm_model.eval()
+                lstm_input_mean, lstm_input_std = None, None
             
             # Create LSTM forecast function
-            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model)
+            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model, lstm_input_mean, lstm_input_std)
             
             test_results_df = evaluate_test_runs(
                 test_dir=TEST_DIR,
@@ -532,7 +597,8 @@ def main():
             
             mean_r2_lstm = test_results_df['r2_reconstructed'].mean()
             print(f"\n✓ LSTM evaluation complete")
-            print(f"   Mean R² (reconstructed): {mean_r2_lstm:.4f}")
+            _r2_str = f"{mean_r2_lstm:.4f}" if not pd.isna(mean_r2_lstm) else "NaN (constant signal)"
+            print(f"   Mean R² (reconstructed): {_r2_str}")
             print(f"   Results: {LSTM_DIR}/test_results.csv")
         
         n_test_evaluated = n_test
@@ -597,14 +663,48 @@ def main():
             comparison = runtime_analyzer.compare_models(runtime_profiles)
             summary['runtime_analysis']['comparison'] = comparison
     
+    # Add POD and transform info to summary
+    summary['pod'] = {
+        'r_pod': int(pod_data['R_POD']),
+        'energy_captured': float(pod_data['energy_captured']),
+        'density_transform': pod_data.get('density_transform', 'raw'),
+        'density_transform_eps': float(pod_data.get('density_transform_eps', 1e-8)),
+        'latent_standardize': bool(pod_data.get('latent_mean') is not None)
+    }
+    
+    # Add clamp mode to summary
+    clamp_mode = eval_config.get('clamp_mode', None)
+    if clamp_mode is None:
+        clamp_negative = eval_config.get('clamp_negative', True)
+        clamp_mode = 'C2' if clamp_negative else 'C0'
+    summary['clamp_mode'] = clamp_mode
+    
     if mvar_enabled and mvar_data is not None:
         summary['mvar'] = {
             'p_lag': int(mvar_data['P_LAG']),
             'ridge_alpha': float(mvar_data['RIDGE_ALPHA']),
-            'r2_train': float(mvar_data['r2_train'])
+            'r2_train': float(mvar_data['r2_train']),
+            'spectral_radius': float(mvar_data['rho_before']),
+            'spectral_radius_after': float(mvar_data['rho_after']),
+            'kstep_k': int(mvar_data.get('kstep_k', 0)),
         }
         if mean_r2_mvar is not None:
-            summary['mvar']['mean_r2_test'] = float(mean_r2_mvar)
+            summary['mvar']['mean_r2_test'] = None if pd.isna(mean_r2_mvar) else float(mean_r2_mvar)
+            # Add 1-step and negativity metrics from test results
+            mvar_results_path = MVAR_DIR / "test_results.csv"
+            if mvar_results_path.exists():
+                _mvar_df = pd.read_csv(mvar_results_path)
+                if 'r2_1step' in _mvar_df.columns:
+                    _val = _mvar_df['r2_1step'].mean()
+                    summary['mvar']['mean_r2_1step_test'] = None if pd.isna(_val) else float(_val)
+                if 'negativity_frac' in _mvar_df.columns:
+                    _val = _mvar_df['negativity_frac'].mean()
+                    summary['mvar']['mean_negativity_frac'] = None if pd.isna(_val) else float(_val)
+                if 'r2_kstep_density' in _mvar_df.columns:
+                    _val = _mvar_df['r2_kstep_density'].mean()
+                    if not pd.isna(_val):
+                        summary['mvar']['mean_r2_kstep_density'] = float(_val)
+                        summary['mvar']['kstep_reset'] = int(_mvar_df['kstep_reset'].iloc[0]) if 'kstep_reset' in _mvar_df.columns else 0
     
     if lstm_enabled and lstm_data is not None:
         summary['lstm'] = {
@@ -613,7 +713,17 @@ def main():
             'val_loss': float(lstm_data['val_loss'])
         }
         if mean_r2_lstm is not None:
-            summary['lstm']['mean_r2_test'] = float(mean_r2_lstm)
+            summary['lstm']['mean_r2_test'] = None if pd.isna(mean_r2_lstm) else float(mean_r2_lstm)
+            # Add 1-step and negativity metrics from test results
+            lstm_results_path = LSTM_DIR / "test_results.csv"
+            if lstm_results_path.exists():
+                _lstm_df = pd.read_csv(lstm_results_path)
+                if 'r2_1step' in _lstm_df.columns:
+                    _val = _lstm_df['r2_1step'].mean()
+                    summary['lstm']['mean_r2_1step_test'] = None if pd.isna(_val) else float(_val)
+                if 'negativity_frac' in _lstm_df.columns:
+                    _val = _lstm_df['negativity_frac'].mean()
+                    summary['lstm']['mean_negativity_frac'] = None if pd.isna(_val) else float(_val)
     
     with open(OUTPUT_DIR / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)
