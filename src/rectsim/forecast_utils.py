@@ -77,6 +77,63 @@ def mvar_forecast_fn_factory(mvar_model, lag):
     return forecast_fn
 
 
+def mvar_kstep_forecast_fn_factory(mvar_model, lag, test_latent, T_train, k):
+    """
+    Create a k-step teacher-forced forecast function for MVAR.
+
+    Every *k* autonomous steps the latent state is reset to ground truth.
+    This quantifies the "stability length-scale" — how many steps the model
+    can run before autoregressive error makes it diverge.
+
+    Parameters
+    ----------
+    mvar_model : sklearn.linear_model.Ridge
+        Trained MVAR model with .predict() method
+    lag : int
+        Lookback window size
+    test_latent : np.ndarray  [T_test, d]
+        Full ground-truth latent trajectory (in the same space the model
+        was trained — standardized if latent_standardize is on).
+    T_train : int
+        Index in test_latent where the forecast region begins.
+    k : int
+        Reset interval.  k=1 → pure teacher-forced (every step reset),
+        k=n_forecast_steps → full autonomous rollout (no resets).
+
+    Returns
+    -------
+    forecast_fn : callable
+        Same interface as the standard forecast_fn:
+        forecast_fn(y_init_window, n_steps) -> ys_pred  [n_steps, d]
+    """
+    def forecast_fn(y_init_window, n_steps):
+        d = y_init_window.shape[1]
+        ys_pred = []
+        current_history = y_init_window.copy()  # [lag, d]
+
+        for step_idx in range(n_steps):
+            # If it's a reset step (and not the very first), snap back to truth
+            if step_idx > 0 and step_idx % k == 0:
+                true_idx = T_train + step_idx  # absolute index in test_latent
+                # Rebuild history from truth up to this point
+                hist_start = true_idx - lag
+                if hist_start >= 0:
+                    current_history = test_latent[hist_start:true_idx].copy()
+                # else: keep whatever we have (shouldn't happen in practice)
+
+            # Predict next step
+            x_hist = current_history[-lag:].flatten()
+            y_next = mvar_model.predict(x_hist.reshape(1, -1))[0]
+            ys_pred.append(y_next)
+
+            # Slide window
+            current_history = np.vstack([current_history[1:], y_next])
+
+        return np.array(ys_pred)  # [n_steps, d]
+
+    return forecast_fn
+
+
 def validate_forecast_fn(forecast_fn, lag=5, d=10, n_steps=20):
     """
     Validate that a forecast function has the correct interface.
