@@ -121,6 +121,52 @@ def build_latent_dataset(y_trajs: List[np.ndarray], lag: int) -> Tuple[np.ndarra
     return X_all, Y_all
 
 
+def build_multistep_latent_dataset(
+    y_trajs: List[np.ndarray], lag: int, k_steps: int
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Build windowed dataset with k-step-ahead targets for multi-step rollout loss.
+    
+    Each sample has a lag-length input window and k future targets (1-step, 2-step,
+    ... k-step ahead). Only windows where all k future steps are available within
+    the same trajectory are included.
+    
+    Parameters
+    ----------
+    y_trajs : list of np.ndarray
+        List of latent trajectories, each shape [K_c, d].
+    lag : int
+        Window length.
+    k_steps : int
+        Number of future steps to include as targets.
+    
+    Returns
+    -------
+    X_all : np.ndarray, shape [N_samples, lag, d]
+        Input windows.
+    Y_multi : np.ndarray, shape [N_samples, k_steps, d]
+        Multi-step targets: Y_multi[i, j, :] = y(t + j + 1) for sample i.
+    """
+    if k_steps < 1:
+        raise ValueError(f"k_steps must be >= 1, got {k_steps}")
+    
+    d = y_trajs[0].shape[1]
+    X_list = []
+    Y_list = []
+    
+    for Y_c in y_trajs:
+        K_c = Y_c.shape[0]
+        # Need lag input steps + k_steps future steps
+        for t in range(lag, K_c - k_steps + 1):
+            X_list.append(Y_c[t - lag : t, :])                # [lag, d]
+            Y_list.append(Y_c[t : t + k_steps, :])            # [k_steps, d]
+    
+    X_all = np.stack(X_list, axis=0)      # [N, lag, d]
+    Y_multi = np.stack(Y_list, axis=0)    # [N, k_steps, d]
+    
+    return X_all, Y_multi
+
+
 def print_dataset_info(X_all: np.ndarray, Y_all: np.ndarray, lag: int, verbose: bool = True):
     """
     Print information about the windowed dataset.

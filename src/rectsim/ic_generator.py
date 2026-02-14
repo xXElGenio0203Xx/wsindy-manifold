@@ -209,7 +209,8 @@ def generate_test_configs(test_ic_config, base_config):
         
         # Extrapolation tests
         extrap_positions = gauss_cfg.get('extrapolation_positions', [])
-        extrap_variance = gauss_cfg.get('extrapolation_variance', [0.5])[0]
+        extrap_variance_list = gauss_cfg.get('extrapolation_variance', [0.5])
+        extrap_variance = extrap_variance_list[0] if extrap_variance_list else 0.5
         
         for pos in extrap_positions:
             configs.append({

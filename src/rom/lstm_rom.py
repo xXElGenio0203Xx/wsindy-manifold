@@ -60,7 +60,8 @@ class LatentLSTMROM(nn.Module):
     torch.Size([16, 25])
     """
     
-    def __init__(self, d, hidden_units=16, num_layers=1, dropout=0.0):
+    def __init__(self, d, hidden_units=16, num_layers=1, dropout=0.0, 
+                 residual=False, use_layer_norm=True):
         """
         Initialize the LatentLSTMROM model.
         
@@ -75,12 +76,22 @@ class LatentLSTMROM(nn.Module):
         dropout : float, optional
             Dropout probability between LSTM layers. Default: 0.0.
             Only applied if num_layers > 1.
+        residual : bool, optional
+            If True, model predicts Δy = y(t+1) - y(t) and adds it to the last
+            input state (residual/delta formulation). This lets the network focus
+            on learning the dynamics rather than the identity. Default: False.
+        use_layer_norm : bool, optional
+            If True, apply LayerNorm to the LSTM hidden state before the output
+            linear layer. Generally stabilizing, but if inputs are already
+            z-scored per mode, this can sometimes hurt slightly. Default: True.
         """
         super().__init__()
         self.d = d
         self.hidden_units = hidden_units
         self.num_layers = num_layers
         self.dropout_rate = dropout
+        self.residual = residual
+        self.use_layer_norm = use_layer_norm
         
         # LSTM block:
         #   input_size  = d  (latent dimension)
@@ -96,9 +107,13 @@ class LatentLSTMROM(nn.Module):
             dropout=dropout if num_layers > 1 else 0.0
         )
         
+        # Layer normalization on hidden state for training stability
+        # (toggleable — sometimes adds little when inputs already z-scored)
+        self.layer_norm = nn.LayerNorm(hidden_units) if use_layer_norm else nn.Identity()
+        
         # Linear output layer:
         #   maps last hidden state h_last ∈ R^{hidden_units}
-        #   to next latent state y_pred ∈ R^{d}
+        #   to predicted delta or next state ∈ R^{d}
         self.out = nn.Linear(hidden_units, d)
     
     def forward(self, x_seq):
@@ -142,9 +157,20 @@ class LatentLSTMROM(nn.Module):
         # h_n[-1]: [batch_size, hidden_units]
         h_last = h_n[-1]
         
-        # Linear map to next latent state:
-        # y_pred: [batch_size, d]
-        y_pred = self.out(h_last)
+        # Layer normalization for training stability
+        h_last = self.layer_norm(h_last)
+        
+        # Linear map to delta or next latent state:
+        # delta_or_pred: [batch_size, d]
+        delta_or_pred = self.out(h_last)
+        
+        if self.residual:
+            # Residual connection: y_pred = x_last + delta
+            # x_seq[:, -1, :] is the most recent input state
+            y_pred = x_seq[:, -1, :] + delta_or_pred
+        else:
+            y_pred = delta_or_pred
+        
         return y_pred
     
     def __repr__(self):
@@ -155,17 +181,26 @@ class LatentLSTMROM(nn.Module):
             f"  hidden_units={self.hidden_units},\n"
             f"  num_layers={self.num_layers},\n"
             f"  dropout={self.dropout_rate},\n"
+            f"  residual={self.residual},\n"
+            f"  layer_norm={self.use_layer_norm},\n"
             f"  total_params={sum(p.numel() for p in self.parameters())}\n"
             f")"
         )
 
 
-def train_lstm_rom(X_all, Y_all, config, out_dir):
+def train_lstm_rom(X_all, Y_all, config, out_dir, Y_multi=None):
     """
     Train an LSTM ROM on latent sequences.
     
     This function trains a LatentLSTMROM model using windowed latent sequences,
     with train/validation split, early stopping, and model checkpointing.
+    
+    Key improvements over naive LSTM training:
+    - Input z-scoring normalization (per-mode standardization, train-set only)
+    - Residual/delta formulation: predict Δy instead of raw y
+    - 2-phase cosine+linear scheduled sampling schedule
+    - Multi-step rollout loss with real ground-truth targets
+    - LayerNorm (toggleable) for training stability
     
     Parameters
     ----------
@@ -174,17 +209,13 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     Y_all : np.ndarray, shape [N_samples, d]
         One-step-ahead latent targets.
     config : dict or config object
-        Must provide rom.models.lstm.* hyperparameters:
-            - batch_size: int
-            - hidden_units: int
-            - num_layers: int
-            - learning_rate: float
-            - weight_decay: float
-            - max_epochs: int
-            - patience: int
-            - gradient_clip: float
+        Must provide rom.models.lstm.* hyperparameters.
     out_dir : str
         Directory where model and logs will be saved.
+    Y_multi : np.ndarray or None, shape [N_samples, k_steps, d]
+        Multi-step-ahead ground-truth targets. If provided, used for
+        supervised multi-step rollout loss. If None, multi-step loss
+        uses self-consistency (penalizes drift of model's own rollout).
     
     Returns
     -------
@@ -192,24 +223,6 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
         Path to the best saved model (state_dict).
     best_val_loss : float
         Best validation loss achieved.
-    
-    Notes
-    -----
-    The function performs the following steps:
-    1. Creates output directory
-    2. Splits data into 80% train, 20% validation
-    3. Creates PyTorch DataLoaders with specified batch size
-    4. Initializes LSTM model and moves to GPU if available
-    5. Trains with Adam optimizer and MSE loss
-    6. Implements early stopping based on validation loss
-    7. Saves best model checkpoint
-    8. Writes training log to CSV
-    
-    Examples
-    --------
-    >>> X_all = np.random.randn(1000, 10, 25)
-    >>> Y_all = np.random.randn(1000, 25)
-    >>> model_path, val_loss = train_lstm_rom(X_all, Y_all, config, 'output/lstm')
     """
     # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
@@ -232,36 +245,122 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     print(f"  Training samples:   {N_train:,} ({N_train/N_samples*100:.1f}%)")
     print(f"  Validation samples: {N_samples - N_train:,} ({(N_samples-N_train)/N_samples*100:.1f}%)")
     
-    # Create tensors
-    X_train = torch.tensor(X_all[train_idx], dtype=torch.float32)
-    Y_train = torch.tensor(Y_all[train_idx], dtype=torch.float32)
-    X_val = torch.tensor(X_all[val_idx], dtype=torch.float32)
-    Y_val = torch.tensor(Y_all[val_idx], dtype=torch.float32)
+    # ── Helper to extract config with defaults ──
+    def _get(key, default):
+        """Extract from lstm_config dict or object with fallback."""
+        if hasattr(config, 'rom'):
+            return getattr(config.rom.models.lstm, key, default)
+        else:
+            return config['rom']['models']['lstm'].get(key, default)
     
-    # Extract hyperparameters from config
-    # Support both dict-style and object-style access
     if hasattr(config, 'rom'):
         lstm_config = config.rom.models.lstm
         batch_size = lstm_config.batch_size
         hidden_units = lstm_config.hidden_units
         num_layers = lstm_config.num_layers
         learning_rate = lstm_config.learning_rate
-        weight_decay = getattr(lstm_config, 'weight_decay', 1e-5)
         max_epochs = lstm_config.max_epochs
         patience = lstm_config.patience
-        gradient_clip = getattr(lstm_config, 'gradient_clip', 5.0)
-        dropout = getattr(lstm_config, 'dropout', 0.0)
     else:
         lstm_config = config['rom']['models']['lstm']
         batch_size = lstm_config['batch_size']
         hidden_units = lstm_config['hidden_units']
         num_layers = lstm_config['num_layers']
         learning_rate = lstm_config['learning_rate']
-        weight_decay = lstm_config.get('weight_decay', 1e-5)
         max_epochs = lstm_config['max_epochs']
         patience = lstm_config['patience']
-        gradient_clip = lstm_config.get('gradient_clip', 5.0)
-        dropout = lstm_config.get('dropout', 0.0)
+    
+    # Optional hyperparameters with sensible defaults
+    weight_decay     = _get('weight_decay', 1e-5)
+    gradient_clip    = _get('gradient_clip', 5.0)
+    dropout          = _get('dropout', 0.0)
+    residual         = _get('residual', True)
+    normalize_input  = _get('normalize_input', True)
+    use_layer_norm   = _get('use_layer_norm', True)
+    
+    # Scheduled sampling — 2-phase cosine/linear ramp (professor's suggestion)
+    # Phase 1: epochs ss_warmup..ss_phase1_end → ramp 0% → ss_phase1_ratio
+    # Phase 2: epochs ss_phase1_end..ss_phase2_end → ramp to ss_max_ratio
+    scheduled_sampling = _get('scheduled_sampling', True)
+    ss_warmup         = _get('ss_warmup', 20)         # Pure teacher-forcing warmup
+    ss_phase1_end     = _get('ss_phase1_end', 200)     # End of gentle ramp
+    ss_phase1_ratio   = _get('ss_phase1_ratio', 0.3)   # Ratio at end of phase 1
+    ss_phase2_end     = _get('ss_phase2_end', 400)      # End of aggressive ramp
+    ss_max_ratio      = _get('ss_max_ratio', 0.5)       # Max self-feeding ratio
+    
+    # Backward compat: old configs may have ss_start_epoch/ss_end_epoch
+    if not hasattr(config, 'rom'):
+        if 'ss_start_epoch' in lstm_config and 'ss_warmup' not in lstm_config:
+            ss_warmup = lstm_config['ss_start_epoch']
+            ss_phase1_end = int((lstm_config['ss_start_epoch'] + lstm_config.get('ss_end_epoch', 500)) / 2)
+            ss_phase2_end = lstm_config.get('ss_end_epoch', 500)
+    
+    # Multi-step rollout loss (professor's 5th suggestion)
+    # Loss = (1-α)*L_1step + α*L_kstep, where L_kstep rolls forward k steps
+    multistep_loss    = _get('multistep_loss', True)
+    multistep_k       = _get('multistep_k', 5)          # Rollout horizon
+    multistep_alpha   = _get('multistep_alpha', 0.3)     # Weight of k-step loss
+    
+    # ── Input normalization (z-scoring) ──
+    # POD coefficients can have very different scales across modes.
+    # Standardizing to zero-mean, unit-variance helps LSTM training.
+    if normalize_input:
+        # Compute per-mode statistics from TRAINING set only
+        X_flat = X_all[train_idx].reshape(-1, d)  # [N_train*lag, d]
+        input_mean = X_flat.mean(axis=0)  # [d]
+        input_std_raw = X_flat.std(axis=0)  # [d]
+        
+        # Clamp std: if a mode has near-zero variance, don't blow up
+        STD_FLOOR = 1e-8
+        near_zero = input_std_raw < STD_FLOOR
+        if near_zero.any():
+            n_clamped = near_zero.sum()
+            print(f"\n  ⚠ {n_clamped} mode(s) have near-zero std, clamping to {STD_FLOOR}")
+        input_std = np.maximum(input_std_raw, STD_FLOOR)  # [d]
+        
+        # Apply normalization to ALL data (train+val) using train-set stats
+        X_all_norm = (X_all - input_mean) / input_std
+        Y_all_norm = (Y_all - input_mean) / input_std
+        
+        # Save normalization stats for inference
+        np.savez(os.path.join(out_dir, "lstm_normalization.npz"),
+                 input_mean=input_mean, input_std=input_std)
+        
+        print(f"\n  ✓ Input normalization: per-mode z-scoring (train-set stats only)")
+        print(f"    Raw scale:  modes range [{X_all.reshape(-1,d).min():.1f}, {X_all.reshape(-1,d).max():.1f}]")
+        print(f"    Per-mode std range: [{input_std.min():.4f}, {input_std.max():.4f}]")
+        print(f"    Normalized: modes range [{X_all_norm.reshape(-1,d).min():.2f}, {X_all_norm.reshape(-1,d).max():.2f}]")
+    else:
+        X_all_norm = X_all
+        Y_all_norm = Y_all
+        input_mean = np.zeros(d)
+        input_std = np.ones(d)
+    
+    # Create tensors (from normalized data)
+    X_train = torch.tensor(X_all_norm[train_idx], dtype=torch.float32)
+    Y_train = torch.tensor(Y_all_norm[train_idx], dtype=torch.float32)
+    X_val = torch.tensor(X_all_norm[val_idx], dtype=torch.float32)
+    Y_val = torch.tensor(Y_all_norm[val_idx], dtype=torch.float32)
+    
+    # Prepare multi-step targets if provided
+    has_multistep_targets = Y_multi is not None and multistep_loss
+    if has_multistep_targets:
+        # Normalize multi-step targets the same way
+        if normalize_input:
+            Y_multi_norm = (Y_multi - input_mean) / input_std  # [N, k, d]
+        else:
+            Y_multi_norm = Y_multi
+        Y_multi_train = torch.tensor(Y_multi_norm[train_idx], dtype=torch.float32)
+        Y_multi_val = torch.tensor(Y_multi_norm[val_idx], dtype=torch.float32)
+        k_avail = Y_multi.shape[1]
+        effective_k = min(multistep_k, k_avail)
+        print(f"\n  ✓ Multi-step targets: k={effective_k} (ground truth supervised)")
+    else:
+        Y_multi_train = None
+        Y_multi_val = None
+        effective_k = multistep_k if multistep_loss else 0
+        if multistep_loss and Y_multi is None:
+            print(f"\n  ⚠ No Y_multi provided; multi-step loss uses self-consistency")
     
     print(f"\nHyperparameters:")
     print(f"  Batch size:      {batch_size}")
@@ -273,10 +372,26 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     print(f"  Patience:        {patience}")
     print(f"  Gradient clip:   {gradient_clip}")
     print(f"  Dropout:         {dropout}")
+    print(f"  Residual (Δy):   {residual}")
+    print(f"  Layer norm:      {use_layer_norm}")
+    print(f"  Normalize input: {normalize_input}")
+    print(f"  Sched. sampling: {scheduled_sampling}")
+    if scheduled_sampling:
+        print(f"    Warmup:        0-{ss_warmup} (pure teacher forcing)")
+        print(f"    Phase 1:       {ss_warmup}-{ss_phase1_end} → {ss_phase1_ratio:.0%}")
+        print(f"    Phase 2:       {ss_phase1_end}-{ss_phase2_end} → {ss_max_ratio:.0%}")
+    print(f"  Multistep loss:  {multistep_loss}")
+    if multistep_loss:
+        print(f"    k-step:        {multistep_k}")
+        print(f"    α (weight):    {multistep_alpha}")
     
-    # Create DataLoaders
-    train_ds = TensorDataset(X_train, Y_train)
-    val_ds = TensorDataset(X_val, Y_val)
+    # Create DataLoaders (include multi-step targets if available)
+    if has_multistep_targets:
+        train_ds = TensorDataset(X_train, Y_train, Y_multi_train)
+        val_ds = TensorDataset(X_val, Y_val, Y_multi_val)
+    else:
+        train_ds = TensorDataset(X_train, Y_train)
+        val_ds = TensorDataset(X_val, Y_val)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
     
@@ -284,11 +399,14 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\nDevice: {device}")
     
-    model = LatentLSTMROM(d=d, hidden_units=hidden_units, num_layers=num_layers, dropout=dropout)
+    model = LatentLSTMROM(d=d, hidden_units=hidden_units, num_layers=num_layers, 
+                          dropout=dropout, residual=residual,
+                          use_layer_norm=use_layer_norm)
     model.to(device)
     
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {total_params:,}")
+    print(f"Samples/param:    {N_samples/total_params:.1f}")
     
     # Loss function and optimizer
     criterion = nn.MSELoss()
@@ -317,25 +435,122 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     print(f"{'Epoch':>6s} {'Train Loss':>12s} {'Val Loss':>12s} {'Best':>6s} {'Patience':>8s}")
     print("-" * 60)
     
+    # ── Helper: compute 2-phase scheduled sampling ratio ──
+    def _ss_ratio(epoch):
+        """2-phase SS schedule: warmup → gentle ramp → aggressive ramp."""
+        if not scheduled_sampling or epoch < ss_warmup:
+            return 0.0
+        if epoch < ss_phase1_end:
+            # Phase 1: cosine ramp 0 → ss_phase1_ratio
+            t = (epoch - ss_warmup) / max(1, ss_phase1_end - ss_warmup)
+            return ss_phase1_ratio * 0.5 * (1 - np.cos(np.pi * t))
+        elif epoch < ss_phase2_end:
+            # Phase 2: linear ramp ss_phase1_ratio → ss_max_ratio
+            t = (epoch - ss_phase1_end) / max(1, ss_phase2_end - ss_phase1_end)
+            return ss_phase1_ratio + (ss_max_ratio - ss_phase1_ratio) * t
+        else:
+            return ss_max_ratio
+    
     # Training loop
     for epoch in range(max_epochs):
+        ss_ratio = _ss_ratio(epoch)
+        
         # Training phase
         model.train()
         train_loss_sum = 0.0
         
-        for x_batch, y_batch in train_loader:
+        for batch in train_loader:
+            # Unpack: 2 elements (x, y) or 3 elements (x, y, y_multi)
+            if has_multistep_targets:
+                x_batch, y_batch, y_multi_batch = batch
+                y_multi_batch = y_multi_batch.to(device)
+            else:
+                x_batch, y_batch = batch
+                y_multi_batch = None
             # Move to device
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
             
+            # ── Scheduled sampling: true multi-step rollout within the window ──
+            # Instead of just swapping one token, we roll forward inside the
+            # window using the model's own predictions. This directly targets
+            # the exposure bias that causes rollout drift.
+            if ss_ratio > 0 and x_batch.size(1) >= 2:
+                x_batch = x_batch.clone()
+                B, L, D = x_batch.shape
+                # For each position in the window (starting from position 1),
+                # with probability ss_ratio, replace it with model prediction
+                # from the previous window state.
+                for pos in range(1, L):
+                    mask = torch.rand(B, device=device) < ss_ratio  # [B]
+                    if mask.any():
+                        with torch.no_grad():
+                            # Build window ending at pos-1
+                            if pos >= L:
+                                break
+                            # Use the (possibly already corrupted) prefix
+                            window_end = pos  # exclusive
+                            window_start = max(0, window_end - L)
+                            sub_window = x_batch[:, window_start:window_end, :]
+                            # Pad if needed to maintain lag length
+                            if sub_window.size(1) < L:
+                                pad = x_batch[:, :L - sub_window.size(1), :]
+                                sub_window = torch.cat([pad, sub_window], dim=1)
+                            y_model = model(sub_window)  # [B, D]
+                        x_batch[mask, pos, :] = y_model[mask]
+            
             # Zero gradients
             optimizer.zero_grad()
             
-            # Forward pass
+            # ── Forward pass: 1-step prediction ──
             y_pred = model(x_batch)
+            loss_1step = criterion(y_pred, y_batch)
             
-            # Compute loss
-            loss = criterion(y_pred, y_batch)
+            # ── Multi-step rollout loss ──
+            # Unroll the model k steps from the input window and penalize
+            # accumulated error.  When Y_multi ground-truth targets are
+            # available (from build_multistep_latent_dataset) we use
+            # *supervised* k-step loss; otherwise fall back to self-
+            # consistency (penalise drift between consecutive predictions).
+            if multistep_loss and multistep_k > 1 and multistep_alpha > 0:
+                rollout_loss = torch.tensor(0.0, device=device)
+                window = x_batch  # [B, lag, d]
+                prev_pred = y_pred  # step-1 prediction (used only for
+                                    # self-consistency fallback)
+
+                for step in range(2, multistep_k + 1):
+                    # Shift window: drop oldest, append previous prediction
+                    window = torch.cat(
+                        [window[:, 1:, :], prev_pred.unsqueeze(1).detach()],
+                        dim=1
+                    )
+                    y_k = model(window)  # [B, d]
+
+                    if y_multi_batch is not None:
+                        # Supervised: compare to real future target
+                        # y_multi_batch[:, s, :] is target for step s+1
+                        # step ranges 2..k  → index = step - 1
+                        idx = step - 1  # 0-based into Y_multi's k dim
+                        if idx < y_multi_batch.size(1):
+                            rollout_loss = rollout_loss + criterion(
+                                y_k, y_multi_batch[:, idx, :]
+                            )
+                        else:
+                            # Fallback for steps beyond available targets
+                            rollout_loss = rollout_loss + criterion(
+                                y_k, prev_pred.detach()
+                            )
+                    else:
+                        # Self-consistency fallback: penalise drift
+                        rollout_loss = rollout_loss + criterion(
+                            y_k, prev_pred.detach()
+                        )
+                    prev_pred = y_k
+
+                rollout_loss = rollout_loss / (multistep_k - 1)
+                loss = (1 - multistep_alpha) * loss_1step + multistep_alpha * rollout_loss
+            else:
+                loss = loss_1step
             
             # Backward pass
             loss.backward()
@@ -349,8 +564,8 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
             # Optimizer step
             optimizer.step()
             
-            # Accumulate training loss
-            train_loss_sum += loss.item() * x_batch.size(0)
+            # Accumulate training loss (report 1-step for comparability)
+            train_loss_sum += loss_1step.item() * x_batch.size(0)
         
         # Compute mean training loss
         train_loss = train_loss_sum / len(train_loader.dataset)
@@ -360,11 +575,47 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
         val_loss_sum = 0.0
         
         with torch.no_grad():
-            for x_batch, y_batch in val_loader:
+            for batch in val_loader:
+                if has_multistep_targets:
+                    x_batch, y_batch, y_multi_batch = batch
+                    y_multi_batch = y_multi_batch.to(device)
+                else:
+                    x_batch, y_batch = batch
+                    y_multi_batch = None
                 x_batch = x_batch.to(device)
                 y_batch = y_batch.to(device)
                 y_pred = model(x_batch)
-                loss = criterion(y_pred, y_batch)
+                loss_1step = criterion(y_pred, y_batch)
+
+                # Include multi-step rollout loss in val metric for
+                # consistency with training loss (helps diagnostics).
+                if multistep_loss and multistep_k > 1 and multistep_alpha > 0:
+                    rollout_loss = torch.tensor(0.0, device=device)
+                    window = x_batch
+                    prev_pred = y_pred
+                    for step in range(2, multistep_k + 1):
+                        window = torch.cat(
+                            [window[:, 1:, :], prev_pred.unsqueeze(1)],
+                            dim=1
+                        )
+                        y_k = model(window)
+                        if y_multi_batch is not None:
+                            idx = step - 1
+                            if idx < y_multi_batch.size(1):
+                                rollout_loss = rollout_loss + criterion(
+                                    y_k, y_multi_batch[:, idx, :]
+                                )
+                            else:
+                                rollout_loss = rollout_loss + criterion(
+                                    y_k, prev_pred
+                                )
+                        else:
+                            rollout_loss = rollout_loss + criterion(y_k, prev_pred)
+                        prev_pred = y_k
+                    rollout_loss = rollout_loss / (multistep_k - 1)
+                    loss = (1 - multistep_alpha) * loss_1step + multistep_alpha * rollout_loss
+                else:
+                    loss = loss_1step
                 val_loss_sum += loss.item() * x_batch.size(0)
         
         # Compute mean validation loss
@@ -383,16 +634,31 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
         if is_best:
             best_val_loss = val_loss
             patience_counter = 0
-            # Save best model state_dict
-            torch.save(model.state_dict(), model_path)
+            # Save best model state_dict along with model config
+            torch.save({
+                'state_dict': model.state_dict(),
+                'residual': residual,
+                'normalize_input': normalize_input,
+                'use_layer_norm': use_layer_norm,
+                'input_mean': input_mean,
+                'input_std': input_std,
+                'd': d,
+                'hidden_units': hidden_units,
+                'num_layers': num_layers,
+                'dropout': dropout,
+                'lag': lag,
+            }, model_path)
+            # Also save raw state_dict for backward compatibility
+            torch.save(model.state_dict(), os.path.join(out_dir, "lstm_state_dict_raw.pt"))
             best_marker = "  *"
         else:
             patience_counter += 1
             best_marker = ""
         
-        # Print progress (show LR if it changed from initial)
+        # Print progress (show LR and SS ratio if active)
         lr_info = f" lr={current_lr:.1e}" if current_lr < learning_rate else ""
-        print(f"{epoch+1:6d} {train_loss:12.6f} {val_loss:12.6f} {best_marker:6s} {patience_counter:3d}/{patience:3d}{lr_info}")
+        ss_info = f" ss={ss_ratio:.2f}" if ss_ratio > 0 else ""
+        print(f"{epoch+1:6d} {train_loss:12.6f} {val_loss:12.6f} {best_marker:6s} {patience_counter:3d}/{patience:3d}{lr_info}{ss_info}")
         
         # Check early stopping
         if patience_counter >= patience:
@@ -407,99 +673,70 @@ def train_lstm_rom(X_all, Y_all, config, out_dir):
     return model_path, best_val_loss
 
 
-def forecast_with_lstm(model, y_init_window, n_steps):
+def forecast_with_lstm(model, y_init_window, n_steps, input_mean=None, input_std=None):
     """
     Roll out the LSTM ROM in latent space for n_steps, in closed loop.
     
-    This function performs autoregressive (closed-loop) forecasting in the
-    latent space. At each step, it predicts the next latent state, then uses
-    that prediction as input for the subsequent prediction.
+    Supports normalization: if input_mean/input_std are provided, the initial
+    window is normalized before feeding to the model, and predictions are
+    un-normalized before returning. The internal rollout stays in normalized
+    space for consistency.
     
     Parameters
     ----------
     model : LatentLSTMROM
         Trained LSTM ROM (PyTorch model).
-        Should already be on the correct device (CPU or GPU).
     y_init_window : np.ndarray, shape [lag, d]
-        Initial latent window (warm-up) for times t_{k-lag}, ..., t_{k-1}.
-        Typically obtained from truth: y(t_j) = R(x_truth(t_j)).
-        This provides the initial sequence the LSTM needs to start forecasting.
+        Initial latent window in ORIGINAL (un-normalized) space.
     n_steps : int
-        Number of forecast steps to perform.
-        Will predict latent states at times t_k, t_{k+1}, ..., t_{k+n_steps-1}.
+        Number of forecast steps.
+    input_mean : np.ndarray or None, shape [d]
+        Per-mode mean for z-score normalization.
+    input_std : np.ndarray or None, shape [d]
+        Per-mode std for z-score normalization.
     
     Returns
     -------
     ys_pred : np.ndarray, shape [n_steps, d]
-        Predicted latent states in sequence.
-        Each row ys_pred[i] is the predicted latent state at time t_{k+i}.
-    
-    Notes
-    -----
-    Closed-loop forecasting means that predictions are fed back as inputs:
-    - Initial window: y_{k-lag}, ..., y_{k-1} (from truth)
-    - Step 1: Predict y_k using initial window
-    - Step 2: Predict y_{k+1} using [y_{k-lag+1}, ..., y_{k-1}, y_k]
-    - Step 3: Predict y_{k+2} using [y_{k-lag+2}, ..., y_{k-1}, y_k, y_{k+1}]
-    - And so on...
-    
-    This is different from open-loop (teacher forcing) where we would use
-    true values as inputs at each step. Closed-loop is the realistic setting
-    for ROM forecasting where we don't have access to future ground truth.
-    
-    Examples
-    --------
-    >>> model = LatentLSTMROM(d=25, hidden_units=64, num_layers=2)
-    >>> model.load_state_dict(torch.load('lstm_state_dict.pt'))
-    >>> model.eval()
-    >>> 
-    >>> # Initial window from truth (e.g., first 20 timesteps)
-    >>> y_init = np.random.randn(20, 25)  # [lag=20, d=25]
-    >>> 
-    >>> # Forecast 100 steps ahead
-    >>> y_forecast = forecast_with_lstm(model, y_init, n_steps=100)
-    >>> y_forecast.shape
-    (100, 25)
+        Predicted latent states in ORIGINAL space.
     """
-    # Put model in evaluation mode (disables dropout, etc.)
     model.eval()
-    
-    # Get device from model parameters
     device = next(model.parameters()).device
     
-    # Convert initial window to tensor and add batch dimension
-    # y_init_window: [lag, d] -> [1, lag, d] for batch_first=True
-    y_window = torch.tensor(y_init_window, dtype=torch.float32, device=device)
-    y_window = y_window.unsqueeze(0)  # [1, lag, d]
+    # Normalize if stats provided
+    use_norm = input_mean is not None and input_std is not None
+    if use_norm:
+        y_init_norm = (y_init_window - input_mean) / input_std
+    else:
+        y_init_norm = y_init_window
     
-    # Initialize list to store predictions
+    # Convert to tensor: [1, lag, d]
+    y_window = torch.tensor(y_init_norm, dtype=torch.float32, device=device).unsqueeze(0)
+    
     ys_pred = []
     
-    # Perform closed-loop forecasting
     with torch.no_grad():
         for _ in range(n_steps):
-            # Predict next latent state: [1, d]
-            y_next = model(y_window)
+            # Predict next state (in normalized space if normalize was used)
+            y_next = model(y_window)  # [1, d]
             
-            # Save prediction as numpy array: [d]
-            ys_pred.append(y_next.cpu().numpy()[0])
+            # Store prediction (un-normalize for output)
+            y_next_np = y_next.cpu().numpy()[0]  # [d], in normalized space
+            if use_norm:
+                ys_pred.append(y_next_np * input_std + input_mean)
+            else:
+                ys_pred.append(y_next_np)
             
-            # Update window: drop oldest timestep, append new prediction
-            # y_window[:, 1:, :] removes first timestep -> [1, lag-1, d]
-            # y_next.unsqueeze(1) adds time dimension -> [1, 1, d]
-            # Concatenation produces -> [1, lag, d]
+            # Update window (stay in normalized space for next step)
             y_window = torch.cat(
                 [y_window[:, 1:, :], y_next.unsqueeze(1)],
                 dim=1
             )
     
-    # Stack all predictions into array: [n_steps, d]
-    ys_pred = np.stack(ys_pred, axis=0)
-    
-    return ys_pred
+    return np.stack(ys_pred, axis=0)
 
 
-def lstm_forecast_fn_factory(model):
+def lstm_forecast_fn_factory(model, input_mean=None, input_std=None):
     """
     Create a forecast function closure for a specific LSTM model.
     
@@ -512,54 +749,98 @@ def lstm_forecast_fn_factory(model):
     ----------
     model : LatentLSTMROM
         Trained LSTM ROM model.
-        Should already be loaded with trained weights and moved to device.
+    input_mean : np.ndarray or None, shape [d]
+        Per-mode mean for z-score normalization.
+    input_std : np.ndarray or None, shape [d]
+        Per-mode std for z-score normalization.
     
     Returns
     -------
     forecast_fn : callable
         A function with signature:
             forecast_fn(y_init_window, n_steps) -> ys_pred
-        where:
-            y_init_window : np.ndarray [lag, d]
-            n_steps : int
-            ys_pred : np.ndarray [n_steps, d]
-    
-    Notes
-    -----
-    This factory pattern allows the evaluation code to be model-agnostic.
-    The same evaluation function can work with both MVAR and LSTM by
-    simply passing different forecast functions.
-    
-    Examples
-    --------
-    >>> # Load trained LSTM model
-    >>> model = LatentLSTMROM(d=25, hidden_units=64, num_layers=2)
-    >>> model.load_state_dict(torch.load('best_lstm.pt'))
-    >>> model.eval()
-    >>> model.to('cuda')
-    >>> 
-    >>> # Create forecast function
-    >>> lstm_forecast_fn = lstm_forecast_fn_factory(model)
-    >>> 
-    >>> # Use in evaluation (same interface as MVAR)
-    >>> y_init = np.random.randn(20, 25)
-    >>> y_pred = lstm_forecast_fn(y_init, n_steps=100)
-    >>> 
-    >>> # Can be passed to generic evaluation function
-    >>> evaluate_rom(
-    ...     model_name="LSTM",
-    ...     forecast_next_latent_sequence_fn=lstm_forecast_fn,
-    ...     config=config,
-    ...     R=R, L=L,
-    ...     test_trajectories=test_data,
-    ...     out_dir="results/run_001/LSTM"
-    ... )
     """
     def _forecast_fn(y_init_window, n_steps):
         """Forecast wrapper that calls forecast_with_lstm with bound model."""
-        return forecast_with_lstm(model, y_init_window, n_steps)
+        return forecast_with_lstm(model, y_init_window, n_steps,
+                                  input_mean=input_mean, input_std=input_std)
     
     return _forecast_fn
+
+
+def load_lstm_model(model_dir, device='cpu'):
+    """
+    Load a trained LSTM model with all its metadata (normalization, config).
+    
+    Supports both new checkpoint format (with metadata) and legacy format
+    (raw state_dict only).
+    
+    Parameters
+    ----------
+    model_dir : str or Path
+        Directory containing lstm_state_dict.pt and optionally lstm_normalization.npz
+    device : str
+        Device to load model onto.
+    
+    Returns
+    -------
+    model : LatentLSTMROM
+        Loaded model in eval mode.
+    input_mean : np.ndarray or None
+        Normalization mean (None if not used).
+    input_std : np.ndarray or None
+        Normalization std (None if not used).
+    """
+    from pathlib import Path
+    model_dir = Path(model_dir)
+    # Accept either a directory or a direct path to the checkpoint file
+    if model_dir.is_file():
+        model_path = model_dir
+    else:
+        model_path = model_dir / "lstm_state_dict.pt"
+    
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    
+    # New format: checkpoint is a dict with metadata
+    if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+        d = checkpoint['d']
+        hidden_units = checkpoint['hidden_units']
+        num_layers = checkpoint['num_layers']
+        dropout = checkpoint.get('dropout', 0.0)
+        residual = checkpoint.get('residual', False)
+        use_layer_norm = checkpoint.get('use_layer_norm', True)
+        
+        model = LatentLSTMROM(d=d, hidden_units=hidden_units, 
+                              num_layers=num_layers, dropout=dropout,
+                              residual=residual, use_layer_norm=use_layer_norm)
+        model.load_state_dict(checkpoint['state_dict'])
+        
+        if checkpoint.get('normalize_input', False):
+            input_mean = checkpoint['input_mean']
+            input_std = checkpoint['input_std']
+        else:
+            input_mean, input_std = None, None
+    else:
+        # Legacy format: raw state_dict, need external info
+        # Try to load normalization from separate file
+        input_mean, input_std = None, None
+        norm_file = model_dir / "lstm_normalization.npz"
+        if norm_file.exists():
+            norm_data = np.load(norm_file)
+            input_mean = norm_data['input_mean']
+            input_std = norm_data['input_std']
+        
+        # Can't infer model architecture from raw state_dict alone
+        # Caller must provide d, hidden_units, etc.
+        # Return the state_dict for manual loading
+        raise ValueError(
+            "Legacy state_dict format detected. Use load_lstm_model_legacy() "
+            "or retrain with the new format."
+        )
+    
+    model.to(device)
+    model.eval()
+    return model, input_mean, input_std
 
 
 if __name__ == "__main__":

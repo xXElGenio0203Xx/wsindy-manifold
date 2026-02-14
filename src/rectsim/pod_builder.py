@@ -29,6 +29,9 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
         - fixed_modes: fixed number of modes (optional, takes priority)
         - fixed_d: fallback name for fixed_modes
         - pod_energy / energy_threshold: energy threshold (default: 0.995)
+        - density_transform: optional transform before POD
+          'raw' (default), 'log', 'sqrt', 'meansub'
+        - density_transform_eps: epsilon for log/sqrt (default: 1e-8)
         Priority: fixed_modes/fixed_d > energy_threshold
     density_key : str
         Key for density data in npz files (default: 'rho')
@@ -47,6 +50,8 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
         - total_energy: total energy
         - M: number of training runs
         - T_rom: timesteps per run
+        - density_transform: which transform was applied
+        - density_transform_eps: epsilon used
     """
     
     ROM_SUBSAMPLE = rom_config.get('subsample', rom_config.get('rom_subsample', 1))
@@ -76,6 +81,27 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
     
     print(f"✓ Loaded data shape: {X_all.shape}")
     print(f"   {M} runs × {T_rom} timesteps × {X_all.shape[1]} spatial dims")
+    
+    # Apply density transform if requested
+    density_transform = rom_config.get('density_transform', 'raw')
+    density_transform_eps = rom_config.get('density_transform_eps', 1e-8)
+    
+    if density_transform == 'log':
+        print(f"\nApplying log transform: log(rho + {density_transform_eps})")
+        X_all = np.log(X_all + density_transform_eps)
+    elif density_transform == 'sqrt':
+        print(f"\nApplying sqrt transform: sqrt(rho + {density_transform_eps})")
+        X_all = np.sqrt(X_all + density_transform_eps)
+    elif density_transform == 'meansub':
+        # Per-snapshot mean subtraction (remove spatially-uniform component)
+        # Note: this is BEFORE POD mean-centering (which is across all snapshots)
+        snapshot_means = X_all.mean(axis=1, keepdims=True)
+        X_all = X_all - snapshot_means
+        print(f"\nApplying meansub transform: rho - mean(rho) per snapshot")
+    elif density_transform == 'raw':
+        print(f"\nNo density transform (raw)")
+    else:
+        raise ValueError(f"Unknown density_transform: '{density_transform}'. Use 'raw', 'log', 'sqrt', or 'meansub'.")
     
     # Compute POD
     print("\nComputing global POD...")
@@ -123,7 +149,9 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
         'cumulative_energy': cumulative_energy,
         'total_energy': total_energy,
         'M': M,
-        'T_rom': T_rom
+        'T_rom': T_rom,
+        'density_transform': density_transform,
+        'density_transform_eps': density_transform_eps
     }
 
 
