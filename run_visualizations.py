@@ -22,6 +22,7 @@ import pandas as pd
 import argparse
 import time
 import sys
+import shutil
 
 # Add src to path for rectsim modules
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
@@ -201,6 +202,342 @@ def generate_mvar_lstm_comparison(mvar_metrics, lstm_metrics, mvar_ic_metrics, l
     print(f"   ✓ Saved: {output_path.name}")
 
 
+def generate_latent_vs_lifted_analysis(data_dir, test_dir, test_metadata, models_data, plots_dir):
+    """
+    Generate latent vs lifted R² comparison plots.
+    
+    Uses the OSCAR-generated test_results.csv (which has r2_reconstructed, r2_latent, r2_pod)
+    and r2_vs_time.csv files to produce:
+    1. Bar chart: latent vs lifted vs POD R² per model
+    2. Time-resolved: latent vs lifted R² on same axes with error envelope
+    3. Spectral radius annotation if available
+    """
+    plots_dir = Path(plots_dir)
+    test_dir = Path(test_dir)
+    data_dir = Path(data_dir)
+    
+    for model_name, model_info in models_data.items():
+        model_dir = model_info['dir']
+        test_results_csv = model_dir / "test_results.csv"
+        
+        if not test_results_csv.exists():
+            print(f"   ⚠ No test_results.csv for {model_name.upper()} — skipping latent analysis")
+            continue
+        
+        df = pd.read_csv(test_results_csv)
+        
+        if 'r2_latent' not in df.columns:
+            print(f"   ⚠ No r2_latent column in {model_name.upper()} test_results — skipping")
+            continue
+        
+        r2_lifted = df['r2_reconstructed'].mean()
+        r2_latent = df['r2_latent'].mean()
+        r2_pod = df['r2_pod'].mean()
+        gap = r2_latent - r2_lifted
+        
+        print(f"\n   {model_name.upper()} Latent vs Lifted R²:")
+        print(f"      R² Lifted (density):  {r2_lifted:+.4f}")
+        print(f"      R² Latent (ROM):      {r2_latent:+.4f}")
+        print(f"      R² POD (basis ceil):  {r2_pod:+.4f}")
+        print(f"      Lifting gap:          {gap:+.4f} ({'latent > lifted' if gap > 0 else 'lifted > latent'})")
+        
+        # Spectral radius
+        rho = None
+        mvar_npz = model_dir / "mvar_model.npz"
+        if mvar_npz.exists():
+            mvar_data = np.load(mvar_npz)
+            if 'A_companion' in mvar_data:
+                A_coef = mvar_data['A_companion']
+                R_POD = int(mvar_data['r'])
+                P_LAG = int(mvar_data['p'])
+                companion_dim = P_LAG * R_POD
+                C = np.zeros((companion_dim, companion_dim))
+                C[:R_POD, :] = A_coef
+                for k in range(P_LAG - 1):
+                    C[(k+1)*R_POD:(k+2)*R_POD, k*R_POD:(k+1)*R_POD] = np.eye(R_POD)
+                rho = np.max(np.abs(np.linalg.eigvals(C)))
+                print(f"      Spectral radius:      {rho:.4f}")
+        
+        # --- Plot 1: Time-resolved latent vs lifted ---
+        # Load r2_vs_time.csv for all test runs
+        ic_key = 'ic_type' if 'ic_type' in test_metadata[0] else 'distribution'
+        all_time_data = []
+        for meta in test_metadata:
+            run_name = meta['run_name']
+            # Try model-specific file first
+            r2_file = test_dir / run_name / f"r2_vs_time_{model_name}.csv"
+            if not r2_file.exists():
+                r2_file = test_dir / run_name / "r2_vs_time.csv"
+            if r2_file.exists():
+                tdf = pd.read_csv(r2_file)
+                tdf['test_id'] = run_name
+                tdf['ic_type'] = meta[ic_key]
+                all_time_data.append(tdf)
+        
+        if all_time_data:
+            time_df = pd.concat(all_time_data, ignore_index=True)
+            times = sorted(time_df['time'].unique())
+            
+            # Compute statistics
+            means_lifted, means_latent, means_pod = [], [], []
+            iqr_lifted_lo, iqr_lifted_hi = [], []
+            iqr_latent_lo, iqr_latent_hi = [], []
+            
+            for t in times:
+                subset = time_df[time_df['time'] == t]
+                means_lifted.append(subset['r2_reconstructed'].mean())
+                means_latent.append(subset['r2_latent'].mean())
+                means_pod.append(subset['r2_pod'].mean())
+                iqr_lifted_lo.append(subset['r2_reconstructed'].quantile(0.25))
+                iqr_lifted_hi.append(subset['r2_reconstructed'].quantile(0.75))
+                iqr_latent_lo.append(subset['r2_latent'].quantile(0.25))
+                iqr_latent_hi.append(subset['r2_latent'].quantile(0.75))
+            
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 12), height_ratios=[3, 1])
+            
+            # Top panel: R² over time for all three metrics
+            ax1.plot(times, means_lifted, color='#2E86AB', linewidth=3, 
+                    label=f'R² Lifted (mean={r2_lifted:+.4f})', alpha=0.9, zorder=3)
+            ax1.fill_between(times, iqr_lifted_lo, iqr_lifted_hi,
+                            color='#2E86AB', alpha=0.15, zorder=1)
+            
+            ax1.plot(times, means_latent, color='#A23B72', linewidth=3, 
+                    label=f'R² Latent (mean={r2_latent:+.4f})', alpha=0.9, zorder=3)
+            ax1.fill_between(times, iqr_latent_lo, iqr_latent_hi,
+                            color='#A23B72', alpha=0.15, zorder=1)
+            
+            ax1.plot(times, means_pod, color='#F18F01', linewidth=2.5, 
+                    label=f'R² POD Ceiling ({r2_pod:.4f})', linestyle='--', alpha=0.7, zorder=2)
+            
+            ax1.axhline(0, color='red', linestyle='--', linewidth=1, alpha=0.4)
+            ax1.axhline(0.5, color='orange', linestyle=':', linewidth=1.5, alpha=0.4)
+            
+            rho_str = f' | spectral radius = {rho:.4f}' if rho else ''
+            ax1.set_title(f'{model_name.upper()}: Latent vs Lifted R² Over Time{rho_str}',
+                         fontsize=16, fontweight='bold')
+            ax1.set_ylabel('R² Score', fontsize=14, fontweight='bold')
+            ax1.legend(fontsize=12, loc='best', framealpha=0.95)
+            ax1.grid(True, alpha=0.3)
+            ax1.set_xlim([min(times), max(times)])
+            
+            # Bottom panel: Gap (latent - lifted) over time
+            gaps = [lat - lift for lat, lift in zip(means_latent, means_lifted)]
+            ax2.fill_between(times, 0, gaps, where=[g >= 0 for g in gaps],
+                            color='#A23B72', alpha=0.4, label='Latent > Lifted')
+            ax2.fill_between(times, 0, gaps, where=[g < 0 for g in gaps],
+                            color='#2E86AB', alpha=0.4, label='Lifted > Latent')
+            ax2.plot(times, gaps, color='black', linewidth=2, alpha=0.8)
+            ax2.axhline(0, color='black', linestyle='-', linewidth=1, alpha=0.5)
+            
+            ax2.set_xlabel('Time (s)', fontsize=14, fontweight='bold')
+            ax2.set_ylabel('Gap (Latent − Lifted)', fontsize=14, fontweight='bold')
+            ax2.set_title('Lifting Gap Over Time', fontsize=13, fontweight='bold')
+            ax2.legend(fontsize=10, loc='best')
+            ax2.grid(True, alpha=0.3)
+            ax2.set_xlim([min(times), max(times)])
+            
+            plt.tight_layout()
+            output_path = plots_dir / f"latent_vs_lifted_r2_{model_name}.png"
+            plt.savefig(output_path, dpi=250, bbox_inches='tight')
+            plt.close()
+            print(f"   ✓ Saved: {output_path.name}")
+        else:
+            print(f"   ⚠ No r2_vs_time.csv files found for {model_name.upper()}")
+
+
+def export_oscar_insight_data(data_dir, output_dir, models_data):
+    """
+    Copy all OSCAR-generated insight files to the predictions output folder.
+    
+    This ensures that all the important metadata, metrics, runtime info,
+    and model summaries are available alongside the visualization outputs
+    in a single predictions/<experiment>/ folder.
+    
+    Copied structure:
+        predictions/<exp>/oscar_data/
+            config_used.yaml          - Exact config that ran on OSCAR
+            summary.json              - OSCAR pipeline summary (timing, counts, etc.)
+            runtime_comparison.json   - MVAR vs LSTM timing comparison
+            MVAR/
+                test_results.csv      - Per-test R² (lifted, latent, POD)
+                runtime_profile.json  - MVAR training/eval timing breakdown
+                mvar_model.npz        - Model coefficients + spectral info
+            LSTM/
+                test_results.csv      - Per-test R² (lifted, latent, POD)
+                runtime_profile.json  - LSTM training/eval timing breakdown
+                training_log.csv      - Epoch-by-epoch loss convergence
+            test/
+                metadata.json         - Test run metadata (IC types, params)
+                index_mapping.csv     - Maps test indices to run names
+                test_XXX/
+                    metrics_summary.json - Per-test detailed metrics
+                    r2_vs_time.csv       - Time-resolved R² for this test
+    """
+    data_dir = Path(data_dir)
+    output_dir = Path(output_dir)
+    oscar_data_dir = output_dir / "oscar_data"
+    oscar_data_dir.mkdir(parents=True, exist_ok=True)
+    
+    copied = 0
+    skipped = 0
+    
+    # --- Root-level insight files ---
+    root_files = [
+        "config_used.yaml",
+        "summary.json",
+        "runtime_comparison.json",
+    ]
+    for fname in root_files:
+        src = data_dir / fname
+        dst = oscar_data_dir / fname
+        if src.exists():
+            shutil.copy2(src, dst)
+            copied += 1
+        else:
+            skipped += 1
+    
+    # --- Model-level insight files ---
+    for model_name in ['MVAR', 'LSTM']:
+        model_src = data_dir / model_name
+        model_dst = oscar_data_dir / model_name
+        
+        if not model_src.exists():
+            continue
+        
+        model_dst.mkdir(parents=True, exist_ok=True)
+        
+        model_files = {
+            'MVAR': ['test_results.csv', 'runtime_profile.json', 'mvar_model.npz'],
+            'LSTM': ['test_results.csv', 'runtime_profile.json', 'training_log.csv'],
+        }
+        
+        for fname in model_files.get(model_name, []):
+            src = model_src / fname
+            dst = model_dst / fname
+            if src.exists():
+                shutil.copy2(src, dst)
+                copied += 1
+            else:
+                skipped += 1
+    
+    # --- Test-level insight files ---
+    test_src = data_dir / "test"
+    test_dst = oscar_data_dir / "test"
+    
+    if test_src.exists():
+        test_dst.mkdir(parents=True, exist_ok=True)
+        
+        # Top-level test files
+        for fname in ['metadata.json', 'index_mapping.csv', 'test_results.csv']:
+            src = test_src / fname
+            dst = test_dst / fname
+            if src.exists():
+                shutil.copy2(src, dst)
+                copied += 1
+        
+        # Per-test insight files (metrics + r2_vs_time only, NOT density .npz)
+        for test_run_dir in sorted(test_src.glob("test_*")):
+            if test_run_dir.is_dir():
+                dst_run_dir = test_dst / test_run_dir.name
+                dst_run_dir.mkdir(parents=True, exist_ok=True)
+                
+                for fname in ['metrics_summary.json', 'r2_vs_time.csv']:
+                    src = test_run_dir / fname
+                    dst = dst_run_dir / fname
+                    if src.exists():
+                        shutil.copy2(src, dst)
+                        copied += 1
+    
+    # --- Generate a combined experiment card ---
+    _generate_experiment_card(data_dir, models_data, oscar_data_dir)
+    
+    print(f"   ✓ Exported {copied} insight files to {oscar_data_dir.relative_to(output_dir.parent.parent) if output_dir.parent.parent.exists() else oscar_data_dir}")
+    if skipped > 0:
+        print(f"   ⚠ {skipped} expected files not found (may be normal for partial runs)")
+
+
+def _generate_experiment_card(data_dir, models_data, oscar_data_dir):
+    """Generate a consolidated experiment_card.json with key info from all sources."""
+    data_dir = Path(data_dir)
+    oscar_data_dir = Path(oscar_data_dir)
+    
+    card = {
+        'experiment_name': data_dir.name,
+        'generated_by': 'run_visualizations.py (Step 10)',
+    }
+    
+    # Pull from summary.json
+    summary_path = data_dir / 'summary.json'
+    if summary_path.exists():
+        with open(summary_path) as f:
+            summary = json.load(f)
+        card['n_train'] = summary.get('n_train')
+        card['n_test'] = summary.get('n_test')
+        card['R_POD'] = summary.get('R_POD')
+        card['models_trained'] = summary.get('models_trained', [])
+        card['total_time_minutes'] = summary.get('total_time_minutes')
+        card['timestamp'] = summary.get('timestamp')
+    
+    # Pull from runtime_comparison.json
+    runtime_path = data_dir / 'runtime_comparison.json'
+    if runtime_path.exists():
+        with open(runtime_path) as f:
+            card['runtime_comparison'] = json.load(f)
+    
+    # Pull per-model highlights
+    card['models'] = {}
+    for model_name, model_info in models_data.items():
+        model_dir = model_info['dir']
+        model_card = {}
+        
+        # Test results summary
+        test_csv = model_dir / 'test_results.csv'
+        if test_csv.exists():
+            df = pd.read_csv(test_csv)
+            model_card['n_tests'] = len(df)
+            for col in ['r2_reconstructed', 'r2_latent', 'r2_pod']:
+                if col in df.columns:
+                    model_card[f'{col}_mean'] = round(float(df[col].mean()), 6)
+                    model_card[f'{col}_std'] = round(float(df[col].std()), 6)
+                    model_card[f'{col}_median'] = round(float(df[col].median()), 6)
+        
+        # Runtime profile
+        runtime_file = model_dir / 'runtime_profile.json'
+        if runtime_file.exists():
+            with open(runtime_file) as f:
+                model_card['runtime_profile'] = json.load(f)
+        
+        # MVAR spectral radius
+        if model_name == 'mvar':
+            mvar_npz = model_dir / 'mvar_model.npz'
+            if mvar_npz.exists():
+                mvar_data = np.load(mvar_npz)
+                if 'A_companion' in mvar_data:
+                    A_coef = mvar_data['A_companion']
+                    R = int(mvar_data['r'])
+                    P = int(mvar_data['p'])
+                    dim = P * R
+                    C = np.zeros((dim, dim))
+                    C[:R, :] = A_coef
+                    for k in range(P - 1):
+                        C[(k+1)*R:(k+2)*R, k*R:(k+1)*R] = np.eye(R)
+                    eigs = np.abs(np.linalg.eigvals(C))
+                    model_card['spectral_radius'] = round(float(np.max(eigs)), 6)
+                    model_card['n_unstable_eigenvalues'] = int(np.sum(eigs > 1.0))
+                    model_card['n_total_eigenvalues'] = len(eigs)
+                model_card['p_lag'] = int(mvar_data['p'])
+                model_card['r_pod'] = int(mvar_data['r'])
+                model_card['alpha'] = float(mvar_data['alpha'])
+                model_card['train_r2'] = round(float(mvar_data['train_r2']), 6)
+        
+        card['models'][model_name.upper()] = model_card
+    
+    # Save
+    card_path = oscar_data_dir / 'experiment_card.json'
+    with open(card_path, 'w') as f:
+        json.dump(card, f, indent=2)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Visualization Pipeline (Light Computation)")
     parser.add_argument("--experiment_name", type=str, default="test_sim",
@@ -228,10 +565,14 @@ def main():
         print(f"\n🔍 Detected unified multi-model structure")
         POD_DIR = ROM_COMMON_DIR
         MODEL_DIRS = {}
-        if MVAR_DIR.exists():
+        if (MVAR_DIR / "mvar_model.npz").exists():
             MODEL_DIRS['mvar'] = MVAR_DIR
-        if LSTM_DIR.exists():
+        elif MVAR_DIR.exists():
+            print(f"  ⚠️  MVAR/ directory exists but mvar_model.npz not found — skipping MVAR")
+        if LSTM_DIR.exists() and any(LSTM_DIR.iterdir()):
             MODEL_DIRS['lstm'] = LSTM_DIR
+        elif LSTM_DIR.exists():
+            print(f"  ⚠️  LSTM/ directory exists but is empty — skipping LSTM")
     else:
         print(f"\n🔍 Detected legacy single-model structure")
         POD_DIR = OLD_MVAR_DIR
@@ -561,6 +902,36 @@ def main():
         )
     
     # =============================================================================
+    # STEP 9: Latent vs Lifted R² Analysis
+    # =============================================================================
+    
+    print("\n" + "="*80)
+    print("STEP 9: Latent vs Lifted R² Analysis")
+    print("="*80)
+    
+    generate_latent_vs_lifted_analysis(
+        data_dir=DATA_DIR,
+        test_dir=TEST_DIR,
+        test_metadata=test_metadata,
+        models_data=models_data,
+        plots_dir=PLOTS_DIR,
+    )
+    
+    # =============================================================================
+    # STEP 10: Export OSCAR Insight Data to Predictions
+    # =============================================================================
+    
+    print("\n" + "="*80)
+    print("STEP 10: Exporting OSCAR Insight Data")
+    print("="*80)
+    
+    export_oscar_insight_data(
+        data_dir=DATA_DIR,
+        output_dir=OUTPUT_DIR,
+        models_data=models_data,
+    )
+    
+    # =============================================================================
     # COMPLETE
     # =============================================================================
     
@@ -610,6 +981,12 @@ def main():
                     print(f"      • Best: t={deg_info['best_time']:.1f}s (R²={deg_info['best_r2']:.3f})")
                 if 'mean_r2_below_0.5' in deg_info:
                     print(f"      • R² < 0.5 at t={deg_info['mean_r2_below_0.5']:.1f}s")
+    
+    print(f"\n📁 OSCAR Insight Data:")
+    print(f"   • Exported to {OUTPUT_DIR.name}/oscar_data/")
+    oscar_card = OUTPUT_DIR / "oscar_data" / "experiment_card.json"
+    if oscar_card.exists():
+        print(f"   • experiment_card.json — consolidated experiment summary")
     
     print(f"\n⏱️  Visualization time: {total_time//60:.0f}m {total_time%60:.1f}s")
     print("\n✅ Pipeline complete!")

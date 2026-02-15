@@ -1,0 +1,202 @@
+---
+# ============================================================================
+# SYNTHESIS V2.2 — Evidence-Based Minimal ROM
+# ============================================================================
+#
+# LESSONS FROM ALL PREVIOUS RUNS:
+#
+#   V1:  d=19, p=5, α=1e-4 → ρ=1.322, R²=+0.28 (after clamp+renorm)
+#   V2:  d=8,  p=3, α=1.0  → ρ=1.209→0.98 (uniform), R²=-0.016
+#   V2.1: d=14, p=5, α=0.1 → ρ=1.303→0.995 (Schur), R²=-35,594 ← SCHUR BROKE IT
+#   V3:  d=52, p=4, α=1e-6 → ρ=1.290, R²=-2.3e23 ← UNDERDETERMINED (10816 params, 9920 samples)
+#
+# KEY OBSERVATIONS:
+#   1. Our dynamics need d=52 for 99% energy vs Alvarez's d=13
+#      → POD spectrum is MUCH flatter, dynamics are inherently harder
+#   2. Every MVAR we've trained is naturally unstable (ρ ≈ 1.2-1.3)
+#      regardless of α, d, or p. This is a fundamental property of
+#      our dynamics, not a tuning problem.
+#   3. V1 actually got the BEST physical R² (+0.28) — because the
+#      clamp+renorm post-processing saved it despite instability.
+#   4. Schur projection BACKFIRED — corrupted off-diagonal coupling
+#   5. V2's uniform scaling over-damped (all eigenvalues compressed)
+#   6. LSTM is always negative but much less catastrophic than MVAR
+#
+# STRATEGY FOR V2.2:
+#   Accept that MVAR will be unstable and focus on DAMAGE CONTROL:
+#
+#   [A] d=10 modes (72% energy) — sweet spot between V2's 64% and V2.1's 81%
+#       Fewer modes = fewer params = better conditioned MVAR
+#       Still enough energy to capture dominant spatial patterns
+#
+#   [B] p=3 lag — keep short, fewer parameters
+#       3 × 10² + 10 = 310 params, ratio = 12,267/310 = 39.6× (excellent)
+#
+#   [C] α=10.0 — VERY strong ridge to aggressively shrink spectral radius
+#       The goal is to make the MVAR naturally stable (ρ<1) BEFORE any scaling
+#       With α=1.0 we got ρ=1.21, with α=10 it might reach ρ<1
+#
+#   [D] eigenvalue_threshold=0.97 — tight cap as safety net
+#       If α=10 doesn't achieve natural stability, uniform scaling
+#       with a 0.97 target gives a small margin of safety
+#
+#   [E] LSTM gets a fair shot — larger hidden, more epochs
+#       LSTM doesn't have the stability problem
+#       d=10 is low enough for a small LSTM to learn
+#
+# ============================================================================
+
+experiment_name: "synthesis_v2_2"
+
+# ============================================================================
+# SIMULATION — Same physics as all previous runs
+# ============================================================================
+sim:
+  N: 100
+  T: 6.0
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 2.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY — Same
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — Same 261 runs as V2
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 180
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 3
+
+  uniform:
+    enabled: true
+    n_runs: 75
+    n_samples: 75
+
+  two_clusters:
+    enabled: true
+    n_runs: 45
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 7
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — Same 26 runs as V2
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0], [7.5, 1.5], [1.5, 7.5]]
+    extrapolation_variance: [1.2]
+
+  uniform:
+    enabled: true
+    n_runs: 8
+
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 3
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM
+# ============================================================================
+rom:
+  subsample: 3
+
+  # d=10: sweet spot (72% energy, 310 MVAR params, ratio=39.6×)
+  fixed_modes: 10
+
+  # Tight eigenvalue cap as safety net
+  eigenvalue_threshold: 0.97
+
+  models:
+    mvar:
+      enabled: true
+      lag: 3
+      # VERY strong ridge — goal: ρ < 1.0 BEFORE any scaling
+      ridge_alpha: 10.0
+      eigenvalue_threshold: 0.97
+
+    lstm:
+      enabled: true
+      lag: 3
+      hidden_units: 64      # More capacity — LSTM is our best hope
+      num_layers: 2
+      max_epochs: 3000       # Long training
+      patience: 100
+      batch_size: 128        # Smaller batch = more gradient updates
+      learning_rate: 1.0e-3  # Standard lr
+      weight_decay: 1.0e-4   # Light regularization
+      gradient_clip: 1.0
+      dropout: 0.1
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.36     # = lag(3) × subsample(3) × dt(0.04)

@@ -1,0 +1,175 @@
+---
+# ============================================================================
+# SYNTHESIS V2.6 — V2.4 Champion + d=20 (More POD Modes)
+# ============================================================================
+#
+# HYPOTHESIS:
+#   V2.4 is our best at R²=+0.272 with d=10, no scaling, clamping ON.
+#   d=10 captures only 71.4% energy. d=20 captures ~91% energy.
+#   
+#   V2.5 tests more modes WITH eigenvalue scaling (expected to fail).
+#   This tests more modes WITHOUT scaling — the winning strategy.
+#
+#   If d=20 helps: more energy captured = better forecasts.
+#   If d=20 hurts: higher-order modes add noise that MVAR can't model.
+#   
+#   MVAR params: 3×20²+20 = 1,220 vs 3×10²+10 = 310 for d=10.
+#   With 261 training runs × ~147 timesteps, ratio is ~31× (healthy).
+#
+# CHANGES FROM V2.4:
+#   - fixed_modes: 10 → 20
+#   - Everything else identical
+#
+# ============================================================================
+
+experiment_name: "synthesis_v2_6"
+
+# ============================================================================
+# SIMULATION — Same physics
+# ============================================================================
+sim:
+  N: 100
+  T: 6.0
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 2.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — Same 261 runs
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 180
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 3
+
+  uniform:
+    enabled: true
+    n_runs: 75
+    n_samples: 75
+
+  two_clusters:
+    enabled: true
+    n_runs: 45
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 7
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — Same 26 runs
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0], [7.5, 1.5], [1.5, 7.5]]
+    extrapolation_variance: [1.2]
+
+  uniform:
+    enabled: true
+    n_runs: 8
+
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 3
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM — d=20 modes, NO eigenvalue scaling (V2.4 strategy)
+# ============================================================================
+rom:
+  subsample: 3
+  fixed_modes: 20
+
+  # NO eigenvalue_threshold — proven winner in V2.3/V2.4
+
+  models:
+    mvar:
+      enabled: true
+      lag: 3
+      ridge_alpha: 10.0
+      # NO eigenvalue_threshold
+
+    lstm:
+      enabled: true
+      lag: 3
+      hidden_units: 64
+      num_layers: 2
+      max_epochs: 3000
+      patience: 100
+      batch_size: 128
+      learning_rate: 1.0e-3
+      weight_decay: 1.0e-4
+      gradient_clip: 1.0
+      dropout: 0.1
+
+# ============================================================================
+# EVALUATION — WITH clamping (V2.4 strategy)
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.36
+  clamp_negative: true

@@ -1,0 +1,254 @@
+---
+# ============================================================================
+# SYNTHESIS V5 — MEGA AMBITIOUS (V2.4 Champion + Dynamic Physics)
+# ============================================================================
+#
+# PHILOSOPHY:
+#   V2.4 proved the winning ROM strategy: d=10, no scaling, clamp ON, α=10.
+#   V3.2–V3.4 test faster physics but with same data volume.
+#   V5 combines everything: dynamic physics + much richer training data +
+#   diverse ICs + stronger models + longer sims.
+#
+# DESIGN PRINCIPLES:
+#   1. Keep V2.4 ROM strategy (no scaling, clamp ON, α=10)
+#   2. Dynamic physics: speed=5, Ca=3, R=5, η=0.1 (V3.4-level)
+#   3. More particles: N=200 (2× V2.4) → richer density fields
+#   4. Longer sims: T=12s → particles cross 15-unit domain ~4× at speed=5
+#   5. All 4 IC types: gaussian, uniform, two_clusters, ring
+#   6. More training data: 500 ICs (2× V2.4's 261)
+#   7. More POD modes: d=15 (captures more structure in dynamic regime)
+#   8. Stronger LSTM: 128h, 3 layers, 5000 epochs
+#   9. Stronger MVAR: p=4 lag (slightly more temporal memory)
+#
+# MEMORY BUDGET (request 96GB, expect ~15-20GB peak):
+#   Snapshot matrix: 500 ICs × 100 frames × 2304 = 115M floats ≈ 0.9GB
+#   SVD workspace: ~3× snapshot ≈ 3GB
+#   MVAR Ridge: lag=4, d=15 → X_train: (500×96, 60) → trivial
+#   LSTM: 128h×3L → ~200K params → trivial
+#   Sim data on disk: 500 × ~2MB = 1GB (loaded one at a time)
+#   Peak estimate: ~10-15GB — SAFE at 96GB
+#   (V2.4 used 3GB at 24GB; V4 used 67GB because 1080×500×2304 matrix)
+#
+# MVAR MATH:
+#   d=15, p=4: n_params = 15 × 4 × 15 + 15 = 915
+#   500 ICs × (100-4) frames = 48,000 usable samples
+#   Overdetermination ratio: 48,000 / 915 = 52.5× — excellent
+#   Ridge α=10 → strong regularization → no overfitting
+#
+# LSTM MATH:
+#   Input: 4 × 15 = 60 features per step
+#   Hidden: 128 units, 3 layers
+#   Total params: ~200K
+#   Training samples: 48,000 → ratio = 240× — no overfitting risk
+#
+# TIME BUDGET (8 hours):
+#   Sims: 500 ICs × N=200 × T=12s ≈ 15s each = 2.1 hours
+#   POD SVD: ~5 min (115M element matrix, or randomized)
+#   MVAR Ridge: ~2 min (48K × 60 matrix)
+#   LSTM: ~2-3 hours (5000 epochs, 48K samples, 128h×3L)
+#   Test sims + eval: 50 test ICs × 15s = 12 min
+#   Total: ~5-6 hours — safe within 8 hours
+#
+# ============================================================================
+
+experiment_name: "synthesis_v5_mega"
+
+# ============================================================================
+# SIMULATION — FAST, DYNAMIC, CHAOTIC
+# ============================================================================
+sim:
+  N: 200                   # 2× V2.4 — richer density fields
+  T: 12.0                  # 2× V2.4 — particles cross domain ~4× at speed=5
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 5.0               # 3.3× faster (V3.4 level) — strong collective motion
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 5.0                   # 2× V2.4 — wide alignment zone → strong flocking
+
+noise:
+  kind: "gaussian"
+  eta: 0.1                 # Low noise = clear patterns (V3.4 level)
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 3.0                # 3.75× V2.4 — strong attraction → dramatic clustering
+    Cr: 0.5                # 1.67× V2.4 — stronger core repulsion
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY — Same grid (48×48 works well)
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — 500 diverse runs across ALL 4 IC types
+# ============================================================================
+#
+# Distribution:
+#   Gaussian:      240 runs (48% — diverse positions + variances)
+#   Uniform:        80 runs (16% — random baselines)
+#   Two-clusters:  120 runs (24% — collision/merging dynamics)
+#   Ring:           60 runs (12% — expansion/contraction dynamics)
+#   TOTAL:         500 runs
+#
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 240
+    # 5×5 position grid × 4 variances × ~2-3 samples ≈ 240
+    positions_x: [2.0, 5.0, 7.5, 10.0, 13.0]
+    positions_y: [2.0, 5.0, 7.5, 10.0, 13.0]
+    variances: [0.5, 1.0, 2.0, 3.5]
+    n_samples_per_config: 2           # 5×5×4×2 = 200, extras fill to ~240
+
+  uniform:
+    enabled: true
+    n_runs: 80
+    n_samples: 80
+
+  two_clusters:
+    enabled: true
+    n_runs: 120
+    # 4 separations × 3 sigmas × 10 samples = 120
+    separations: [2.5, 4.0, 6.0, 8.0]
+    sigmas: [0.8, 1.5, 2.5]
+    n_samples_per_config: 10
+
+  ring:
+    enabled: true
+    # 3 radii × 2 widths × 10 samples = 60
+    radii: [2.5, 4.0, 5.5]
+    widths: [0.3, 0.8]
+    n_samples_per_config: 10
+
+# ============================================================================
+# TEST ICs — 50 diverse runs across ALL 4 IC types
+# ============================================================================
+#
+# Distribution:
+#   Gaussian:      20 runs (interp + extrap)
+#   Uniform:        8 runs
+#   Two-clusters:  14 runs (interp + extrap)
+#   Ring:           8 runs
+#   TOTAL:         50 runs
+#
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 20
+    # Interpolation: 3×3 positions × 2 variances = 18
+    test_positions_x: [3.5, 7.5, 11.5]
+    test_positions_y: [3.5, 7.5, 11.5]
+    test_variances: [0.7, 1.5]
+    n_samples_per_config: 1
+    # Extrapolation: corners + edges = 8
+    extrapolation_positions: [
+      [1.0, 1.0], [14.0, 1.0], [1.0, 14.0], [14.0, 14.0],
+      [7.5, 0.5], [0.5, 7.5], [14.5, 7.5], [7.5, 14.5]
+    ]
+    extrapolation_variance: [0.7]
+
+  uniform:
+    enabled: true
+    n_runs: 8
+
+  two_clusters:
+    enabled: true
+    n_runs: 14
+    # Interpolation: 3 separations × 2 sigmas = 6 interp + 3 extrap
+    test_separations: [3.0, 5.0, 7.0]
+    test_sigmas: [1.0, 2.0]
+    n_samples_per_config: 1
+    # Extrapolation: extreme separations
+    extrapolation_separations: [1.5, 10.0, 12.0]
+    extrapolation_sigma: [1.0]
+
+  ring:
+    enabled: true
+    # 2 radii × 2 widths × 2 samples = 8
+    test_radii: [3.0, 5.0]
+    test_widths: [0.5, 1.0]
+    n_samples_per_config: 2
+
+# ============================================================================
+# ROM — V2.4 Champion Strategy + Moderate Upgrades
+# ============================================================================
+#
+# What worked in V2.4:
+#   ✓ NO eigenvalue scaling
+#   ✓ Clamping ON
+#   ✓ Ridge α=10 (strong regularization)
+#   ✓ d=10 modes, p=3 lag
+#
+# What we upgrade for richer dynamics:
+#   → d=15 modes (more structure in fast regime, but not too many)
+#   → p=4 lag (slightly more temporal context)
+#   → LSTM: 128h, 3L (2× capacity, but still modest)
+#   → LSTM: 5000 epochs (more training time)
+#
+# ============================================================================
+rom:
+  subsample: 3            # T=12s, dt=0.04 → 300 steps / 3 = 100 frames/IC
+  fixed_modes: 15         # d=15: more modes for complex dynamics
+
+  # NO eigenvalue_threshold — V2.4 champion strategy
+
+  models:
+    mvar:
+      enabled: true
+      lag: 4              # Slightly deeper memory than V2.4 (p=3)
+      ridge_alpha: 10.0   # V2.4 champion value — strong regularization
+      # NO eigenvalue_threshold
+
+    lstm:
+      enabled: true
+      lag: 4              # Match MVAR lag
+      hidden_units: 128   # 2× V2.4 (was 64) — more capacity
+      num_layers: 3       # 1.5× V2.4 (was 2) — deeper network
+      max_epochs: 5000    # 1.67× V2.4 (was 3000)
+      patience: 200       # More patient (was 100)
+      batch_size: 256     # 2× V2.4 (was 128) — more stable gradients
+      learning_rate: 1.0e-3
+      weight_decay: 1.0e-4
+      gradient_clip: 1.0
+      dropout: 0.15       # Slightly more dropout for bigger network
+      scheduler_patience: 50
+
+# ============================================================================
+# EVALUATION — V2.4 Champion Strategy: CLAMP ON
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.48    # = lag(4) × subsample(3) × dt(0.04)
+  clamp_negative: true    # V2.4 champion — clamp + renorm

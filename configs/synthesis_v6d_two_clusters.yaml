@@ -1,0 +1,154 @@
+---
+# ============================================================================
+# SYNTHESIS V6d — SINGLE TWO-CLUSTERS IC (Long Coherent Trajectory)
+# ============================================================================
+#
+# Same design as V6a but with TWO_CLUSTERS initial condition.
+# Particles start in two separated blobs — dynamics: collision, merging,
+# possible splitting, flocking as a merged group.
+# Most interesting for cluster interaction dynamics.
+#
+# ============================================================================
+
+experiment_name: "synthesis_v6d_two_clusters"
+
+# ============================================================================
+# SIMULATION — FAST, DYNAMIC, N=400
+# ============================================================================
+sim:
+  N: 400
+  T: 120.0
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 5.0
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 5.0
+
+noise:
+  kind: "gaussian"
+  eta: 0.1
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 3.0
+    Cr: 0.5
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING: 1 Two-Clusters IC (moderate separation)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: false
+
+  uniform:
+    enabled: false
+
+  two_clusters:
+    enabled: true
+    separations: [6.0]
+    sigmas: [1.5]
+    n_samples_per_config: 1
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — Same-type + cross-type
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  gaussian:
+    enabled: true
+    test_positions_x: [4.0, 11.0]
+    test_positions_y: [4.0, 11.0]
+    test_variances: [1.0, 3.0]
+    n_samples_per_config: 1
+    extrapolation_positions: [[2.0, 2.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+
+  uniform:
+    enabled: true
+    n_runs: 3
+
+  ring:
+    enabled: true
+    test_radii: [3.0, 5.0]
+    test_widths: [0.5]
+    n_samples_per_config: 1
+
+  two_clusters:
+    enabled: true
+    test_separations: [3.0, 5.0, 8.0]
+    test_sigmas: [1.0, 2.0]
+    n_samples_per_config: 1
+    extrapolation_separations: [2.0, 10.0]
+    extrapolation_sigma: [1.5]
+
+# ============================================================================
+# ROM — 90% energy, strong models
+# ============================================================================
+rom:
+  subsample: 3
+  pod_energy: 0.90
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5
+      ridge_alpha: 10.0
+
+    lstm:
+      enabled: true
+      lag: 5
+      hidden_units: 128
+      num_layers: 3
+      max_epochs: 5000
+      patience: 300
+      batch_size: 64
+      learning_rate: 5.0e-4
+      weight_decay: 1.0e-4
+      gradient_clip: 1.0
+      dropout: 0.1
+      scheduler_patience: 50
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60
+  clamp_negative: true

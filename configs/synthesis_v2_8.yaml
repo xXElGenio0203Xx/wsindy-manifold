@@ -1,0 +1,177 @@
+---
+# ============================================================================
+# SYNTHESIS V2.8 — V2.4 Champion + Higher Lag p=5
+# ============================================================================
+#
+# HYPOTHESIS:
+#   V2.4 uses lag p=3 (looks back 3 snapshots ≈ 0.36s at subsample=3).
+#   V1 used p=5 (looks back 5 snapshots ≈ 0.60s) and got R²=+0.28.
+#   
+#   Longer memory may help MVAR capture slower dynamics, especially
+#   the cluster merging/splitting that happens on ~1s timescales.
+#
+#   p=5 with d=10: 5×10²+10 = 510 params (vs 310 for p=3).
+#   Still healthy ratio: ~75× data-to-params.
+#
+#   If p=5 helps: dynamics have longer temporal correlations.
+#   If p=5 hurts: extra lags add noise, or p=3 already sufficient.
+#
+#   This also closes the gap with V1 (which used p=5, α=1e-4).
+#
+# CHANGES FROM V2.4:
+#   - lag: 3 → 5 (for both MVAR and LSTM)
+#   - Everything else identical
+#
+# ============================================================================
+
+experiment_name: "synthesis_v2_8"
+
+# ============================================================================
+# SIMULATION — Same physics
+# ============================================================================
+sim:
+  N: 100
+  T: 6.0
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 2.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — Same 261 runs
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 180
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 3
+
+  uniform:
+    enabled: true
+    n_runs: 75
+    n_samples: 75
+
+  two_clusters:
+    enabled: true
+    n_runs: 45
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 7
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — Same 26 runs
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0], [7.5, 1.5], [1.5, 7.5]]
+    extrapolation_variance: [1.2]
+
+  uniform:
+    enabled: true
+    n_runs: 8
+
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 3
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM — Same d=10, NO scaling, but HIGHER lag p=5
+# ============================================================================
+rom:
+  subsample: 3
+  fixed_modes: 10
+
+  # NO eigenvalue_threshold — proven winner
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5               # 5 snapshots lookback ≈ 0.60s (was 3 ≈ 0.36s)
+      ridge_alpha: 10.0
+      # NO eigenvalue_threshold
+
+    lstm:
+      enabled: true
+      lag: 5               # Match MVAR lag for fair comparison
+      hidden_units: 64
+      num_layers: 2
+      max_epochs: 3000
+      patience: 100
+      batch_size: 128
+      learning_rate: 1.0e-3
+      weight_decay: 1.0e-4
+      gradient_clip: 1.0
+      dropout: 0.1
+
+# ============================================================================
+# EVALUATION — WITH clamping (V2.4 strategy)
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60
+  clamp_negative: true

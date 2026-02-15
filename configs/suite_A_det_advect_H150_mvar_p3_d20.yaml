@@ -1,0 +1,101 @@
+---
+# ============================================================================
+# A2: Det Advect H150 MVAR p3 + Higher POD (d=20)
+# ============================================================================
+# Same as suite_S0_det_advect_H150_mvar_p3, but fixed_modes=20 instead of E=90%
+# GOAL: Does higher d reduce neg% and improve rollout?
+# EXPECTED: Better reconstruction → less constraint violation → better R²_roll
+# ============================================================================
+
+experiment_name: "suite_A_det_advect_H150_mvar_p3_d20"
+
+sim:
+  N: 200
+  T: 5.0
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+test_sim:
+  T: 20.0
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant"
+
+params:
+  R: 0.15
+
+noise:
+  kind: "gaussian"
+  eta: 0.0
+  match_variance: true
+
+forces:
+  enabled: false
+
+alignment:
+  enabled: true
+
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+train_ic:
+  type: "mixed_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 50
+    positions_x: [4.0, 7.5, 11.0]
+    positions_y: [4.0, 7.5, 11.0]
+    variances: [1.0, 2.0]
+    n_samples_per_config: 3
+  uniform:
+    enabled: false
+  two_clusters:
+    enabled: false
+  ring:
+    enabled: false
+
+test_ic:
+  type: "mixed_test_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 10
+    test_positions_x: [5.0, 10.0]
+    test_positions_y: [5.0, 10.0]
+    test_variances: [1.5]
+    n_samples_per_config: 1
+    extrapolation_positions: [[3.0, 3.0], [12.0, 3.0], [3.0, 12.0], [12.0, 12.0], [7.5, 2.0], [2.0, 7.5]]
+    extrapolation_variance: [1.5]
+  uniform:
+    enabled: false
+  two_clusters:
+    enabled: false
+  ring:
+    enabled: false
+
+rom:
+  subsample: 3
+  fixed_modes: 20               # <-- THE CHANGE (d=20 instead of E=90%)
+
+  models:
+    mvar:
+      enabled: true
+      lag: 3
+      ridge_alpha: 1.0e-4
+    lstm:
+      enabled: false
+
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.36        # 3 ROM frames

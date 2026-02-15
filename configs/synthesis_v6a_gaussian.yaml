@@ -1,0 +1,154 @@
+---
+# ============================================================================
+# SYNTHESIS V6a — SINGLE GAUSSIAN IC (Long Coherent Trajectory)
+# ============================================================================
+#
+# HYPOTHESIS:
+#   Mixed-IC training forces POD to compromise across different dynamics.
+#   A single very long simulation produces ONE coherent latent trajectory,
+#   giving the POD basis and MVAR/LSTM a focused, clean signal.
+#
+# DESIGN:
+#   - 1 training simulation, T=120s (40 domain crossings at speed=5)
+#   - N=400 particles (rich density field)
+#   - Extreme dynamics: speed=5, Ca=3, R=5, η=0.1
+#   - 90% POD energy threshold (expect fewer modes from single trajectory)
+#   - p=5 MVAR lag (0.6s temporal memory at subsample=3, dt=0.04)
+#   - Test: 3 gaussian (interpolation) + 1 uniform + 1 ring (cross-type)
+#
+# MEMORY: ~1GB (trivial — single trajectory, 1000 frames × 2304)
+# TIME: ~15 min sim + 30 min LSTM = ~1 hour total
+#
+# ============================================================================
+
+experiment_name: "synthesis_v6a_gaussian"
+
+# ============================================================================
+# SIMULATION — FAST, DYNAMIC, N=400
+# ============================================================================
+sim:
+  N: 400                   # 4× V2.4 — very rich density field
+  T: 120.0                 # 20× V2.4 — 40 domain crossings at speed=5
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 5.0               # Fast — strong collective motion
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 5.0                   # Wide alignment zone
+
+noise:
+  kind: "gaussian"
+  eta: 0.1                 # Low noise — clear patterns
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 3.0                # Strong attraction — dramatic clustering
+    Cr: 0.5                # Core repulsion
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING: 1 Gaussian IC (centered, medium variance)
+# ============================================================================
+train_ic:
+  center: [7.5, 7.5]
+  variances: [2.0]
+  n_samples_per_variance: 1
+
+# ============================================================================
+# TEST ICs — Same-type interpolation + cross-type generalization
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  # Same-type: 3 gaussian ICs at different positions/variances
+  gaussian:
+    enabled: true
+    test_positions_x: [4.0, 11.0]
+    test_positions_y: [4.0, 11.0]
+    test_variances: [1.0, 3.0]
+    n_samples_per_config: 1
+    extrapolation_positions: [[2.0, 2.0], [13.0, 13.0]]
+    extrapolation_variance: [1.5]
+
+  # Cross-type: uniform (totally different IC)
+  uniform:
+    enabled: true
+    n_runs: 3
+
+  # Cross-type: ring (different structure)
+  ring:
+    enabled: true
+    test_radii: [3.0, 5.0]
+    test_widths: [0.5]
+    n_samples_per_config: 1
+
+  # Cross-type: two clusters (collision dynamics)
+  two_clusters:
+    enabled: true
+    test_separations: [4.0, 7.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 1
+
+# ============================================================================
+# ROM — 90% energy, strong models, optimal lag
+# ============================================================================
+rom:
+  subsample: 3            # 3000 steps / 3 = 1000 frames
+  pod_energy: 0.90        # 90% energy — focused basis from single trajectory
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5              # 5 × 3 × 0.04 = 0.6s memory
+      ridge_alpha: 10.0   # V2.4 champion regularization
+
+    lstm:
+      enabled: true
+      lag: 5              # Match MVAR
+      hidden_units: 128   # Strong capacity
+      num_layers: 3       # Deep
+      max_epochs: 5000    # Thorough training
+      patience: 300       # Patient — small dataset
+      batch_size: 64      # Smaller batches for ~995 samples
+      learning_rate: 5.0e-4   # Slightly lower LR for stability
+      weight_decay: 1.0e-4
+      gradient_clip: 1.0
+      dropout: 0.1
+      scheduler_patience: 50
+
+# ============================================================================
+# EVALUATION — V2.4 strategy: clamp ON
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60    # = lag(5) × subsample(3) × dt(0.04)
+  clamp_negative: true

@@ -60,19 +60,23 @@ def generate_best_run_visualizations(
     best_runs_dir = Path(best_runs_dir)
     best_runs_dir.mkdir(exist_ok=True, parents=True)
     
-    # Select top runs by R²
+    # Select top runs by R² (for return value / summary)
     top_runs = metrics_df.nlargest(n_top, 'r2')
-    top_ic_types = top_runs['ic_type'].tolist()
     
-    print(f"\nGenerating videos and plots for top {n_top} runs by R²:")
-    for idx, row in top_runs.iterrows():
-        print(f"   {row['run_name']}: {row['ic_type']} (R² = {row['r2']:.4f})")
+    # Generate visualizations for BEST RUN OF EACH IC TYPE (not just top-N overall)
+    # This ensures every IC type (uniform, gaussian_cluster, two_clusters, etc.)
+    # gets its own subfolder with the best run for that type.
+    all_ic_types = sorted(ic_metrics.keys())
     
-    for ic_type in tqdm(top_ic_types, desc="IC types"):
-        ic_stats = ic_metrics.get(ic_type)
-        if ic_stats is None:
-            continue
-        
+    print(f"\nGenerating best-run visualizations for each IC type ({model_name.upper()}):")
+    for ic_type in all_ic_types:
+        ic_stats = ic_metrics[ic_type]
+        print(f"   {ic_type}: {ic_stats['best_run']} (R² = {ic_stats['best_r2']:.4f})")
+    
+    all_metrics_list = metrics_df.to_dict('records')
+    
+    for ic_type in tqdm(all_ic_types, desc="IC types"):
+        ic_stats = ic_metrics[ic_type]
         best_run = ic_stats["best_run"]
         pred = test_predictions[best_run]
         run_dir = test_dir / best_run
@@ -81,17 +85,16 @@ def generate_best_run_visualizations(
         ic_output_dir.mkdir(exist_ok=True, parents=True)
         
         # Find the full metrics entry for this run
-        all_metrics = metrics_df.to_dict('records')
-        summary = [m for m in all_metrics if m["run_name"] == best_run][0]
+        summary = [m for m in all_metrics_list if m["run_name"] == best_run][0]
         
         # Generate visualizations
         _generate_trajectory_video(pred, ic_output_dir, ic_type, base_config_sim)
         _generate_density_comparison(pred, ic_output_dir, model_name=model_name)
         _generate_error_timeseries(pred, summary, ic_output_dir, ic_type, ic_stats, p_lag)
         _generate_error_distributions(pred, ic_output_dir, ic_type)
-        _generate_order_parameters(run_dir, ic_output_dir, ic_type, ic_stats)
+        _generate_order_parameters(pred, ic_output_dir, ic_type, ic_stats, model_name=model_name)
     
-    print(f"\n✓ Generated visualizations for top {n_top} runs")
+    print(f"\n✓ Generated visualizations for {len(all_ic_types)} IC types: {', '.join(all_ic_types)}")
     
     return top_runs
 
@@ -170,204 +173,175 @@ def _generate_error_distributions(pred, output_dir, ic_type):
     plt.close()
 
 
-def _generate_order_parameters(run_dir, output_dir, ic_type, ic_stats):
-    """Generate order parameter plots if available."""
-    # Check for density-based order parameters
-    order_params_path = run_dir / "order_params_density.csv"
-    if order_params_path.exists():
-        df_order = pd.read_csv(order_params_path)
-        has_particles = 'polarization' in df_order.columns
+def _compute_order_params_from_data(vel, traj, rho_true, rho_pred, times):
+    """
+    Compute order parameters directly from raw trajectory/velocity/density data.
+    
+    Parameters
+    ----------
+    vel : ndarray (T, N, 2) or None
+        Particle velocities
+    traj : ndarray (T, N, 2)
+        Particle positions
+    rho_true : ndarray (T, ny, nx)
+        True density fields
+    rho_pred : ndarray (T, ny, nx)
+        Predicted density fields
+    times : ndarray (T,)
+        Time array
+    
+    Returns
+    -------
+    order_params : dict of arrays, each length T
+    """
+    T = len(times)
+    params = {'t': times}
+    
+    # --- Particle-based order parameters (require velocities) ---
+    if vel is not None:
+        polarization = np.zeros(T)
+        nematic = np.zeros(T)
+        mean_speed = np.zeros(T)
+        angular_momentum = np.zeros(T)
         
-        if has_particles:
-            _plot_full_order_parameters(df_order, output_dir, ic_type, ic_stats)
-            _plot_mass_conservation(df_order, output_dir, ic_type)
-        else:
-            _plot_density_order_parameters(df_order, output_dir, ic_type, ic_stats)
+        for t in range(T):
+            v = vel[t]  # (N, 2)
+            r = traj[t]  # (N, 2)
+            speeds = np.linalg.norm(v, axis=1)  # (N,)
+            mean_speed[t] = np.mean(speeds)
+            
+            # Polarization: |mean(v_hat)| — velocity alignment
+            nonzero = speeds > 1e-10
+            if np.any(nonzero):
+                v_hat = v[nonzero] / speeds[nonzero, None]
+                polarization[t] = np.linalg.norm(np.mean(v_hat, axis=0))
+                
+                # Nematic: 2*|mean(cos2θ, sin2θ)|  — bidirectional alignment
+                angles = np.arctan2(v_hat[:, 1], v_hat[:, 0])
+                nematic[t] = np.sqrt(np.mean(np.cos(2 * angles))**2 + 
+                                     np.mean(np.sin(2 * angles))**2)
+            
+            # Angular momentum: normalized |Σ r×v| / (N * <|r|> * <|v|>)
+            com = np.mean(r, axis=0)
+            r_rel = r - com
+            cross = r_rel[:, 0] * v[:, 1] - r_rel[:, 1] * v[:, 0]  # z-component
+            r_norms = np.linalg.norm(r_rel, axis=1)
+            denom = len(r) * (np.mean(r_norms) * mean_speed[t] + 1e-10)
+            angular_momentum[t] = np.abs(np.sum(cross)) / denom
+        
+        params['polarization'] = polarization
+        params['nematic'] = nematic
+        params['mean_speed'] = mean_speed
+        params['angular_momentum'] = np.clip(angular_momentum, 0, 1)
     
-    # Check for particle-based order parameters
-    order_params_traj_path = run_dir / "order_params.csv"
-    if order_params_traj_path.exists():
-        _plot_particle_order_parameters(
-            order_params_traj_path, output_dir, ic_type, ic_stats
-        )
+    # --- Density-based order parameters (always available) ---
+    spatial_order_true = np.std(rho_true.reshape(T, -1), axis=1)
+    spatial_order_pred = np.std(rho_pred.reshape(T, -1), axis=1)
+    mass_true = np.sum(rho_true.reshape(T, -1), axis=1)
+    mass_pred = np.sum(rho_pred.reshape(T, -1), axis=1)
+    mass_error_rel = np.abs(mass_true - mass_pred) / (mass_true + 1e-10)
+    
+    params['spatial_order_true'] = spatial_order_true
+    params['spatial_order_pred'] = spatial_order_pred
+    params['mass_true'] = mass_true
+    params['mass_pred'] = mass_pred
+    params['mass_error_rel'] = mass_error_rel
+    
+    return params
 
 
-def _plot_full_order_parameters(df_order, output_dir, ic_type, ic_stats):
-    """Plot full order parameters (particle + density)."""
-    fig, axes = plt.subplots(5, 1, figsize=(14, 16), sharex=True)
+def _generate_order_parameters(pred, output_dir, ic_type, ic_stats, model_name='mvar'):
+    """
+    Generate order parameter plots computed directly from prediction data.
     
-    # Polarization
-    axes[0].plot(df_order['t'], df_order['polarization'], 'b-', linewidth=2.5, alpha=0.85)
-    axes[0].set_ylabel('Polarization Φ\n(Velocity Alignment)', fontsize=12, fontweight='bold')
-    axes[0].grid(True, alpha=0.3)
-    axes[0].set_ylim([0, 1.05])
-    median_phi = df_order['polarization'].iloc[-len(df_order)//4:].median()
-    axes[0].axhline(median_phi, color='r', linestyle='--', alpha=0.5,
-                   label=f'Final median: {median_phi:.3f}')
-    axes[0].legend(loc='best', fontsize=10)
-    axes[0].set_title(f'Order Parameters - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
-                     fontsize=14, fontweight='bold')
+    Computes particle-based (polarization, nematic, speed, angular momentum)
+    and density-based (spatial order, mass conservation) order parameters.
+    """
+    model_label = model_name.upper()
     
-    # Nematic order
-    axes[1].plot(df_order['t'], df_order['nematic'], 'm-', linewidth=2.5, alpha=0.85)
-    axes[1].set_ylabel('Nematic Order Q\n(Bidirectional)', fontsize=12, fontweight='bold')
-    axes[1].grid(True, alpha=0.3)
-    axes[1].set_ylim([-0.05, 1.05])
+    # Compute order parameters from raw data
+    op = _compute_order_params_from_data(
+        vel=pred.get('vel'),
+        traj=pred['traj'],
+        rho_true=pred['rho_true'],
+        rho_pred=pred['rho_pred'],
+        times=pred['times']
+    )
     
-    # Mean speed
-    axes[2].plot(df_order['t'], df_order['mean_speed'], 'g-', linewidth=2.5, alpha=0.85)
-    axes[2].set_ylabel('Mean Speed\n(Kinetic Energy)', fontsize=12, fontweight='bold')
-    axes[2].grid(True, alpha=0.3)
-    axes[2].axhline(df_order['mean_speed'].mean(), color='k', linestyle='--', alpha=0.4)
+    has_particles = 'polarization' in op
+    n_panels = 6 if has_particles else 3
+    fig, axes = plt.subplots(n_panels, 1, figsize=(14, 3.0 * n_panels), sharex=True)
     
-    # Angular momentum
-    axes[3].plot(df_order['t'], df_order['angular_momentum'], 'c-', linewidth=2.5, alpha=0.85)
-    axes[3].set_ylabel('Angular Momentum\n(Milling/Rotation)', fontsize=12, fontweight='bold')
-    axes[3].grid(True, alpha=0.3)
-    axes[3].set_ylim([-0.05, 1.05])
+    panel = 0
     
-    # Spatial order
-    axes[4].plot(df_order['t'], df_order['spatial_order_true'], 'b-', linewidth=2.5, label='True', alpha=0.8)
-    axes[4].plot(df_order['t'], df_order['spatial_order_pred'], 'r--', linewidth=2.5, label='Predicted', alpha=0.8)
-    axes[4].set_ylabel('Spatial Order\n(Density Std)', fontsize=12, fontweight='bold')
-    axes[4].set_xlabel('Time (s)', fontsize=12, fontweight='bold')
-    axes[4].grid(True, alpha=0.3)
-    axes[4].legend(loc='best', fontsize=11)
+    # --- Particle-based panels ---
+    if has_particles:
+        # 1. Polarization
+        axes[panel].plot(op['t'], op['polarization'], 'b-', linewidth=2.5, alpha=0.85)
+        axes[panel].set_ylabel('Polarization Φ\n(Velocity Alignment)', fontsize=12, fontweight='bold')
+        axes[panel].grid(True, alpha=0.3)
+        axes[panel].set_ylim([0, 1.05])
+        median_phi = np.median(op['polarization'][-len(op['polarization'])//4:])
+        axes[panel].axhline(median_phi, color='r', linestyle='--', alpha=0.5,
+                           label=f'Final median: {median_phi:.3f}')
+        axes[panel].legend(loc='best', fontsize=10)
+        axes[panel].set_title(
+            f'Order Parameters — {ic_type.replace("_", " ").title()} | '
+            f'{model_label} (R²={ic_stats["best_r2"]:.3f})',
+            fontsize=14, fontweight='bold')
+        panel += 1
+        
+        # 2. Nematic order
+        axes[panel].plot(op['t'], op['nematic'], 'm-', linewidth=2.5, alpha=0.85)
+        axes[panel].set_ylabel('Nematic Order Q\n(Bidirectional)', fontsize=12, fontweight='bold')
+        axes[panel].grid(True, alpha=0.3)
+        axes[panel].set_ylim([-0.05, 1.05])
+        panel += 1
+        
+        # 3. Mean speed
+        axes[panel].plot(op['t'], op['mean_speed'], 'g-', linewidth=2.5, alpha=0.85)
+        axes[panel].set_ylabel('Mean Speed\n(Kinetic Energy)', fontsize=12, fontweight='bold')
+        axes[panel].grid(True, alpha=0.3)
+        axes[panel].axhline(np.mean(op['mean_speed']), color='k', linestyle='--', alpha=0.4,
+                           label=f'Mean: {np.mean(op["mean_speed"]):.3f}')
+        axes[panel].legend(loc='best', fontsize=10)
+        panel += 1
+        
+        # 4. Angular momentum
+        axes[panel].plot(op['t'], op['angular_momentum'], 'c-', linewidth=2.5, alpha=0.85)
+        axes[panel].set_ylabel('Angular Momentum\n(Milling/Rotation)', fontsize=12, fontweight='bold')
+        axes[panel].grid(True, alpha=0.3)
+        axes[panel].set_ylim([-0.05, 1.05])
+        panel += 1
+    else:
+        axes[panel].set_title(
+            f'Order Parameters (Density-Based) — {ic_type.replace("_", " ").title()} | '
+            f'{model_label} (R²={ic_stats["best_r2"]:.3f})',
+            fontsize=14, fontweight='bold')
     
-    plt.tight_layout()
-    plt.savefig(output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
-    plt.close()
-
-
-def _plot_mass_conservation(df_order, output_dir, ic_type):
-    """Plot mass conservation metrics."""
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    # --- Density-based panels (always shown) ---
+    # Spatial order: true vs predicted
+    axes[panel].plot(op['t'], op['spatial_order_true'], 'b-', linewidth=2.5, alpha=0.85, label='Ground Truth')
+    axes[panel].plot(op['t'], op['spatial_order_pred'], 'r--', linewidth=2.5, alpha=0.85, label=f'Predicted ({model_label})')
+    axes[panel].set_ylabel('Spatial Order\nσ(ρ) per frame', fontsize=12, fontweight='bold')
+    axes[panel].grid(True, alpha=0.3)
+    axes[panel].legend(loc='best', fontsize=11)
+    panel += 1
     
-    # Mass conservation
-    axes[0].plot(df_order['t'], df_order['mass_true'], 'b-', linewidth=2, label='True', alpha=0.8)
-    axes[0].plot(df_order['t'], df_order['mass_pred'], 'g--', linewidth=2, label='Predicted (Corrected)', alpha=0.8)
-    axes[0].set_ylabel('Total Mass', fontsize=12, fontweight='bold')
-    axes[0].grid(True, alpha=0.3)
-    axes[0].legend(loc='best', fontsize=10)
-    axes[0].set_title(f'Mass Conservation - {ic_type.replace("_", " ").title()}', 
-                     fontsize=14, fontweight='bold')
-    
-    # Mass error
-    axes[1].semilogy(df_order['t'], df_order['mass_error_rel'] * 100, 'r-', linewidth=2)
-    axes[1].set_ylabel('Mass Error (%)', fontsize=12, fontweight='bold')
-    axes[1].set_xlabel('Time (s)', fontsize=12)
-    axes[1].grid(True, alpha=0.3)
-    max_err = df_order['mass_error_rel'].max() * 100
-    axes[1].axhline(max_err, color='k', linestyle='--', alpha=0.5,
-                   label=f'Max: {max_err:.2e}%')
-    axes[1].legend(loc='best', fontsize=10)
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / "mass_conservation.png", dpi=150, bbox_inches='tight')
-    plt.close()
-
-
-def _plot_density_order_parameters(df_order, output_dir, ic_type, ic_stats):
-    """Plot density-based order parameters only."""
-    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
-    
-    # Spatial order
-    axes[0].plot(df_order['t'], df_order['spatial_order_true'], 'b-', linewidth=2, label='True', alpha=0.8)
-    axes[0].plot(df_order['t'], df_order['spatial_order_pred'], 'r--', linewidth=2, label='Predicted', alpha=0.8)
-    axes[0].set_ylabel('Spatial Order\n(Density Std)', fontsize=12, fontweight='bold')
-    axes[0].grid(True, alpha=0.3)
-    axes[0].legend(loc='best', fontsize=10)
-    axes[0].set_title(f'Order Parameters (Density-Based) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
-                     fontsize=14, fontweight='bold')
-    
-    # Mass conservation
-    axes[1].plot(df_order['t'], df_order['mass_true'], 'b-', linewidth=2, label='True', alpha=0.8)
-    axes[1].plot(df_order['t'], df_order['mass_pred'], 'g--', linewidth=2, label='Predicted (Corrected)', alpha=0.8)
-    axes[1].set_ylabel('Total Mass', fontsize=12, fontweight='bold')
-    axes[1].grid(True, alpha=0.3)
-    axes[1].legend(loc='best', fontsize=10)
-    
-    # Mass error
-    axes[2].semilogy(df_order['t'], df_order['mass_error_rel'] * 100, 'r-', linewidth=2)
-    axes[2].set_ylabel('Mass Error (%)', fontsize=12, fontweight='bold')
-    axes[2].set_xlabel('Time (s)', fontsize=12)
-    axes[2].grid(True, alpha=0.3)
-    max_err = df_order['mass_error_rel'].max() * 100
-    axes[2].axhline(max_err, color='k', linestyle='--', alpha=0.5,
-                   label=f'Max: {max_err:.2e}%')
-    axes[2].legend(loc='best', fontsize=10)
-    
-    plt.tight_layout()
-    plt.savefig(output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
-    plt.close()
-
-
-def _plot_particle_order_parameters(order_params_path, output_dir, ic_type, ic_stats):
-    """Plot all particle-based order parameters on one unified figure."""
-    df_order_traj = pd.read_csv(order_params_path)
-    
-    # Load density metrics for true vs pred comparison
-    density_metrics_path = order_params_path.parent / "density_metrics.csv"
-    has_density_comparison = density_metrics_path.exists()
-    if has_density_comparison:
-        df_density = pd.read_csv(density_metrics_path)
-    
-    # Create figure with all order parameters
-    fig, axes = plt.subplots(5, 1, figsize=(14, 14), sharex=True)
-    
-    # 1. Polarization
-    axes[0].plot(df_order_traj['t'], df_order_traj['phi'], 'b-', linewidth=2.5, alpha=0.85)
-    axes[0].set_ylabel('Polarization Φ\n(Velocity Alignment)', fontsize=12, fontweight='bold')
-    axes[0].grid(True, alpha=0.3)
-    axes[0].set_ylim([0, 1.05])
-    median_phi = df_order_traj['phi'].iloc[-len(df_order_traj)//4:].median()
-    axes[0].axhline(median_phi, color='r', linestyle='--', alpha=0.5,
-                   label=f'Final median: {median_phi:.3f}')
-    axes[0].legend(loc='best', fontsize=10)
-    axes[0].set_title(f'Order Parameters - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})', 
-                     fontsize=14, fontweight='bold')
-    
-    # 2. Mean speed
-    axes[1].plot(df_order_traj['t'], df_order_traj['mean_speed'], 'g-', linewidth=2.5, alpha=0.85)
-    axes[1].set_ylabel('Mean Speed\n(Kinetic Energy)', fontsize=12, fontweight='bold')
-    axes[1].grid(True, alpha=0.3)
-    axes[1].axhline(df_order_traj['mean_speed'].mean(), color='k', linestyle='--', alpha=0.4,
-                   label=f'Mean: {df_order_traj["mean_speed"].mean():.3f}')
-    axes[1].legend(loc='best', fontsize=10)
-    
-    # 3. Angular momentum
-    if 'angular_momentum' in df_order_traj.columns:
-        axes[2].plot(df_order_traj['t'], df_order_traj['angular_momentum'], 'c-', linewidth=2.5, alpha=0.85)
-        axes[2].set_ylabel('Angular Momentum\n(Milling/Rotation)', fontsize=12, fontweight='bold')
-        axes[2].grid(True, alpha=0.3)
-    
-    # 4. Density variance (clustering) - TRUE VS PREDICTED COMPARISON!
-    if has_density_comparison and 'density_variance_true' in df_density.columns:
-        axes[3].plot(df_density['t'], df_density['density_variance_true'], 'b-', linewidth=2.5, alpha=0.85, label='Ground Truth')
-        axes[3].plot(df_density['t'], df_density['density_variance_pred'], 'r--', linewidth=2.5, alpha=0.85, label='Predicted')
-        axes[3].set_ylabel('Density Variance\n(Clustering)', fontsize=12, fontweight='bold')
-        axes[3].grid(True, alpha=0.3)
-        axes[3].legend(loc='best', fontsize=11)
-    elif 'density_variance' in df_order_traj.columns:
-        # Fallback if no density comparison
-        axes[3].plot(df_order_traj['t'], df_order_traj['total_mass'], 'orange', linewidth=2.5, alpha=0.85)
-        axes[3].set_ylabel('Density Variance\n(Clustering)', fontsize=12, fontweight='bold')
-        axes[3].grid(True, alpha=0.3)
-    
-    # 5. Total mass - TRUE VS PREDICTED COMPARISON!
-    if has_density_comparison and 'mass_true' in df_density.columns:
-        axes[4].plot(df_density['t'], df_density['mass_true'], 'b-', linewidth=2.5, alpha=0.85, label='Ground Truth')
-        axes[4].plot(df_density['t'], df_density['mass_pred'], 'r--', linewidth=2.5, alpha=0.85, label='Predicted')
-        axes[4].set_ylabel('Total Mass\n(Conservation)', fontsize=12, fontweight='bold')
-        axes[4].set_xlabel('Time (s)', fontsize=12, fontweight='bold')
-        axes[4].grid(True, alpha=0.3)
-        axes[4].legend(loc='best', fontsize=11)
-    elif 'total_mass' in df_order_traj.columns:
-        # Fallback if no density comparison
-        axes[4].plot(df_order_traj['t'], df_order_traj['total_mass'], 'purple', linewidth=2.5, alpha=0.85)
-        axes[4].set_ylabel('Total Mass\n(Conservation)', fontsize=12, fontweight='bold')
-        axes[4].set_xlabel('Time (s)', fontsize=12, fontweight='bold')
-        axes[4].grid(True, alpha=0.3)
+    # Mass conservation: true vs predicted
+    axes[panel].plot(op['t'], op['mass_true'], 'b-', linewidth=2.5, alpha=0.85, label='Ground Truth')
+    axes[panel].plot(op['t'], op['mass_pred'], 'r--', linewidth=2.5, alpha=0.85, label=f'Predicted ({model_label})')
+    max_err = np.max(op['mass_error_rel']) * 100
+    axes[panel].set_ylabel('Total Mass\nΣ ρ(x,y)·dx·dy', fontsize=12, fontweight='bold')
+    axes[panel].set_xlabel('Time (s)', fontsize=12, fontweight='bold')
+    axes[panel].grid(True, alpha=0.3)
+    axes[panel].legend(loc='upper left', fontsize=11)
+    # Add mass error annotation
+    ax_err = axes[panel].twinx()
+    ax_err.plot(op['t'], op['mass_error_rel'] * 100, 'orange', linewidth=1.5, alpha=0.6, label=f'Mass error (max {max_err:.2f}%)')
+    ax_err.set_ylabel('Mass Error (%)', fontsize=10, color='orange')
+    ax_err.tick_params(axis='y', labelcolor='orange')
+    ax_err.legend(loc='upper right', fontsize=9)
     
     plt.tight_layout()
     plt.savefig(output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')

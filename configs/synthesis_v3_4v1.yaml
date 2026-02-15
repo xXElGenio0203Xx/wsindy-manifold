@@ -1,0 +1,157 @@
+---
+# ============================================================================
+# SYNTHESIS V3.4v1 — Extreme Dynamics, Single Long Gaussian IC
+# ============================================================================
+#
+# HYPOTHESIS:
+#   V3.4 got MVAR R²=+0.080 with 261 mixed ICs at extreme dynamics.
+#   V6a tests single Gaussian IC but with N=400, T=120s (huge).
+#   V3.4v1 is a focused experiment:
+#     - Same extreme physics as V3.4 (speed=5, Ca=3, R=5, η=0.1)
+#     - Single long Gaussian training sim (coherent trajectory)
+#     - N=300 particles (richer than V3.4's 100, lighter than V6a's 400)
+#     - T=60s (20 domain crossings — plenty of dynamics)
+#     - 95% POD energy (let the spectrum decide d)
+#     - Longer lag p=7 (0.84s memory — captures slower modes)
+#     - Stronger LSTM than V2.4.2: 128h, 3 layers, 5000 epochs
+#     - Strong Ridge α=10, clamp ON (V2.4 champion strategy)
+#
+# KEY QUESTION:
+#   Can a single coherent trajectory + more POD modes + deeper lag
+#   outperform V3.4's 261 mixed ICs at extreme dynamics?
+#
+# MATH:
+#   T=60s, dt=0.04, subsample=3 → 500 frames
+#   MVAR: d≈? (95% energy), p=7 → samples = 500-7 = 493
+#   LSTM: same 493 samples, 128h×3L
+#   Snapshot: 1 IC × 500 × 2304 = 1.15M floats — trivially small
+#
+# ============================================================================
+
+experiment_name: "synthesis_v3_4v1"
+
+# ============================================================================
+# SIMULATION — Extreme dynamics, N=300
+# ============================================================================
+sim:
+  N: 300                   # 3× V3.4's 100
+  T: 60.0                  # 10× V3.4's 6s → 20 domain crossings at speed=5
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 5.0               # V3.4 extreme speed
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 5.0                   # V3.4 wide alignment
+
+noise:
+  kind: "gaussian"
+  eta: 0.1                 # V3.4 low noise
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 3.0                # V3.4 strong attraction
+    Cr: 0.5                # V3.4 core repulsion
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING: 1 Gaussian IC (centered, medium-tight cluster)
+# ============================================================================
+train_ic:
+  center: [7.5, 7.5]
+  variances: [2.0]
+  n_samples_per_variance: 1
+
+# ============================================================================
+# TEST ICs — Diverse for cross-generalization check
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  gaussian:
+    enabled: true
+    test_positions_x: [3.5, 7.5, 11.5]
+    test_positions_y: [3.5, 7.5, 11.5]
+    test_variances: [0.8, 1.5, 3.0]
+    n_samples_per_config: 1
+    extrapolation_positions: [[2.0, 2.0], [13.0, 13.0], [2.0, 13.0], [13.0, 2.0]]
+    extrapolation_variance: [1.5]
+
+  uniform:
+    enabled: true
+    n_runs: 3
+
+  ring:
+    enabled: true
+    test_radii: [3.0, 5.0]
+    test_widths: [0.5]
+    n_samples_per_config: 1
+
+  two_clusters:
+    enabled: true
+    test_separations: [4.0, 7.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 1
+
+# ============================================================================
+# ROM — 95% energy, longer lag, stronger LSTM
+# ============================================================================
+rom:
+  subsample: 3            # 1500 steps / 3 = 500 frames
+  pod_energy: 0.95        # Let spectrum decide d (expect d≈5-12 for single traj)
+
+  models:
+    mvar:
+      enabled: true
+      lag: 7              # Deeper memory: 7 × 3 × 0.04 = 0.84s
+      ridge_alpha: 10.0   # V2.4 champion
+
+    lstm:
+      enabled: true
+      lag: 7              # Match MVAR
+      hidden_units: 128   # 2× V2.4.2
+      num_layers: 3       # Deeper than V2.4.2's 2
+      max_epochs: 5000    # 1.67× V2.4.2
+      patience: 300       # More patient
+      batch_size: 64      # Smaller for ~493 samples
+      learning_rate: 5.0e-4
+      weight_decay: 1.0e-4
+      gradient_clip: 1.0
+      dropout: 0.15       # Slightly more for deeper net
+      scheduler_patience: 50
+
+# ============================================================================
+# EVALUATION — V2.4 champion strategy
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.84    # = lag(7) × subsample(3) × dt(0.04)
+  clamp_negative: true

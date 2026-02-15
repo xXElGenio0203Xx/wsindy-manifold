@@ -1,0 +1,201 @@
+---
+# ============================================================================
+# SYNTHESIS V1 STRONG — V1 with 4× longer training sims, focused ICs
+# ============================================================================
+#
+# CHANGES FROM V1:
+#
+# 1. LONGER TRAINING SIMULATIONS: T=20s (4× longer than V1's 5s)
+#    - More temporal data per run → more MVAR training samples
+#    - V1: 200 runs × 37 samples/run = 7,400 total
+#    - V1 Strong: 200 runs × ~162 samples/run = ~32,400 total (4.4×)
+#    - Same params/data ratio improvement: 0.20 → 0.045
+#
+# 2. TEST SIMS STAY AT T=5s via test_sim.T override
+#    - Same evaluation horizon as V1 for fair comparison
+#    - Same forecast_start=0.6s → 37 forecast steps
+#
+# 3. FOCUSED IC TYPES: gaussian + two_clusters only (no uniform)
+#    - gaussian: produces single clusters → smooth evolving density
+#    - two_clusters: produces merging dynamics → interesting temporal structure
+#    - These are the most physically interesting IC types
+#    - 150 gaussian + 50 two_clusters = 200 total training runs
+#
+# 4. EVERYTHING ELSE IDENTICAL TO V1:
+#    - Same dynamics: speed=1.5, Ca=0.8, Cr=0.3, R=2.5, η=0.2
+#    - Same density: 48×48, bw=4.0
+#    - Same ROM: subsample=3, pod_energy=0.90, lag=5, α=1e-4
+#    - Same domain: 15×15, N=100
+#
+# EXPECTED RESULTS:
+#   ROM frames/run (train): 500/3 ≈ 167
+#   MVAR samples/run (train): 167 - 5 = 162
+#   Total training samples: 200 × 162 = 32,400
+#   MVAR params: ~17² × 5 + 17 ≈ 1,462 (same as V1)
+#   Params/data ratio: 0.045 (4× better than V1's 0.20!)
+#   Forecast steps (test): same 37 as V1
+#
+# HYPOTHESIS: More training data per run with same dynamics should improve
+# MVAR coefficient estimation and boost R² beyond V1's +0.490
+#
+# ============================================================================
+
+experiment_name: "synthesis_v1_strong"
+
+# ============================================================================
+# SIMULATION PARAMETERS — training sims run for 20s
+# ============================================================================
+sim:
+  N: 100                   # Same as V1
+  T: 20.0                  # 4× LONGER training sims (V1 was 5.0)
+  dt: 0.04                 # 500 frames/run (V1 was 126)
+  Lx: 15.0                # Same domain
+  Ly: 15.0
+  bc: "periodic"
+
+# Override test sim duration to match V1 evaluation
+test_sim:
+  T: 5.0                   # Test sims stay at 5s (same as V1)
+
+# Model type and speed (identical to V1)
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+# Alignment parameters (identical to V1)
+params:
+  R: 2.5
+
+# Noise (identical to V1)
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+# Morse forces (identical to V1)
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY FIELD — identical to V1
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING: 200 runs — gaussian + two_clusters ONLY
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  # Gaussian distributions (150 runs = 75%)
+  gaussian:
+    enabled: true
+    n_runs: 150
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 3        # 4×4×3×3 = 144, pad to 150
+
+  # Uniform DISABLED for V1 Strong
+  uniform:
+    enabled: false
+
+  # Two-cluster distributions (50 runs = 25%)
+  two_clusters:
+    enabled: true
+    n_runs: 50
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 8        # 3×2×8 = 48, pad to 50
+
+  # Ring disabled
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST: 26 runs — gaussian + two_clusters ONLY (same as V1 count minus uniform)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  # Gaussian test (15 runs)
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1        # 3×3×1 = 9, plus 6 extrapolation
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0], [7.5, 1.5], [1.5, 7.5]]
+    extrapolation_variance: [1.2]
+
+  # Uniform DISABLED for V1 Strong
+  uniform:
+    enabled: false
+
+  # Two-cluster test (11 runs)
+  two_clusters:
+    enabled: true
+    n_runs: 11
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 5
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM CONFIGURATION — identical to V1
+# ============================================================================
+rom:
+  subsample: 3
+  pod_energy: 0.90
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5
+      ridge_alpha: 1.0e-4
+
+    lstm:
+      enabled: true
+      lag: 5
+      hidden_units: 64
+      num_layers: 2
+      max_epochs: 1500
+      patience: 50
+      batch_size: 256
+      learning_rate: 5.0e-4
+      weight_decay: 1.0e-3
+      gradient_clip: 1.0
+      dropout: 0.1
+
+# ============================================================================
+# EVALUATION — identical to V1
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60     # Same as V1: condition on 0.6s, forecast 4.4s

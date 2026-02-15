@@ -113,6 +113,7 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         # Load trajectory for later use
         traj_data = np.load(run_dir / "trajectory.npz")
         traj = traj_data["traj"]
+        vel = traj_data["vel"] if "vel" in traj_data else None
         traj_times = traj_data["times"]
         
         # Align trajectory to the prediction time window
@@ -123,12 +124,16 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
             pred_start_time = times[0]
             traj_start_idx = np.argmin(np.abs(traj_times - pred_start_time))
             traj = traj[traj_start_idx:traj_start_idx + T_pred]
+            if vel is not None:
+                vel = vel[traj_start_idx:traj_start_idx + T_pred]
             traj_times = traj_times[traj_start_idx:traj_start_idx + T_pred]
             
             # If still mismatched (e.g., due to ROM subsampling), subsample to match
             if traj.shape[0] != T_pred:
                 subsample_factor = max(1, traj.shape[0] // T_pred)
                 traj = traj[::subsample_factor][:T_pred]
+                if vel is not None:
+                    vel = vel[::subsample_factor][:T_pred]
                 traj_times = traj_times[::subsample_factor][:T_pred]
         
         # Store for visualization
@@ -137,6 +142,7 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
             "rho_pred": rho_pred,
             "times": times,
             "traj": traj,
+            "vel": vel,
             "ic_type": meta[ic_key],
             "frame_metrics": frame_metrics
         }

@@ -1,0 +1,237 @@
+---
+# ============================================================================
+# SYNTHESIS V2.1 — Selective Stabilization + More POD Energy
+# ============================================================================
+#
+# DIAGNOSIS FROM V2:
+#   - d=8 modes captured only 64.4% energy → POD ceiling R²=0.65
+#   - MVAR still naturally unstable (ρ=1.209) even with α=1.0
+#   - UNIFORM eigenvalue scaling crushed ALL dynamics equally
+#   - Result: over-damped forecasts, R²=-0.016 (worse than mean)
+#
+# ROOT CAUSE:
+#   Uniform scaling projects the entire spectrum inward by the same factor.
+#   If ρ_before=1.21 and threshold=0.98, the scale factor s ≈ 0.81.
+#   A stable eigenvalue at |λ|=0.90 gets crushed to 0.90×0.81 = 0.73.
+#   This kills genuine dynamical correlations.
+#
+# FIXES IN V2.1:
+#
+#   [A] SELECTIVE SCHUR STABILIZATION (code change in mvar_trainer.py)
+#       Instead of uniform scaling, use Schur decomposition:
+#         C = Q T Q^H → project only |λ|>threshold to |λ|=threshold
+#       Stable eigenvalues are preserved EXACTLY.
+#       This is the mathematically correct way to enforce stability.
+#
+#   [B] MORE POD MODES — fixed_modes: 14 (80% energy, up from 64%)
+#       V2 used d=8 (64% energy) → ceiling was only R²=0.65
+#       d=14 captures ~80% energy → ceiling should be ~0.81
+#       Trade-off: more MVAR parameters (14²×5 = 980 vs 8²×3 = 192)
+#       But data/param ratio is still 12,267/980 ≈ 12.5× (good)
+#
+#   [C] MODERATE REGULARIZATION — ridge_alpha: 0.1
+#       V1 α=1e-4 was too weak (ρ=1.322)
+#       V2 α=1.0 was too strong (over-regularized + uniform scaling)
+#       α=0.1 is a middle ground: constrains but doesn't crush
+#
+#   [D] INCREASE LAG — lag: 5
+#       With d=14 modes, the system has richer dynamics
+#       lag=5 gives 0.60s of temporal memory (5 × 0.12s Δt_ROM)
+#       More context for the MVAR to learn from
+#
+#   [E] RELAXED EIGENVALUE THRESHOLD — 0.995
+#       With selective projection, we can afford a tighter bound
+#       0.995 keeps eigenvalues very close to their learned values
+#       Only the truly unstable ones get projected
+#
+# BUDGET:
+#   ROM frames/run:      150 / 3 = 50
+#   MVAR samples/run:    50 - 5 = 45
+#   Total samples:       261 × 45 ≈ 11,745
+#   MVAR params:         5 × 14² + 14 = 994 (with intercept)
+#   Data/param ratio:    11,745 / 994 ≈ 11.8× (good, matches Alvarez's 15.9×)
+#   Companion dim:       5 × 14 = 70
+#
+# EXPECTED PERFORMANCE:
+#   POD ceiling R²:      ~0.81 (up from 0.65)
+#   MVAR physical R²:    0.40-0.65 (selective projection preserves dynamics)
+#   LSTM R²:             0.30-0.60 (more modes = richer dynamics to learn)
+#
+# ============================================================================
+
+experiment_name: "synthesis_v2_1"
+
+# ============================================================================
+# SIMULATION — Same as V2 (same data, only ROM changes)
+# ============================================================================
+sim:
+  N: 100
+  T: 6.0
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 2.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY — Same as V2
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — Same as V2 (261 runs)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 180
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 3
+
+  uniform:
+    enabled: true
+    n_runs: 75
+    n_samples: 75
+
+  two_clusters:
+    enabled: true
+    n_runs: 45
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 7
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — Same as V2 (26 runs)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1
+    extrapolation_positions: [[2.0, 2.0], [13.0, 2.0], [2.0, 13.0], [13.0, 13.0], [7.5, 1.5], [1.5, 7.5]]
+    extrapolation_variance: [1.2]
+
+  uniform:
+    enabled: true
+    n_runs: 8
+
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 3
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM — IMPROVED CONFIGURATION
+# ============================================================================
+rom:
+  subsample: 3             # Δt_ROM = 0.12s
+
+  # [B] MORE MODES: d=14 → ~80% energy (up from d=8 → 64%)
+  fixed_modes: 14
+
+  # [E] RELAXED THRESHOLD — selective projection can handle tighter bound
+  eigenvalue_threshold: 0.995
+
+  models:
+    mvar:
+      enabled: true
+      # [D] LAG 5 — more temporal context for richer dynamics
+      lag: 5
+      # [C] MODERATE RIDGE — between V1's 1e-4 and V2's 1.0
+      ridge_alpha: 0.1
+      # Mirror rom-level threshold
+      eigenvalue_threshold: 0.995
+
+    lstm:
+      enabled: true
+      lag: 5               # Match MVAR lag
+      hidden_units: 48     # Scaled to d=14 (roughly 3× latent dim)
+      num_layers: 2
+      max_epochs: 2000
+      patience: 80
+      batch_size: 256
+      learning_rate: 3.0e-4
+      weight_decay: 1.0e-3
+      gradient_clip: 1.0
+      dropout: 0.1
+
+# ============================================================================
+# EVALUATION
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60     # = lag(5) × subsample(3) × dt(0.04) = 0.60s
+
+# ============================================================================
+# V2 → V2.1 COMPARISON
+# ============================================================================
+#
+#  Parameter                | V2            | V2.1          | Rationale
+#  -------------------------|---------------|---------------|--------------------
+#  POD modes (d)            | 8 (64% E)     | 14 (80% E)    | Higher ceiling
+#  POD ceiling R²           | ~0.65         | ~0.81         | More to work with
+#  MVAR lag (p)             | 3             | 5             | More temporal memory
+#  Ridge α                  | 1.0           | 0.1           | Less over-regularized
+#  MVAR params              | 192           | 994           | Proportional to d²×p
+#  Data/param ratio         | 61×           | 11.8×         | Still good (>10×)
+#  Companion dim            | 24            | 70            | Larger but manageable
+#  Eigenvalue threshold     | 0.98          | 0.995         | Tighter, selective
+#  Stability method         | Uniform scale | Schur project | Preserves stable λs
+#  LSTM hidden              | 32            | 48            | Matched to d=14
+#  Forecast start           | 0.36s         | 0.60s         | Matched to lag=5
+#
+# ============================================================================

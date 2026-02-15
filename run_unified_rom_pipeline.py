@@ -41,8 +41,8 @@ from rectsim.test_evaluator import evaluate_test_runs
 from rectsim.forecast_utils import mvar_forecast_fn_factory
 
 # Import ROM utilities
-from rectsim.rom_data_utils import build_latent_dataset
-from rom.lstm_rom import LatentLSTMROM, train_lstm_rom, lstm_forecast_fn_factory
+from rectsim.rom_data_utils import build_latent_dataset, build_multistep_latent_dataset
+from rom.lstm_rom import LatentLSTMROM, train_lstm_rom, lstm_forecast_fn_factory, load_lstm_model
 
 # Import runtime analysis
 from rectsim.runtime_analyzer import RuntimeAnalyzer, compute_mvar_params, compute_lstm_params
@@ -198,6 +198,22 @@ def main():
     print(f"   X_all: {X_all.shape}  [N_samples, lag, d]")
     print(f"   Y_all: {Y_all.shape}  [N_samples, d]")
     print(f"   Total samples: {X_all.shape[0]:,}")
+
+    # Build multi-step targets for LSTM supervised rollout loss
+    Y_multi = None
+    X_lstm = X_all  # default: same dataset for LSTM and MVAR
+    Y_lstm = Y_all
+    if lstm_enabled:
+        lstm_ms_cfg = models_cfg.get('lstm', {})
+        ms_enabled = lstm_ms_cfg.get('multistep_loss', False)
+        ms_k = lstm_ms_cfg.get('multistep_k', 5)
+        if ms_enabled and ms_k > 1:
+            X_lstm, Y_multi = build_multistep_latent_dataset(y_trajs, lag=lag, k_steps=ms_k)
+            Y_lstm = Y_multi[:, 0, :]  # 1-step target aligned with X_lstm
+            print(f"\n✓ Multi-step targets built:")
+            print(f"   X_lstm:  {X_lstm.shape}  (aligned with Y_multi)")
+            print(f"   Y_multi: {Y_multi.shape}  [N_samples, k={ms_k}, d]")
+            print(f"   (Dropped {X_all.shape[0] - X_lstm.shape[0]} samples near trajectory ends)")
     
     # Save dataset to rom_common
     np.savez(
@@ -246,10 +262,11 @@ def main():
         # Train LSTM (with timing) - pass rom_config dict directly
         with runtime_analyzer.time_operation('lstm_training') as timer:
             lstm_model_path, lstm_val_loss = train_lstm_rom(
-                X_all=X_all,
-                Y_all=Y_all,
+                X_all=X_lstm,
+                Y_all=Y_lstm,
                 config={'rom': rom_config},  # Wrap in expected structure
-                out_dir=str(LSTM_DIR)
+                out_dir=str(LSTM_DIR),
+                Y_multi=Y_multi,
             )
         lstm_training_time = timer.elapsed
         
@@ -335,19 +352,29 @@ def main():
         if lstm_enabled:
             print(f"\n🔬 Benchmarking LSTM inference...")
             
-            # Load LSTM model for benchmarking
+            # Load LSTM model for benchmarking (new format with normalization)
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            lstm_model = LatentLSTMROM(
-                d=R_POD,
-                hidden_units=lstm_data['hidden_units'],
-                num_layers=lstm_data['num_layers']
-            )
-            lstm_model.load_state_dict(torch.load(lstm_data['model_path'], map_location=device))
-            lstm_model.to(device)
-            lstm_model.eval()
+            try:
+                lstm_model, lstm_input_mean, lstm_input_std = load_lstm_model(
+                    str(LSTM_DIR), device=str(device))
+            except (ValueError, Exception):
+                # Fallback for legacy format
+                lstm_model = LatentLSTMROM(
+                    d=R_POD,
+                    hidden_units=lstm_data['hidden_units'],
+                    num_layers=lstm_data['num_layers']
+                )
+                state = torch.load(lstm_data['model_path'], map_location=device, weights_only=False)
+                if isinstance(state, dict) and 'state_dict' in state:
+                    lstm_model.load_state_dict(state['state_dict'])
+                else:
+                    lstm_model.load_state_dict(state)
+                lstm_model.to(device)
+                lstm_model.eval()
+                lstm_input_mean, lstm_input_std = None, None
             
             # Create forecast function
-            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model)
+            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model, lstm_input_mean, lstm_input_std)
             
             # Count parameters
             lstm_params = compute_lstm_params(lstm_model)
@@ -498,19 +525,29 @@ def main():
             TEST_DIR = OUTPUT_DIR / "test"
             ROM_SUBSAMPLE = rom_config.get('subsample', rom_config.get('rom_subsample', 1))
             
-            # Load LSTM model
+            # Load LSTM model (new format with normalization + residual)
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             lstm_lag = lstm_data['lag']
-            lstm_hidden = lstm_data['hidden_units']
-            lstm_layers = lstm_data['num_layers']
             
-            lstm_model = LatentLSTMROM(d=R_POD, hidden_units=lstm_hidden, num_layers=lstm_layers)
-            lstm_model.load_state_dict(torch.load(lstm_data['model_path'], map_location=device))
-            lstm_model.to(device)
-            lstm_model.eval()
+            try:
+                lstm_model, lstm_input_mean, lstm_input_std = load_lstm_model(
+                    str(LSTM_DIR), device=str(device))
+            except (ValueError, Exception):
+                # Fallback for legacy format
+                lstm_hidden = lstm_data['hidden_units']
+                lstm_layers = lstm_data['num_layers']
+                lstm_model = LatentLSTMROM(d=R_POD, hidden_units=lstm_hidden, num_layers=lstm_layers)
+                state = torch.load(lstm_data['model_path'], map_location=device, weights_only=False)
+                if isinstance(state, dict) and 'state_dict' in state:
+                    lstm_model.load_state_dict(state['state_dict'])
+                else:
+                    lstm_model.load_state_dict(state)
+                lstm_model.to(device)
+                lstm_model.eval()
+                lstm_input_mean, lstm_input_std = None, None
             
             # Create LSTM forecast function
-            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model)
+            lstm_forecast_fn = lstm_forecast_fn_factory(lstm_model, lstm_input_mean, lstm_input_std)
             
             test_results_df = evaluate_test_runs(
                 test_dir=TEST_DIR,

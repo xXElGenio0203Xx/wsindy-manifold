@@ -1,0 +1,180 @@
+---
+# ============================================================================
+# SYNTHESIS V3.1 — Alvarez-Caliber: 98% POD Energy, Long Simulations
+# ============================================================================
+#
+# DESIGN RATIONALE:
+#
+#   Alvarez uses 98% POD energy → 13 modes (SFM dynamics are low-rank).
+#   Our Vicsek+Morse dynamics need d=35 for 98% energy — 2.7× more modes.
+#   This means we need MUCH more training data to avoid underdetermination.
+#
+#   MVAR MATH:
+#     d=35, p=5: n_params = 35 × 5 × 35 + 35 = 6,160
+#     Target: ratio ≥ 15× → need ≥ 92,400 samples
+#     400 ICs × T=30s → 250 frames/IC → 245 usable → 98,000 samples
+#     Ratio = 98,000 / 6,160 = 15.9× ✓
+#
+#   SIMULATION BUDGET (12 hours):
+#     Sims: 400 ICs × ~25s each ≈ 2.8 hours
+#     POD: ~5 min (400 ICs × 250 frames × 2304 pixels)
+#     MVAR: ~10 min (ridge on 98K × 175 matrix)
+#     LSTM: ~3-4 hours (5000 epochs, 128 hidden, 3 layers)
+#     Test: 40 ICs × ~25s sims + eval ≈ 20 min
+#     Total estimate: ~7-8 hours — fits in 12 hour window
+#
+#   KEY DIFFERENCES FROM PREVIOUS RUNS:
+#     - Gaussian ICs ONLY (simplify, focus on one IC type)
+#     - T=30s (5× longer than V2) → richer dynamics per IC
+#     - d=35 modes (98% energy, matching Alvarez)
+#     - NO eigenvalue scaling (let MVAR run free)
+#     - NO clamping (raw output)
+#     - p=5 lag (captures longer temporal correlations)
+#     - α=1e-4 (light regularization — data is plentiful)
+#     - Strong LSTM: 128 hidden, 3 layers, 5000 epochs
+#
+# ============================================================================
+
+experiment_name: "synthesis_v3_1"
+
+# ============================================================================
+# SIMULATION
+# ============================================================================
+sim:
+  N: 100
+  T: 30.0             # 5× longer than V2 — gives 250 frames per IC
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 2.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY — Same 48×48 grid
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — 400 Gaussian-only runs
+# ============================================================================
+# Gaussian only: dense grid of positions × variances
+# 5 × 5 grid × 4 variances × 4 samples = 400
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 400
+    positions_x: [2.0, 5.0, 7.5, 10.0, 13.0]
+    positions_y: [2.0, 5.0, 7.5, 10.0, 13.0]
+    variances: [0.5, 1.0, 2.0, 3.5]
+    n_samples_per_config: 4
+
+  uniform:
+    enabled: false
+
+  two_clusters:
+    enabled: false
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — 40 Gaussian runs (interpolation + extrapolation)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+
+  gaussian:
+    enabled: true
+    n_runs: 40
+    test_positions_x: [3.5, 6.25, 8.75, 11.5]
+    test_positions_y: [3.5, 6.25, 8.75, 11.5]
+    test_variances: [0.75, 1.5, 2.75]
+    n_samples_per_config: 1
+    extrapolation_positions: [[1.0, 1.0], [14.0, 1.0], [1.0, 14.0], [14.0, 14.0]]
+    extrapolation_variance: [0.75]
+
+  uniform:
+    enabled: false
+
+  two_clusters:
+    enabled: false
+
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM — 98% energy, no scaling, no clamping
+# ============================================================================
+rom:
+  subsample: 3           # 750 steps / 3 = 250 frames per IC
+
+  # 98% energy → d=35 modes (from POD spectrum analysis)
+  pod_energy: 0.98
+
+  # NO eigenvalue_threshold — raw MVAR, no scaling
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5              # Longer memory for richer dynamics
+      ridge_alpha: 1.0e-4  # Light regularization — we have 98K samples
+      # NO eigenvalue_threshold
+
+    lstm:
+      enabled: true
+      lag: 5              # Match MVAR lag
+      hidden_units: 128   # Large capacity for 35-dim dynamics
+      num_layers: 3       # Deep network
+      max_epochs: 5000    # Long training
+      patience: 200       # Be patient
+      batch_size: 256     # Reasonable batch for 98K samples
+      learning_rate: 1.0e-3
+      weight_decay: 1.0e-5  # Light weight decay
+      gradient_clip: 1.0
+      dropout: 0.1
+
+# ============================================================================
+# EVALUATION — No clamping, raw output
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60     # = lag(5) × subsample(3) × dt(0.04)
+  clamp_negative: false    # Raw output — no post-processing
