@@ -1,0 +1,146 @@
+---
+# Suite X: V3.3 regime, raw transform, no postprocess, H162
+experiment_name: X7_V33_raw_H162
+sim:
+  N: 100
+  T: 6.0
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: periodic
+test_sim:
+  T: 19.8
+model:
+  type: discrete
+  speed: 3.0
+  speed_mode: constant_with_forces
+params:
+  R: 4.0
+noise:
+  kind: gaussian
+  eta: 0.15
+  match_variance: true
+forces:
+  enabled: true
+  type: morse
+  params:
+    Ca: 2.0
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+alignment:
+  enabled: true
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+train_ic:
+  type: mixed_comprehensive
+  gaussian:
+    enabled: true
+    n_runs: 180
+    positions_x:
+    - 3.0
+    - 6.0
+    - 9.0
+    - 12.0
+    positions_y:
+    - 3.0
+    - 6.0
+    - 9.0
+    - 12.0
+    variances:
+    - 0.8
+    - 1.5
+    - 2.5
+    n_samples_per_config: 3
+  uniform:
+    enabled: true
+    n_runs: 75
+    n_samples: 75
+  two_clusters:
+    enabled: true
+    n_runs: 45
+    separations:
+    - 3.0
+    - 5.0
+    - 7.0
+    sigmas:
+    - 1.0
+    - 2.0
+    n_samples_per_config: 7
+  ring:
+    enabled: false
+test_ic:
+  type: mixed_test_comprehensive
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x:
+    - 4.5
+    - 7.5
+    - 10.5
+    test_positions_y:
+    - 4.5
+    - 7.5
+    - 10.5
+    test_variances:
+    - 1.2
+    n_samples_per_config: 1
+    extrapolation_positions:
+    - - 2.0
+      - 2.0
+    - - 13.0
+      - 2.0
+    - - 2.0
+      - 13.0
+    - - 13.0
+      - 13.0
+    - - 7.5
+      - 1.5
+    - - 1.5
+      - 7.5
+    extrapolation_variance:
+    - 1.2
+  uniform:
+    enabled: true
+    n_runs: 8
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations:
+    - 4.0
+    - 6.0
+    test_sigmas:
+    - 1.5
+    n_samples_per_config: 3
+    extrapolation_separations:
+    - 2.0
+    extrapolation_sigma:
+    - 1.5
+  ring:
+    enabled: false
+rom:
+  subsample: 3
+  fixed_modes: 20
+  density_transform: raw
+  models:
+    mvar:
+      enabled: true
+      lag: 3
+      ridge_alpha: 10.0
+    lstm:
+      enabled: false
+eval:
+  metrics:
+  - r2
+  - rmse
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.36
+  clamp_negative: true

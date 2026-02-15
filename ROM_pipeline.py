@@ -678,6 +678,10 @@ def main():
         clamp_negative = eval_config.get('clamp_negative', True)
         clamp_mode = 'C2' if clamp_negative else 'C0'
     summary['clamp_mode'] = clamp_mode
+    mass_pp = eval_config.get('mass_postprocess', 'none')
+    if mass_pp == 'none' and eval_config.get('mass_project', False):
+        mass_pp = 'scale'
+    summary['mass_postprocess'] = mass_pp
     
     if mvar_enabled and mvar_data is not None:
         summary['mvar'] = {

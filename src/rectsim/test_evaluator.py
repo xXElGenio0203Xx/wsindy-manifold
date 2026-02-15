@@ -145,11 +145,22 @@ def evaluate_test_runs(
     # k-step teacher-forced reset interval (0 or None = disabled)
     kstep_reset = eval_config.get('kstep_reset', 0)
 
+    # Mass postprocessing: enforce mass conservation after inverse transform.
+    # 'none'    = no mass correction (default, keeps raw/C2 baseline identical)
+    # 'simplex' = L2-optimal projection to {rho>=0, sum=M0} (Duchi et al.)
+    # 'scale'   = global multiplicative rescaling to M0
+    # Backward compat: mass_project=True → 'scale'
+    mass_postprocess = eval_config.get('mass_postprocess', 'none')
+    if mass_postprocess == 'none' and eval_config.get('mass_project', False):
+        mass_postprocess = 'scale'  # backward compatibility
+
     if save_time_resolved:
         print(f"\nTime-resolved evaluation enabled:")
         print(f"   Forecast period: t={forecast_start}s to t={forecast_end}s")
     if kstep_reset:
         print(f"\n   k-step teacher-forcing: reset every {kstep_reset} steps")
+    if mass_postprocess != 'none':
+        print(f"   Mass postprocess: {mass_postprocess} → M₀ from ground truth at forecast start")
     
     print(f"\nEvaluating {n_test} test runs...")
     
@@ -204,6 +215,11 @@ def evaluate_test_runs(
         # Determine initial condition window
         T_train = int(forecast_start / base_config_test['sim']['dt'] / rom_subsample)
         
+        # Compute M₀: true total mass at forecast start
+        # Always compute for metrics; only apply correction if mass_postprocess != 'none'
+        _m0_idx = max(T_train - 1, 0)
+        M0 = float(test_density[_m0_idx].sum())  # in cell units
+        
         # Use last P_LAG timesteps from training period as IC
         if T_train < P_LAG:
             print(f"⚠️  Warning: Training period ({T_train} steps) < lag ({P_LAG}). Using all available.")
@@ -257,6 +273,16 @@ def evaluate_test_runs(
                     pred_kstep_physical[_ti] = _fr
             elif clamp_mode == 'C1':
                 pred_kstep_physical = np.maximum(pred_kstep_physical, 0.0)
+            # Mass postprocess for k-step predictions
+            if mass_postprocess == 'simplex' and M0 > 0:
+                for _ti in range(len(pred_kstep_physical)):
+                    pred_kstep_physical[_ti] = _project_simplex(
+                        pred_kstep_physical[_ti], mass_target=M0)
+            elif mass_postprocess == 'scale' and M0 > 0:
+                for _ti in range(len(pred_kstep_physical)):
+                    _mc = pred_kstep_physical[_ti].sum()
+                    if _mc > 0:
+                        pred_kstep_physical[_ti] *= (M0 / _mc)
             # R² in density space
             _true_phys = test_density[T_train:]
             _ss_res_ks = np.sum((_true_phys.flatten() - pred_kstep_physical.flatten())**2)
@@ -347,6 +373,17 @@ def evaluate_test_runs(
             pred_physical_full = np.maximum(pred_physical_full, 0.0)
         # C0: no clamping at all
         
+        # ---- Mass postprocess for pred_physical_full ----
+        if mass_postprocess == 'simplex' and M0 > 0:
+            for t_idx in range(len(pred_physical_full)):
+                pred_physical_full[t_idx] = _project_simplex(
+                    pred_physical_full[t_idx], mass_target=M0)
+        elif mass_postprocess == 'scale' and M0 > 0:
+            for t_idx in range(len(pred_physical_full)):
+                m_cur = pred_physical_full[t_idx].sum()
+                if m_cur > 0:
+                    pred_physical_full[t_idx] *= (M0 / m_cur)
+        
         if clamp_mode == 'C2' and neg_frac > 0:
             for t_idx in range(len(pred_physical_forecast)):
                 frame = pred_physical_forecast[t_idx]
@@ -370,6 +407,23 @@ def evaluate_test_runs(
             print(f"   ℹ️  Clamp mode C0: {neg_frac:.1f}% negative pixels (no clamping)")
         elif neg_frac > 0:
             print(f"   ℹ️  {neg_frac:.1f}% negative density pixels (clamp_mode={clamp_mode})")
+        
+        # ---- Mass postprocess for pred_physical_forecast ----
+        if mass_postprocess == 'simplex' and M0 > 0:
+            for t_idx in range(len(pred_physical_forecast)):
+                pred_physical_forecast[t_idx] = _project_simplex(
+                    pred_physical_forecast[t_idx], mass_target=M0)
+            if test_idx == 0:
+                m_final = pred_physical_forecast[-1].sum()
+                print(f"   ℹ️  Mass postprocess=simplex: M₀={M0:.1f} → final mass={m_final:.1f}")
+        elif mass_postprocess == 'scale' and M0 > 0:
+            for t_idx in range(len(pred_physical_forecast)):
+                m_cur = pred_physical_forecast[t_idx].sum()
+                if m_cur > 0:
+                    pred_physical_forecast[t_idx] *= (M0 / m_cur)
+            if test_idx == 0:
+                m_final = pred_physical_forecast[-1].sum()
+                print(f"   ℹ️  Mass postprocess=scale: M₀={M0:.1f} → final mass={m_final:.1f}")
         
         # Ground truth (forecasted region only — for R² computation)
         true_physical = test_density[T_train:]
@@ -467,7 +521,9 @@ def evaluate_test_runs(
             'T_conditioning': T_train,
             'r2_kstep_density': r2_kstep_density,
             'r2_kstep_latent': r2_kstep_latent,
-            'kstep_reset': kstep_reset if kstep_reset else 0
+            'kstep_reset': kstep_reset if kstep_reset else 0,
+            'mass_postprocess': mass_postprocess,
+            'mass_target_M0': float(M0)
         }
         
         # Save metrics summary JSON (REQUIRED for visualization pipeline)
@@ -485,7 +541,9 @@ def evaluate_test_runs(
             'max_mass_violation': float(max_mass_violation),
             'r2_kstep_density': float(r2_kstep_density),
             'r2_kstep_latent': float(r2_kstep_latent),
-            'kstep_reset': int(kstep_reset) if kstep_reset else 0
+            'kstep_reset': int(kstep_reset) if kstep_reset else 0,
+            'mass_postprocess': mass_postprocess,
+            'mass_target_M0': float(M0)
         }
         with open(test_run_dir / "metrics_summary.json", 'w') as f:
             json.dump(metrics_dict, f, indent=2)
