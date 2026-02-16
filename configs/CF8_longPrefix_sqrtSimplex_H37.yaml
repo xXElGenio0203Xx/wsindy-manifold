@@ -1,0 +1,191 @@
+---
+# ============================================================================
+# CF8 — LONG-PREFIX SINGLE-IC CONTINUATION (√ρ + Simplex, d=19, p=5, H37)
+# ============================================================================
+#
+# This config replicates the CF8 experiment from suite_CONT_fix_v1 using the
+# standard ROM pipeline (run_data_generation + run_visualizations).
+#
+# KEY INSIGHT FROM CF8:
+#   Long training prefix (72s = 600 ROM frames) makes the MVAR regression
+#   well-posed: 595 samples for 95 features (ratio 6.26×).
+#   With α=0.01, spectral radius ρ(C) ≈ 0.999 — marginally stable.
+#   Best individual trial achieved R² = +0.920.
+#
+# CF8 PARAMETERS:
+#   - V1 regime: N=100, speed=1.5, R=2.5, η=0.2, Morse(Ca=0.8,Cr=0.3)
+#   - Training duration: T_train = 72s → 600 ROM frames after subsample=3
+#   - Forecast horizon: H=37 steps → 37 × 0.12 = 4.44s
+#   - Total sim time: ~77s (72s train + 4.44s forecast + 0.56s buffer)
+#   - POD: d=19 fixed modes, √ρ transform
+#   - MVAR: p=5 lag, α=0.01 ridge
+#   - Post-processing: simplex projection (mass conservation)
+#
+# MVAR MATH:
+#   d=19, p=5: n_features = 19 × 5 = 95
+#   600 ROM frames → 595 usable samples (after lag)
+#   Overdetermination ratio: 595/95 = 6.26× ← well-posed
+#
+# TIMING ESTIMATE (~200 ICs × 77s sim):
+#   Single sim: ~60s (N=100, 1925 steps)
+#   Training sims: 200 × 60s = ~3.3h
+#   Test sims: 30 × 60s = ~30min
+#   POD + MVAR: ~5min
+#   Eval: ~10min
+#   Total: ~4.5h — fits in 8h time limit
+#
+# MEMORY ESTIMATE:
+#   Snapshot matrix: 200 ICs × 600 frames × 2304 = 276M floats ≈ 2.2GB
+#   SVD workspace: ~3× = ~6.6GB
+#   Peak: ~12-15GB → safe at 32GB
+#
+# ============================================================================
+
+experiment_name: "CF8_longPrefix_sqrtSimplex_H37"
+
+# ============================================================================
+# SIMULATION — V1 Regime (slow, moderate clustering)
+# ============================================================================
+sim:
+  N: 100
+  T: 77.0                  # 72s train + 5s forecast buffer
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+# Test uses same long duration (train prefix + forecast horizon both in test)
+# No separate test_sim block needed: we use forecast_start=72.0 to split
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 2.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY — 48×48 grid
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — 200 Gaussian ICs (matching CF8 style)
+# ============================================================================
+#
+# CF8 used single-IC continuation: train & test on SAME trajectory.
+# The standard pipeline trains on MULTIPLE ICs and tests on HELD-OUT ICs.
+# We use 200 training ICs (diverse gaussians) to build a general model,
+# then forecast held-out test ICs from the 72s mark.
+#
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 120
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 2
+  uniform:
+    enabled: true
+    n_runs: 50
+    n_samples: 50
+  two_clusters:
+    enabled: true
+    n_runs: 30
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 5
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — 30 held-out ICs
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1
+    extrapolation_positions:
+      - [2.0, 2.0]
+      - [13.0, 2.0]
+      - [2.0, 13.0]
+      - [13.0, 13.0]
+      - [7.5, 1.5]
+      - [1.5, 7.5]
+    extrapolation_variance: [1.2]
+  uniform:
+    enabled: true
+    n_runs: 8
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 3
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM — CF8 Champion Configuration
+# ============================================================================
+rom:
+  subsample: 3              # dt=0.04, subsample=3 → ROM_DT=0.12s
+  fixed_modes: 19           # d=19 POD modes
+  density_transform: "sqrt" # √ρ transform (CF8 key ingredient)
+  density_transform_eps: 1.0e-10
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5                # p=5 MVAR lag
+      ridge_alpha: 0.01     # α=1e-2 (CF8 value — stronger than K-series 1e-4)
+    lstm:
+      enabled: false
+
+# ============================================================================
+# EVALUATION — CF8 style: long prefix + simplex
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 72.0      # Train on first 72s (600 ROM frames), forecast from there
+  clamp_negative: true       # Clamp + renorm (C2 mode)
+  mass_postprocess: simplex  # Simplex projection for mass conservation (CF8 key ingredient)
