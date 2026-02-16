@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=CF8_pipeline
 #SBATCH -N 1
-#SBATCH -n 4
-#SBATCH --mem=32G
-#SBATCH --time=12:00:00
+#SBATCH -n 16
+#SBATCH --mem=48G
+#SBATCH --time=06:00:00
 #SBATCH -p batch
 #SBATCH -o slurm_logs/CF8_pipeline_%j.out
 #SBATCH -e slurm_logs/CF8_pipeline_%j.err
@@ -19,9 +19,9 @@
 #   - Simplex mass projection
 #   - 200 train ICs + 30 test ICs
 #
-# Expected runtime: ~6-8 hours
-#   - 200 train sims × ~60s = ~3.3h
-#   - 30 test sims × ~60s = ~30min
+# Expected runtime: ~2-3 hours
+#   - 200 train sims × ~60s / 16 workers = ~50min
+#   - 30 test sims × ~60s / 16 workers = ~5min
 #   - POD/MVAR: ~10min
 #   - Evaluation + visualization: ~30min
 #
