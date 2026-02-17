@@ -1,0 +1,189 @@
+---
+# ============================================================================
+# CF8_LSTM — Same as CF8 but with LSTM instead of MVAR
+# ============================================================================
+#
+# Identical physics, ICs, POD, and evaluation to CF8_longPrefix_sqrtSimplex_H37
+# but replaces MVAR(p=5, α=0.01) with LSTM(hidden=64, layers=2).
+#
+# CF8 MVAR achieved R² = +0.515 (lifted) with √ρ + simplex.
+# This experiment tests whether LSTM can match or exceed that.
+#
+# KEY PARAMETERS (identical to CF8):
+#   - V1 regime: N=100, speed=1.5, R=2.5, η=0.2, Morse(Ca=0.8,Cr=0.3)
+#   - Training duration: T_train = 72s → 600 ROM frames
+#   - Forecast horizon: H=37 → 4.44s
+#   - POD: d=19 fixed modes, √ρ transform
+#   - Post-processing: simplex projection (mass conservation)
+#
+# LSTM SPECIFICS:
+#   - hidden_units=64, num_layers=2 (moderate capacity)
+#   - lag=5 (same as MVAR p=5 for fair comparison)
+#   - max_epochs=500, patience=50 (early stopping)
+#   - Scheduled sampling + multi-step loss (standard recipe)
+#
+# TIMING: LSTM training takes ~10-20min on CPU, plus ~4h for sims
+#   Total: ~5h — fits in 8h time limit
+#
+# ============================================================================
+
+experiment_name: "CF8_LSTM_longPrefix_sqrtSimplex_H37"
+
+# ============================================================================
+# SIMULATION — V1 Regime (identical to CF8)
+# ============================================================================
+sim:
+  N: 100
+  T: 77.0
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 2.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY — 48×48 grid (identical to CF8)
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — 200 ICs (identical to CF8)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 120
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 2
+  uniform:
+    enabled: true
+    n_runs: 50
+    n_samples: 50
+  two_clusters:
+    enabled: true
+    n_runs: 30
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 5
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — 30 held-out ICs (identical to CF8)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1
+    extrapolation_positions:
+      - [2.0, 2.0]
+      - [13.0, 2.0]
+      - [2.0, 13.0]
+      - [13.0, 13.0]
+      - [7.5, 1.5]
+      - [1.5, 7.5]
+    extrapolation_variance: [1.2]
+  uniform:
+    enabled: true
+    n_runs: 8
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 3
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM — Same POD as CF8, but LSTM instead of MVAR
+# ============================================================================
+rom:
+  subsample: 3
+  fixed_modes: 19
+  density_transform: "sqrt"
+  density_transform_eps: 1.0e-10
+
+  models:
+    mvar:
+      enabled: false        # ← DISABLED (CF8 used MVAR)
+    lstm:
+      enabled: true         # ← ENABLED (this is the new part)
+      lag: 5                # Same lag as MVAR p=5 for fair comparison
+      hidden_units: 64      # Moderate capacity (d=19 → 64 hidden)
+      num_layers: 2         # 2-layer stacked LSTM
+      batch_size: 64
+      learning_rate: 0.001
+      max_epochs: 500
+      patience: 50          # Early stopping after 50 epochs no improvement
+      weight_decay: 1.0e-5
+      gradient_clip: 5.0
+      dropout: 0.1          # Light dropout between LSTM layers
+      residual: true         # Predict Δy (residual formulation)
+      normalize_input: true  # Z-score normalization
+      use_layer_norm: true   # LayerNorm for stability
+      # Scheduled sampling (2-phase ramp)
+      scheduled_sampling: true
+      ss_warmup: 20
+      ss_phase1_end: 200
+      ss_phase1_ratio: 0.3
+      ss_phase2_end: 400
+      ss_max_ratio: 0.5
+      # Multi-step rollout loss
+      multistep_loss: true
+      multistep_k: 5
+      multistep_alpha: 0.3
+
+# ============================================================================
+# EVALUATION — identical to CF8
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 72.0
+  clamp_negative: true
+  mass_postprocess: simplex

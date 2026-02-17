@@ -1,0 +1,185 @@
+---
+# ============================================================================
+# CF9 — LSTM VARIANT of CF8 (√ρ + Simplex, d=19, H37)
+# ============================================================================
+#
+# IDENTICAL physics/POD/eval to CF8-champion, but replaces MVAR with LSTM.
+# Purpose: compare LSTM vs MVAR on the same well-posed long-prefix setup.
+#
+# CF8 achieved R² = +0.515 (lifted) with MVAR(p=5, α=0.01).
+# This experiment tests whether LSTM can improve on that.
+#
+# LSTM ARCHITECTURE:
+#   - hidden_units: 64 (3.4× latent dim d=19)
+#   - num_layers: 2
+#   - Scheduled sampling: 2-phase ramp
+#   - Multi-step rollout loss: k=5
+#   - Residual connections, LayerNorm
+#
+# TIMING ESTIMATE:
+#   Same sims as CF8 (~4h), LSTM training adds ~30-60min on GPU
+#   Total: ~5-6h — fits in 8h time limit
+#
+# ============================================================================
+
+experiment_name: "CF9_longPrefix_LSTM_H37"
+
+# ============================================================================
+# SIMULATION — V1 Regime (identical to CF8)
+# ============================================================================
+sim:
+  N: 100
+  T: 77.0                  # 72s train + 5s forecast buffer
+  dt: 0.04
+  Lx: 15.0
+  Ly: 15.0
+  bc: "periodic"
+
+model:
+  type: "discrete"
+  speed: 1.5
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 2.5
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 0.8
+    Cr: 0.3
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+# ============================================================================
+# DENSITY — 48×48 grid (identical to CF8)
+# ============================================================================
+density:
+  nx: 48
+  ny: 48
+  bandwidth: 4.0
+
+outputs:
+  density_resolution: 48
+  density_bandwidth: 4.0
+
+# ============================================================================
+# TRAINING ICs — 200 ICs (identical to CF8)
+# ============================================================================
+train_ic:
+  type: "mixed_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 120
+    positions_x: [3.0, 6.0, 9.0, 12.0]
+    positions_y: [3.0, 6.0, 9.0, 12.0]
+    variances: [0.8, 1.5, 2.5]
+    n_samples_per_config: 2
+  uniform:
+    enabled: true
+    n_runs: 50
+    n_samples: 50
+  two_clusters:
+    enabled: true
+    n_runs: 30
+    separations: [3.0, 5.0, 7.0]
+    sigmas: [1.0, 2.0]
+    n_samples_per_config: 5
+  ring:
+    enabled: false
+
+# ============================================================================
+# TEST ICs — 30 held-out ICs (identical to CF8)
+# ============================================================================
+test_ic:
+  type: "mixed_test_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 15
+    test_positions_x: [4.5, 7.5, 10.5]
+    test_positions_y: [4.5, 7.5, 10.5]
+    test_variances: [1.2]
+    n_samples_per_config: 1
+    extrapolation_positions:
+      - [2.0, 2.0]
+      - [13.0, 2.0]
+      - [2.0, 13.0]
+      - [13.0, 13.0]
+      - [7.5, 1.5]
+      - [1.5, 7.5]
+    extrapolation_variance: [1.2]
+  uniform:
+    enabled: true
+    n_runs: 8
+  two_clusters:
+    enabled: true
+    n_runs: 7
+    test_separations: [4.0, 6.0]
+    test_sigmas: [1.5]
+    n_samples_per_config: 3
+    extrapolation_separations: [2.0]
+    extrapolation_sigma: [1.5]
+  ring:
+    enabled: false
+
+# ============================================================================
+# ROM — Same POD as CF8, but LSTM instead of MVAR
+# ============================================================================
+rom:
+  subsample: 3              # dt=0.04, subsample=3 → ROM_DT=0.12s
+  fixed_modes: 19           # d=19 POD modes (same as CF8)
+  density_transform: "sqrt" # √ρ transform (same as CF8)
+  density_transform_eps: 1.0e-10
+
+  models:
+    mvar:
+      enabled: true         # Keep MVAR for comparison
+      lag: 5
+      ridge_alpha: 0.01
+    lstm:
+      enabled: true         # ← NEW: enable LSTM
+      hidden_units: 64      # 3.4× latent dim (d=19)
+      num_layers: 2
+      learning_rate: 0.001
+      batch_size: 32
+      max_epochs: 500
+      patience: 50           # Early stopping patience
+      weight_decay: 1.0e-5
+      gradient_clip: 5.0
+      dropout: 0.1
+      residual: true
+      normalize_input: true
+      use_layer_norm: true
+      # Scheduled sampling (2-phase ramp)
+      scheduled_sampling: true
+      ss_warmup: 20
+      ss_phase1_end: 200
+      ss_phase1_ratio: 0.3
+      ss_phase2_end: 400
+      ss_max_ratio: 0.5
+      # Multi-step rollout loss
+      multistep_loss: true
+      multistep_k: 5
+      multistep_alpha: 0.3
+
+# ============================================================================
+# EVALUATION — Same as CF8
+# ============================================================================
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 72.0      # Train on first 72s, forecast from there
+  clamp_negative: true       # Clamp + renorm (C2 mode)
+  mass_postprocess: simplex  # Simplex projection for mass conservation
