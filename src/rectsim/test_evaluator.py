@@ -508,8 +508,19 @@ def evaluate_test_runs(
         r2_latent = _safe_r2(ss_res_lat, ss_tot_lat, np.sum(true_lat_flat**2))
         
         # 3. POD reconstruction quality (using true latent)
+        # This measures the POD "ceiling" — the best R² achievable with perfect
+        # latent dynamics. Must inverse-transform back to raw density space so
+        # that all R² metrics are comparable regardless of density_transform.
         true_reconstructed = (true_latent_forecast @ U_r.T) + X_mean
         true_reconstructed = true_reconstructed.reshape(-1, density_nx, density_ny)
+        
+        # Apply inverse density transform (same as for predictions)
+        if density_transform == 'log':
+            true_reconstructed = np.exp(true_reconstructed) - density_transform_eps
+        elif density_transform == 'sqrt':
+            true_reconstructed = np.maximum(true_reconstructed, 0.0)**2 - density_transform_eps
+        # raw/meansub: no inverse needed
+        
         ss_res_pod = np.sum((true_physical.flatten() - true_reconstructed.flatten())**2)
         r2_pod = _safe_r2(ss_res_pod, ss_tot_phys, np.sum(true_phys_flat**2))
         
