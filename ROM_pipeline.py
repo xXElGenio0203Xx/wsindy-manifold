@@ -117,6 +117,19 @@ def main():
     train_configs = generate_training_configs(train_ic_config, BASE_CONFIG)
     n_train = len(train_configs)
     
+    # Warn if actual IC count differs from sum of n_runs in config
+    # (n_runs fields are advisory — actual count comes from combinatorial grid)
+    n_runs_requested = 0
+    for family in ['gaussian', 'uniform', 'two_clusters', 'ring']:
+        fam_cfg = train_ic_config.get(family, {})
+        if fam_cfg.get('enabled', False):
+            n_runs_requested += fam_cfg.get('n_runs', 0)
+    if n_runs_requested > 0 and n_runs_requested != n_train:
+        print(f"\n   ⚠️  n_train mismatch: config n_runs sum = {n_runs_requested}, "
+              f"actual generated = {n_train}")
+        print(f"       (gaussian n_runs is advisory; actual count = "
+              f"len(positions_x) × len(positions_y) × len(variances) × n_samples_per_config)")
+    
     print(f"\nTraining configurations:")
     print(f"   Total runs: {n_train}")
     
@@ -160,6 +173,8 @@ def main():
     print(f"\n✓ POD basis saved to {ROM_COMMON_DIR}/")
     print(f"   Latent dimension: {pod_data['R_POD']}")
     print(f"   Training timesteps: {pod_data['T_rom']}")
+    if pod_data.get('shift_align', False):
+        print(f"   Shift alignment: ENABLED (ref={pod_data['shift_align_data']['ref_method']})")
     
     # =========================================================================
     # STEP 3: Build Shared Latent Dataset

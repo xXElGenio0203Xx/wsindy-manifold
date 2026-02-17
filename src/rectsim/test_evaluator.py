@@ -19,6 +19,9 @@ from rectsim.standard_metrics import compute_metrics_series
 from rectsim.forecast_utils import mvar_kstep_forecast_fn_factory
 
 
+from rectsim.shift_align import compute_shifts, apply_shifts, undo_shifts, predict_shifts_linear
+
+
 def _project_simplex(rho_frame, mass_target=None):
     """
     Project a density frame onto the probability simplex:
@@ -132,6 +135,7 @@ def evaluate_test_runs(
     if clamp_mode is None:
         clamp_negative = eval_config.get('clamp_negative', True)
         clamp_mode = 'C2' if clamp_negative else 'C0'
+    
     test_T = base_config_test['sim']['T']
     
     # Default forecast_start to training time (where forecast begins)
@@ -153,6 +157,13 @@ def evaluate_test_runs(
     mass_postprocess = eval_config.get('mass_postprocess', 'none')
     if mass_postprocess == 'none' and eval_config.get('mass_project', False):
         mass_postprocess = 'scale'  # backward compatibility
+
+    # When mass_postprocess='simplex', C2 clamp+renorm is redundant — simplex
+    # already enforces ρ≥0 AND Σρ=M₀.  The pre-square np.maximum(·,0) in the
+    # √ρ inverse transform block is still applied (density_transform, not here).
+    if mass_postprocess == 'simplex' and clamp_mode == 'C2':
+        print("   ℹ️  mass_postprocess=simplex → skipping redundant C2 clamp+renorm")
+        clamp_mode = 'C0'
 
     if save_time_resolved:
         print(f"\nTime-resolved evaluation enabled:")
@@ -185,6 +196,22 @@ def evaluate_test_runs(
             test_times = test_times[::rom_subsample]
         
         T_test = test_density.shape[0]
+        
+        # ---- Optional shift alignment (align test density to training reference) ----
+        shift_align_active = pod_data.get('shift_align', False)
+        test_shifts = None
+        if shift_align_active:
+            sa_data = pod_data['shift_align_data']
+            sa_ref = sa_data['ref']  # Training reference field (Ny, Nx)
+            # Compute per-frame shifts for ALL test frames (incl. forecast period GT)
+            test_shifts = compute_shifts(test_density, sa_ref)  # (T_test, 2)
+            # Align test density: this removes translational motion
+            test_density = apply_shifts(test_density, test_shifts)
+            if test_idx == 0:
+                mean_dy = np.abs(test_shifts[:, 0]).mean()
+                mean_dx = np.abs(test_shifts[:, 1]).mean()
+                print(f"   Shift alignment (test): mean |shift| = ({mean_dy:.1f}, {mean_dx:.1f}) px")
+        
         test_density_flat = test_density.reshape(T_test, -1)
         
         # Apply same density transform as training (if any)
@@ -526,6 +553,9 @@ def evaluate_test_runs(
             'mass_target_M0': float(M0)
         }
         
+        # Add shift alignment info
+        result['shift_align'] = shift_align_active
+        
         # Save metrics summary JSON (REQUIRED for visualization pipeline)
         metrics_dict = {
             'r2_recon': float(r2_reconstructed),
@@ -543,7 +573,8 @@ def evaluate_test_runs(
             'r2_kstep_latent': float(r2_kstep_latent),
             'kstep_reset': int(kstep_reset) if kstep_reset else 0,
             'mass_postprocess': mass_postprocess,
-            'mass_target_M0': float(M0)
+            'mass_target_M0': float(M0),
+            'shift_align': shift_align_active
         }
         with open(test_run_dir / "metrics_summary.json", 'w') as f:
             json.dump(metrics_dict, f, indent=2)
@@ -567,10 +598,22 @@ def evaluate_test_runs(
         # Save predicted density (REQUIRED for visualization pipeline)
         # Save FULL trajectory: conditioning window (POD truth) + forecast
         # This ensures videos start with a good match and transition to forecast
+        #
+        # If shift alignment is active, un-align predictions back to physical space
+        # for visualization. R² metrics are computed in aligned space (above).
+        pred_physical_full_save = pred_physical_full
+        if shift_align_active and test_shifts is not None:
+            # We have true shifts for ALL test frames.
+            # pred_physical_full has T_train (conditioning) + n_forecast (forecast) frames.
+            n_full = pred_physical_full.shape[0]
+            # Use the known shifts for the portion of the test trajectory we have
+            full_shifts = test_shifts[:n_full]  # (n_full, 2)
+            pred_physical_full_save = undo_shifts(pred_physical_full, full_shifts)
+        
         model_tag = model_name.lower()
         np.savez_compressed(
             test_run_dir / f"density_pred_{model_tag}.npz",
-            rho=pred_physical_full,
+            rho=pred_physical_full_save,
             xgrid=xgrid,
             ygrid=ygrid,
             times=all_times,
@@ -579,7 +622,7 @@ def evaluate_test_runs(
         # Also save generic for backward compatibility (single-model case)
         np.savez_compressed(
             test_run_dir / "density_pred.npz",
-            rho=pred_physical_full,
+            rho=pred_physical_full_save,
             xgrid=xgrid,
             ygrid=ygrid,
             times=all_times,

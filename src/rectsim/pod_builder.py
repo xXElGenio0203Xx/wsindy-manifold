@@ -12,6 +12,8 @@ Supports:
 import numpy as np
 from pathlib import Path
 
+from rectsim.shift_align import align_training_data
+
 
 def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
     """
@@ -60,6 +62,7 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
     
     # Load all training density data
     X_list = []
+    density_shape_2d = None  # (Ny, Nx) — captured from first run
     for i in range(n_train):
         run_dir = train_dir / f"train_{i:03d}"
         data = np.load(run_dir / "density.npz")
@@ -68,6 +71,10 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
         # Subsample in time if requested
         if ROM_SUBSAMPLE > 1:
             density = density[::ROM_SUBSAMPLE]
+        
+        # Capture spatial dimensions from first run
+        if density_shape_2d is None:
+            density_shape_2d = density.shape[1:]  # (Ny, Nx)
         
         # Flatten each timestep
         T_sub = density.shape[0]
@@ -81,6 +88,25 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
     
     print(f"✓ Loaded data shape: {X_all.shape}")
     print(f"   {M} runs × {T_rom} timesteps × {X_all.shape[1]} spatial dims")
+    
+    # ------ Optional shift alignment (remove translational motion) ------
+    shift_align = rom_config.get('shift_align', False)
+    shift_align_ref = rom_config.get('shift_align_ref', 'mean')
+    shift_align_data = None
+    
+    if shift_align:
+        Ny, Nx = density_shape_2d
+        print(f"\nApplying shift alignment (ref={shift_align_ref})...")
+        densities_2d = X_all.reshape(-1, Ny, Nx)
+        sa_result = align_training_data(densities_2d, M, T_rom, ref_method=shift_align_ref)
+        X_all = sa_result['aligned'].reshape(-1, Ny * Nx)
+        shift_align_data = {
+            'ref': sa_result['ref'],
+            'shifts': sa_result['shifts'],
+            'ref_method': sa_result['ref_method'],
+            'density_shape_2d': density_shape_2d,
+        }
+        print(f"  ✓ Shift alignment complete")
     
     # Apply density transform if requested
     density_transform = rom_config.get('density_transform', 'raw')
@@ -151,7 +177,9 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
         'M': M,
         'T_rom': T_rom,
         'density_transform': density_transform,
-        'density_transform_eps': density_transform_eps
+        'density_transform_eps': density_transform_eps,
+        'shift_align': shift_align,
+        'shift_align_data': shift_align_data,
     }
 
 
@@ -185,3 +213,15 @@ def save_pod_basis(pod_data, mvar_dir):
     )
     
     print(f"✓ POD basis saved to {mvar_dir}/pod_basis.npz")
+    
+    # Save shift alignment data if present
+    sa_data = pod_data.get('shift_align_data', None)
+    if sa_data is not None:
+        np.savez_compressed(
+            mvar_dir / "shift_align.npz",
+            ref=sa_data['ref'],
+            shifts=sa_data['shifts'],
+            ref_method=str(sa_data['ref_method']),
+            density_shape_2d=np.array(sa_data['density_shape_2d']),
+        )
+        print(f"✓ Shift alignment data saved to {mvar_dir}/shift_align.npz")
