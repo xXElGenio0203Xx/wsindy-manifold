@@ -300,8 +300,9 @@ def main():
         
         # Extract LSTM config
         lstm_config = rom_config['models']['lstm']
+        lstm_lag_val = lstm_config.get('lag', lag)  # fall back to shared lag
         print(f"   Hidden units: {lstm_config['hidden_units']}, Num layers: {lstm_config['num_layers']}")
-        print(f"   Lag: {lstm_config['lag']}")
+        print(f"   Lag: {lstm_lag_val}")
         
         # Train LSTM (with timing) - pass rom_config dict directly
         with runtime_analyzer.time_operation('lstm_training') as timer:
@@ -318,7 +319,7 @@ def main():
         lstm_data = {
             'model_path': lstm_model_path,
             'val_loss': lstm_val_loss,
-            'lag': lstm_config['lag'],
+            'lag': lstm_lag_val,
             'hidden_units': lstm_config['hidden_units'],
             'num_layers': lstm_config['num_layers']
         }
