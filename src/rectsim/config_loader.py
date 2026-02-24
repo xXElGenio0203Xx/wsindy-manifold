@@ -60,6 +60,14 @@ def load_config(config_path):
     
     # Extract evaluation config (optional, for time-resolved analysis)
     eval_config = config.get('evaluation', config.get('eval', {}))  # Support both names
+
+    # Forward rom-level keys that the evaluator reads from eval_config.
+    # mass_postprocess is logically a ROM postprocessing choice but the
+    # evaluator historically reads it from eval_config.  If the user set it
+    # under rom: (the documented location), copy it over so it takes effect.
+    for _key in ('mass_postprocess', 'shift_align', 'shift_align_ref'):
+        if _key in rom_config and _key not in eval_config:
+            eval_config[_key] = rom_config[_key]
     
     return (base_config, density_nx, density_ny, density_bandwidth,
             train_ic_config, test_ic_config, test_sim_config, rom_config, eval_config)
