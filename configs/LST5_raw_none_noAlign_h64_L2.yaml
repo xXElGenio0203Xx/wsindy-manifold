@@ -1,0 +1,132 @@
+---
+# ============================================================================
+# LST5_raw_none_noAlign_h64_L2
+# ============================================================================
+# LSTM NO alignment: raw, none, noAlign, hidden=64, 2 layers
+# ============================================================================
+
+alignment:
+  enabled: true
+density:
+  bandwidth: 5.0
+  nx: 64
+  ny: 64
+eval:
+  clamp_mode: C0
+  forecast_start: 0.6
+  metrics:
+  - r2
+  - rmse
+  save_forecasts: true
+  save_time_resolved: true
+experiment_name: LST5_raw_none_noAlign_h64_L2
+forces:
+  enabled: true
+  params:
+    Ca: 1.5
+    Cr: 0.5
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+  type: morse
+model:
+  speed: 4.0
+  speed_mode: constant_with_forces
+  type: discrete
+noise:
+  eta: 0.2
+  kind: gaussian
+  match_variance: true
+outputs:
+  density_bandwidth: 5.0
+  density_resolution: 64
+params:
+  R: 4.0
+rom:
+  density_transform: raw
+  density_transform_eps: 1.0e-10
+  fixed_modes: 19
+  mass_postprocess: none
+  models:
+    lstm:
+      batch_size: 512
+      dropout: 0.1
+      enabled: true
+      gradient_clip: 5.0
+      hidden_units: 64
+      lag: 5
+      learning_rate: 0.0007
+      max_epochs: 300
+      multistep_loss: false
+      normalize_input: true
+      num_layers: 2
+      patience: 40
+      residual: true
+      scheduled_sampling: false
+      use_layer_norm: true
+      weight_decay: 1.0e-05
+    mvar:
+      enabled: true
+      lag: 5
+      ridge_alpha: 0.0001
+  shift_align: false
+  shift_align_ref: mean
+  subsample: 3
+sim:
+  Lx: 25.0
+  Ly: 25.0
+  N: 200
+  T: 20.0
+  bc: periodic
+  dt: 0.04
+test_ic:
+  gaussian:
+    enabled: false
+  ring:
+    enabled: false
+  two_clusters:
+    enabled: false
+  type: mixed_test_comprehensive
+  uniform:
+    enabled: true
+    n_runs: 20
+test_sim:
+  T: 36.6
+train_ic:
+  gaussian:
+    enabled: true
+    n_runs: 80
+    n_samples_per_config: 1
+    positions_x:
+    - 5.0
+    - 10.0
+    - 15.0
+    - 20.0
+    positions_y:
+    - 5.0
+    - 10.0
+    - 15.0
+    - 20.0
+    variances:
+    - 1.5
+    - 3.0
+    - 5.0
+  ring:
+    enabled: false
+  two_clusters:
+    enabled: true
+    n_runs: 24
+    n_samples_per_config: 4
+    separations:
+    - 4.0
+    - 7.0
+    - 10.0
+    sigmas:
+    - 1.5
+    - 3.0
+  type: mixed_comprehensive
+  uniform:
+    enabled: true
+    n_runs: 40
+    n_samples: 40

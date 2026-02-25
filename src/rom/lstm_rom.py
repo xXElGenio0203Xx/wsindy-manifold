@@ -235,8 +235,8 @@ def train_lstm_rom(X_all, Y_all, config, out_dir, Y_multi=None):
     print(f"  Latent dimension: {d}")
     
     # Train/validation split (80/20)
-    np.random.seed(42)  # For reproducibility
-    perm = np.random.permutation(N_samples)
+    rng = np.random.RandomState(42)  # Local RNG to avoid polluting global state
+    perm = rng.permutation(N_samples)
     N_train = int(0.8 * N_samples)
     train_idx = perm[:N_train]
     val_idx = perm[N_train:]

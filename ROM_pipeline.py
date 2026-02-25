@@ -402,11 +402,16 @@ def main():
             try:
                 lstm_model, lstm_input_mean, lstm_input_std = load_lstm_model(
                     str(LSTM_DIR), device=str(device))
-            except (ValueError, Exception):
+            except (ValueError, Exception) as e:
+                print(f"   ⚠ load_lstm_model failed ({e}), using fallback loader")
+                lstm_cfg_fb = rom_config.get('models', {}).get('lstm', {})
                 lstm_model = LatentLSTMROM(
                     d=R_POD,
                     hidden_units=lstm_data['hidden_units'],
-                    num_layers=lstm_data['num_layers']
+                    num_layers=lstm_data['num_layers'],
+                    dropout=lstm_cfg_fb.get('dropout', 0.0),
+                    residual=lstm_cfg_fb.get('residual', True),
+                    use_layer_norm=lstm_cfg_fb.get('use_layer_norm', True),
                 )
                 state = torch.load(lstm_data['model_path'], map_location=device, weights_only=False)
                 if isinstance(state, dict) and 'state_dict' in state:
@@ -579,8 +584,15 @@ def main():
             try:
                 lstm_model, lstm_input_mean, lstm_input_std = load_lstm_model(
                     str(LSTM_DIR), device=str(device))
-            except (ValueError, Exception):
-                lstm_model = LatentLSTMROM(d=R_POD, hidden_units=lstm_hidden, num_layers=lstm_layers)
+            except (ValueError, Exception) as e:
+                print(f"   ⚠ load_lstm_model failed ({e}), using fallback loader")
+                lstm_cfg_fb = rom_config.get('models', {}).get('lstm', {})
+                lstm_model = LatentLSTMROM(
+                    d=R_POD, hidden_units=lstm_hidden, num_layers=lstm_layers,
+                    dropout=lstm_cfg_fb.get('dropout', 0.0),
+                    residual=lstm_cfg_fb.get('residual', True),
+                    use_layer_norm=lstm_cfg_fb.get('use_layer_norm', True),
+                )
                 state = torch.load(lstm_data['model_path'], map_location=device, weights_only=False)
                 if isinstance(state, dict) and 'state_dict' in state:
                     lstm_model.load_state_dict(state['state_dict'])
