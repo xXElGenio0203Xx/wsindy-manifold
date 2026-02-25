@@ -18,7 +18,7 @@ sim:
   bc: "periodic"
 
 test_sim:
-  T: 200.0
+  T: 50.0
 
 model:
   type: "discrete"
