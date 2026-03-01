@@ -175,6 +175,8 @@ def main():
     print(f"   Training timesteps: {pod_data['T_rom']}")
     if pod_data.get('shift_align', False):
         print(f"   Shift alignment: ENABLED (ref={pod_data['shift_align_data']['ref_method']})")
+    if pod_data.get('unaligned_svd') is not None:
+        print(f"   Unaligned POD spectrum: saved to {ROM_COMMON_DIR}/pod_basis_unaligned.npz")
     
     # =========================================================================
     # STEP 3: Build Shared Latent Dataset

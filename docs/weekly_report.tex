@@ -1,0 +1,177 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage[font=small]{caption}
+
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+\section*{Weekly Progress Report, Feb 27 2026}
+
+\subsection*{Literature Review}
+
+This week I read the Kevrekidis paper and the Reiss paper:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Sonday, Singer \& Kevrekidis (2011),}
+    arXiv:1104.0725.
+    They build a Hermitian matrix from pairwise snapshot alignments
+    and extract optimal shifts from its leading eigenvectors, then
+    combine symmetry quotienting with dimensionality reduction via
+    vector diffusion maps.
+
+  \item \textbf{Reiss, Schulze, Sesterhenn \& Mehrmann (2018),}
+    arXiv:1512.01985.
+    They formally define sPOD for multiple transport velocities,
+    introducing time-dependent shifts per transport component and
+    optimizing them jointly via an iterative procedure.
+\end{enumerate}
+
+\textbf{Takeaway:} Our approach is simpler: single reference field
+(temporal mean), FFT cross-correlation, one-shot, no iterative
+optimization.  Works because our system has one dominant transport
+mode.
+
+\subsection*{What Our sPOD Does}
+
+We convert particles on a periodic 2D box into $64\times64$ KDE
+density images.  The flock translates, so standard POD wastes modes on
+position.  We shift every frame to a common location via FFT
+cross-correlation against the temporal mean, using
+\texttt{numpy.roll} (exact, no interpolation).  After quotienting out
+translation, POD only represents shape dynamics, and the singular
+values decay much faster.
+
+\subsection*{Experiments and Results}
+
+I ran DYN1--DYN6 covering: gentle Vicsek, hypervelocity, high noise,
+strong attraction, log/sqrt density transforms, and variable speed.
+I also ran an ablation suite (XABL1--XABL8) as a $2^3$ factorial over
+\{transform, simplex, spectral scaling\}, all with alignment on.
+Reconstruction R$^2$ from the DYN suite (all MVAR, all with sPOD):
+DYN3 (high noise) 0.98,
+DYN4 (strong attraction) 0.95,
+DYN2 (hypervelocity) 0.91,
+DYN6 (variable speed) 0.89,
+DYN1 (gentle baseline) 0.81.
+1-step teacher-forced R$^2$ was 0.93--0.98 across all, and the POD
+ceiling exceeded 0.99.
+
+\textbf{Main findings:}
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Alignment dominates.}  $\sqrt{\rho}$ + simplex help
+    1--3\% in R$^2$ but become negligible once shift alignment is on.
+    Alignment alone raises R$^2$ from $\sim$0.5--0.7 to $\sim$0.95+.
+
+  \item \textbf{R$^2$ degrades over time} depending on regime.
+    Clustering regimes maintain high R$^2$ past 200s; after sPOD the
+    quotient-space dynamics are nearly Markovian.
+
+  \item \textbf{Strong repulsion} (no attraction): lower performance
+    because shape dynamics are more complex.
+
+  \item \textbf{Singular value decay:} $d = 19$ captures $>$99.9\%
+    of variance with sPOD vs.\ $\sim$96\% without.
+\end{itemize}
+
+\subsection*{LSTM Fix and Regime Testing}
+
+I fixed the LSTM training code: wrong config keys
+(\texttt{hidden\_size} $\to$ \texttt{hidden\_units},
+\texttt{epochs} $\to$ \texttt{max\_epochs}) and missing parameters
+(dropout, gradient clipping, layer norm).  The LSTM now runs across
+all regimes.  Both LSTM and MVAR produce comparable results in
+clustering regimes.
+
+\subsection*{Proposed Next Steps}
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Systematic MVAR vs.\ LSTM comparison.}
+    Run both models across DYN1--6 plus milling, double mill, swarming,
+    and escape (regimes from the Bhaskar topology paper and the
+    d'Orsogna model) under identical conditions (same horizon, POD
+    threshold, training size, particle count, hyperparameters).
+
+  \item \textbf{Per-regime analysis.}  For each regime: POD vs.\ sPOD
+    eigenvalue decay, forecast R$^2$ over time (MVAR vs.\ LSTM), true
+    vs.\ predicted density snapshots, and order parameter tracking.
+
+  \item \textbf{Thesis figures.}  Combine SVD decay and phase dynamics
+    with empirical results across all regimes.
+
+  \item \textbf{If time allows, alternative sPOD methods.}
+    (a) Kevrekidis eigenvalue alignment via the Hermitian
+    pairwise-connection matrix.
+    (b) Reiss et al.\ multi-frame sPOD for multiple clusters.
+
+  \item \textbf{WSINDy.}  Fit WSINDy to all regimes and compare.
+\end{enumerate}
+
+\clearpage
+\subsection*{Figures}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.7\textwidth]{../artifacts/thesis_figures/svd_decay_raw_vs_aligned.pdf}
+\caption{Singular value decay: standard POD vs.\ sPOD.  With sPOD,
+  19 modes capture $>$99.9\% of energy.}
+\label{fig:svd_raw_vs_aligned}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.8\textwidth]{../artifacts/thesis_figures/dyn_suite_svd_comparison.pdf}
+\caption{sPOD singular value spectra across the DYN suite.  Spectral
+  knee at modes 3--5 for most regimes; DYN6 (variable speed) decays
+  slower.}
+\label{fig:dyn_svd}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.8\textwidth]{../artifacts/thesis_figures/r2_vs_horizon_comparison.pdf}
+\caption{Forecast R$^2$ vs.\ prediction horizon.  I tested each regime
+  at different horizons; the final pipeline will use the same horizon
+  for all.  Clustering regimes stay high past 100s; non-clustering
+  regimes degrade faster.}
+\label{fig:r2_horizon}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+  \includegraphics[width=\textwidth]{../artifacts/thesis_figures/kde_alignment_check_DYN1_gentle_v2.png}
+  \caption{DYN1 (gentle Vicsek)}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+  \includegraphics[width=\textwidth]{../artifacts/thesis_figures/kde_alignment_check_DYN6_varspeed_v2.png}
+  \caption{DYN6 (variable speed)}
+\end{subfigure}
+\caption{KDE alignment check.  Left column: raw density.  Right column:
+  after shift alignment.}
+\label{fig:kde_align}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{../artifacts/thesis_figures/phase_dynamics_analysis.pdf}
+\caption{Phase dynamics of the shift sequence $\boldsymbol{\Delta}(t)$.
+  (a) Shift trajectories.
+  (b) PSD: energy concentrated at low frequencies.
+  (c) AR($p$) predictability: AR(1) R$^2 > 0.95$, AR(5) $\sim$0.999.
+  (d) Phase variance across experiments.
+  (e) Autocorrelation: slow decay confirms persistence.}
+\label{fig:phase}
+\end{figure}
+
+\end{document}

@@ -1,0 +1,14 @@
+configs/vdyn_clamp/VDYN1_gentle_C0.yaml
+configs/vdyn_clamp/VDYN1_gentle_C2.yaml
+configs/vdyn_clamp/VDYN2_hypervelocity_C0.yaml
+configs/vdyn_clamp/VDYN2_hypervelocity_C2.yaml
+configs/vdyn_clamp/VDYN3_hypernoisy_C0.yaml
+configs/vdyn_clamp/VDYN3_hypernoisy_C2.yaml
+configs/vdyn_clamp/VDYN4_blackhole_C0.yaml
+configs/vdyn_clamp/VDYN4_blackhole_C2.yaml
+configs/vdyn_clamp/VDYN5_supernova_C0.yaml
+configs/vdyn_clamp/VDYN5_supernova_C2.yaml
+configs/vdyn_clamp/VDYN6_baseline_C0.yaml
+configs/vdyn_clamp/VDYN6_baseline_C2.yaml
+configs/vdyn_clamp/VDYN7_pure_vicsek_C0.yaml
+configs/vdyn_clamp/VDYN7_pure_vicsek_C2.yaml

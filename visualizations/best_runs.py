@@ -26,7 +26,8 @@ def generate_best_run_visualizations(
     base_config_sim,
     p_lag,
     n_top=4,
-    model_name='mvar'
+    model_name='mvar',
+    config_info=None
 ):
     """
     Generate detailed visualizations for the best test runs.
@@ -89,7 +90,7 @@ def generate_best_run_visualizations(
         
         # Generate visualizations
         _generate_trajectory_video(pred, ic_output_dir, ic_type, base_config_sim)
-        _generate_density_comparison(pred, ic_output_dir, model_name=model_name)
+        _generate_density_comparison(pred, ic_output_dir, model_name=model_name, config_info=config_info)
         _generate_error_timeseries(pred, summary, ic_output_dir, ic_type, ic_stats, p_lag)
         _generate_error_distributions(pred, ic_output_dir, ic_type)
         _generate_order_parameters(pred, ic_output_dir, ic_type, ic_stats, model_name=model_name)
@@ -100,7 +101,7 @@ def generate_best_run_visualizations(
 
 
 def _generate_trajectory_video(pred, output_dir, ic_type, base_config_sim):
-    """Generate trajectory video."""
+    """Generate trajectory video using saved velocities when available."""
     trajectory_video(
         path=output_dir,
         traj=pred["traj"],
@@ -110,33 +111,81 @@ def _generate_trajectory_video(pred, output_dir, ic_type, base_config_sim):
         name="traj_truth",
         fps=10,
         marker_size=50,
-        title=f'Ground Truth Trajectory - {ic_type.replace("_", " ").title()}'
+        title=f'Ground Truth Trajectory - {ic_type.replace("_", " ").title()}',
+        vel=pred.get("vel"),
     )
 
 
-def _generate_density_comparison(pred, output_dir, model_name='mvar'):
-    """Generate side-by-side density comparison video."""
+def _generate_density_comparison(pred, output_dir, model_name='mvar', config_info=None):
+    """Generate side-by-side density comparison video.
+    
+    Generates two videos:
+      1. Forecast-only (from forecast_start_idx onward) — the primary comparison.
+      2. Full trajectory (conditioning + forecast) — for debugging only.
+    """
     model_label = model_name.upper()
+    fsi = pred.get("forecast_start_idx", None)
+    
+    # --- Forecast-only video (what actually matters — generated FIRST) ---
+    if fsi is not None and fsi > 0 and fsi < len(pred["rho_true"]):
+        rho_true_fc = pred["rho_true"][fsi:]
+        rho_pred_fc = pred["rho_pred"][fsi:]
+        # Slice error timeseries to forecast region too
+        e2_fc = pred.get("frame_metrics_fc", {}).get("e2", None)
+        if e2_fc is None:
+            e2_fc = pred["frame_metrics"]["e2"]
+            if len(e2_fc) > len(rho_true_fc):
+                e2_fc = e2_fc[fsi:]
+        
+        side_by_side_video(
+            path=output_dir,
+            left_frames=rho_true_fc,
+            right_frames=rho_pred_fc,
+            lower_strip_timeseries=e2_fc,
+            name="density_forecast_only",
+            fps=10,
+            cmap='hot',
+            titles=('Ground Truth (forecast)', f'{model_label}-ROM Forecast'),
+            config_info=config_info
+        )
+    else:
+        # No conditioning window info — treat entire trajectory as forecast
+        side_by_side_video(
+            path=output_dir,
+            left_frames=pred["rho_true"],
+            right_frames=pred["rho_pred"],
+            lower_strip_timeseries=pred["frame_metrics"]["e2"],
+            name="density_forecast_only",
+            fps=10,
+            cmap='hot',
+            titles=('Ground Truth', f'{model_label}-ROM Forecast'),
+            config_info=config_info
+        )
+    
+    # --- Full video (conditioning + forecast) — for debugging ---
     side_by_side_video(
         path=output_dir,
         left_frames=pred["rho_true"],
         right_frames=pred["rho_pred"],
         lower_strip_timeseries=pred["frame_metrics"]["e2"],
-        name="density_truth_vs_pred",
+        name="density_truth_vs_pred_full",
         fps=10,
         cmap='hot',
-        titles=('Ground Truth', f'{model_label}-ROM Prediction')
+        titles=('Ground Truth', f'{model_label}-ROM Prediction (incl. conditioning)'),
+        config_info=config_info
     )
 
 
 def _generate_error_timeseries(pred, summary, output_dir, ic_type, ic_stats, p_lag):
-    """Generate error timeseries plot."""
+    """Generate error timeseries plot (forecast region only)."""
+    # Prefer forecast-only frame metrics if available
+    fm = pred.get("frame_metrics_fc", pred["frame_metrics"])
     plot_errors_timeseries(
-        frame_metrics=pred["frame_metrics"],
+        frame_metrics=fm,
         summary=summary,
         T0=p_lag,
         save_path=output_dir / "error_time.png",
-        title=f'Error Metrics - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})'
+        title=f'Error Metrics (Forecast) - {ic_type.replace("_", " ").title()} (R²={ic_stats["best_r2"]:.3f})'
     )
     plt.close('all')
 

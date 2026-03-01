@@ -81,21 +81,21 @@ train_ic:
   type: "mixed_comprehensive"
   gaussian:
     enabled: true
-    n_runs: 120
+    n_runs: 60
     positions_x: [3.0, 6.0, 9.0, 12.0]
     positions_y: [3.0, 6.0, 9.0, 12.0]
     variances: [0.8, 1.5, 2.5]
-    n_samples_per_config: 2
+    n_samples_per_config: 1
   uniform:
     enabled: true
-    n_runs: 50
-    n_samples: 50
+    n_runs: 30
+    n_samples: 30
   two_clusters:
     enabled: true
-    n_runs: 30
+    n_runs: 18
     separations: [3.0, 5.0, 7.0]
     sigmas: [1.0, 2.0]
-    n_samples_per_config: 5
+    n_samples_per_config: 3
   ring:
     enabled: false
 
@@ -153,8 +153,8 @@ rom:
       num_layers: 2
       learning_rate: 0.001
       batch_size: 32
-      max_epochs: 500
-      patience: 50           # Early stopping patience
+      max_epochs: 300
+      patience: 30           # Early stopping patience
       weight_decay: 1.0e-5
       gradient_clip: 5.0
       dropout: 0.1

@@ -1,0 +1,132 @@
+---
+# ============================================================================
+# DEG1 — R² Degradation: Very long horizon test (T=200s)
+# ============================================================================
+# PURPOSE: Track how MVAR R² degrades as forecast horizon grows.
+# 
+# DESIGN:
+#   - Reuses pre-trained model from ABL8_v2 (sqrt+simplex+align, R²=0.97)
+#   - Same training configs (112 runs) to reproduce identical POD + MVAR
+#   - 4 test runs, one per IC type, at T=200s (10x training horizon)
+#   - Each test gives ~1600 ROM steps of forecast after conditioning
+#
+# KEY METRICS: r2_vs_time.csv for each test (time-resolved R² degradation)
+# ============================================================================
+
+experiment_name: "DEG1_long_horizon_200s"
+
+sim:
+  N: 200
+  T: 20.0
+  dt: 0.04
+  Lx: 25.0
+  Ly: 25.0
+  bc: "periodic"
+
+test_sim:
+  T: 200.0      # 10x training horizon → ~1600 ROM steps
+
+model:
+  type: "discrete"
+  speed: 4.0
+  speed_mode: "constant_with_forces"
+
+params:
+  R: 4.0
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: true
+  type: "morse"
+  params:
+    Ca: 1.5
+    Cr: 0.5
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+
+alignment:
+  enabled: true
+
+density:
+  nx: 64
+  ny: 64
+  bandwidth: 5.0
+
+outputs:
+  density_resolution: 64
+  density_bandwidth: 5.0
+
+# Same training ICs as ABL8 (produces identical POD basis + MVAR)
+train_ic:
+  type: "mixed_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 80
+    positions_x: [5.0, 10.0, 15.0, 20.0]
+    positions_y: [5.0, 10.0, 15.0, 20.0]
+    variances: [1.5, 3.0, 5.0]
+    n_samples_per_config: 1
+  uniform:
+    enabled: true
+    n_runs: 40
+    n_samples: 40
+  two_clusters:
+    enabled: true
+    n_runs: 24
+    separations: [4.0, 7.0, 10.0]
+    sigmas: [1.5, 3.0]
+    n_samples_per_config: 4
+  ring:
+    enabled: false
+
+# 4 test runs: one per IC type
+test_ic:
+  type: "mixed_test_comprehensive"
+  gaussian:
+    enabled: true
+    test_positions_x: [12.5]
+    test_positions_y: [12.5]
+    test_variances: [2.0]
+  uniform:
+    enabled: true
+    n_runs: 1
+  two_clusters:
+    enabled: true
+    separations: [6.0]
+    sigmas: [2.0]
+    n_samples_per_config: 1
+  ring:
+    enabled: true
+    test_radii: [5.0]
+    test_widths: [1.5]
+    n_samples_per_config: 1
+
+rom:
+  subsample: 3
+  fixed_modes: 19
+  density_transform: "sqrt"
+  density_transform_eps: 1.0e-10
+  shift_align: true
+  shift_align_ref: "mean"
+  mass_postprocess: "simplex"
+
+  models:
+    mvar:
+      enabled: true
+      lag: 5
+      ridge_alpha: 1.0e-4
+    lstm:
+      enabled: false
+
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60
+  clamp_mode: "C0"

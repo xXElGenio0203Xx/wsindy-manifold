@@ -569,6 +569,7 @@ def evaluate_test_runs(
         
         # Save metrics summary JSON (REQUIRED for visualization pipeline)
         metrics_dict = {
+            'model': model_name,
             'r2_recon': float(r2_reconstructed),
             'r2_latent': float(r2_latent),
             'r2_pod': float(r2_pod),
@@ -587,6 +588,11 @@ def evaluate_test_runs(
             'mass_target_M0': float(M0),
             'shift_align': shift_align_active
         }
+        # Save model-specific metrics (never overwritten by other models)
+        model_tag = model_name.lower()
+        with open(test_run_dir / f"metrics_summary_{model_tag}.json", 'w') as f:
+            json.dump(metrics_dict, f, indent=2)
+        # Also save generic for backward compatibility (WILL be overwritten by later models)
         with open(test_run_dir / "metrics_summary.json", 'w') as f:
             json.dump(metrics_dict, f, indent=2)
         
@@ -602,8 +608,9 @@ def evaluate_test_runs(
                 true_reconstructed, forecast_times
             )
             
-            # Save time-resolved data
+            # Save time-resolved data (model-specific + generic for backward compat)
             r2_df = pd.DataFrame(r2_vs_time)
+            r2_df.to_csv(test_run_dir / f"r2_vs_time_{model_tag}.csv", index=False)
             r2_df.to_csv(test_run_dir / "r2_vs_time.csv", index=False)
         
         # Save predicted density (REQUIRED for visualization pipeline)

@@ -140,35 +140,42 @@ verify_experiment() {
     
     echo -e "  ${CYAN}Verifying insight files...${NC}"
     
-    # Key insight files (path:label)
+    # Key insight files (path:label:required)
+    # required=1 means always expected; required=0 means model-dependent
     local key_files=(
-        "config_used.yaml:Config"
-        "summary.json:Summary"
-        "runtime_comparison.json:Runtime Comparison"
-        "MVAR/test_results.csv:MVAR Results"
-        "MVAR/runtime_profile.json:MVAR Runtime"
-        "MVAR/mvar_model.npz:MVAR Model"
-        "LSTM/test_results.csv:LSTM Results"
-        "LSTM/runtime_profile.json:LSTM Runtime"
-        "LSTM/training_log.csv:LSTM Training Log"
-        "LSTM/lstm_state_dict.pt:LSTM Weights"
-        "rom_common/pod_basis.npz:POD Basis"
-        "rom_common/X_train_mean.npy:Train Mean"
-        "rom_common/latent_dataset.npz:Latent Dataset"
-        "test/metadata.json:Test Metadata"
-        "test/index_mapping.csv:Index Mapping"
+        "config_used.yaml:Config:1"
+        "summary.json:Summary:1"
+        "rom_common/pod_basis.npz:POD Basis:1"
+        "rom_common/X_train_mean.npy:Train Mean:1"
+        "rom_common/latent_dataset.npz:Latent Dataset:1"
+        "rom_common/pod_basis_unaligned.npz:Unaligned POD:0"
+        "rom_common/shift_align.npz:Shift Alignment:0"
+        "runtime_comparison.json:Runtime Comparison:0"
+        "MVAR/test_results.csv:MVAR Results:0"
+        "MVAR/runtime_profile.json:MVAR Runtime:0"
+        "MVAR/mvar_model.npz:MVAR Model:0"
+        "LSTM/test_results.csv:LSTM Results:0"
+        "LSTM/runtime_profile.json:LSTM Runtime:0"
+        "LSTM/training_log.csv:LSTM Training Log:0"
+        "LSTM/lstm_state_dict.pt:LSTM Weights:0"
+        "WSINDy/wsindy_model.npz:WSINDy Model:0"
+        "WSINDy/test_results.csv:WSINDy Results:0"
+        "WSINDy/bootstrap.npz:WSINDy Bootstrap:0"
+        "test/metadata.json:Test Metadata:1"
+        "test/index_mapping.csv:Index Mapping:0"
     )
     
     local present=0
-    local missing=0
+    local missing_req=0
+    local missing_opt=0
     
     for entry in "${key_files[@]}"; do
-        IFS=':' read -r filepath label <<< "$entry"
+        IFS=':' read -r filepath label req <<< "$entry"
         if [ -f "$dir/$filepath" ]; then
             present=$((present + 1))
-        else
-            echo -e "    ${YELLOW}missing: $filepath${NC}"
-            missing=$((missing + 1))
+        elif [ "$req" = "1" ]; then
+            echo -e "    ${RED}missing (required): $filepath${NC}"
+            missing_req=$((missing_req + 1))
         fi
     done
     
@@ -177,7 +184,7 @@ verify_experiment() {
     local metrics_count=$(find "$dir/test" -name "metrics_summary.json" 2>/dev/null | wc -l | tr -d ' ')
     local r2time_count=$(find "$dir/test" -name "r2_vs_time.csv" 2>/dev/null | wc -l | tr -d ' ')
     
-    echo -e "  ${GREEN}✓ $present/$((present + missing)) key files | $test_count tests | $metrics_count metrics | $r2time_count r2_vs_time${NC}"
+    echo -e "  ${GREEN}✓ $present files present | $missing_req required missing | $test_count tests | $metrics_count metrics | $r2time_count r2_vs_time${NC}"
     
     # Print summary highlights if available
     if [ -f "$dir/summary.json" ]; then
@@ -210,7 +217,7 @@ case "$MODE" in
         printf "  %-35s %-12s %s\n" "Experiment" "Status" "Details"
         printf "  %-35s %-12s %s\n" "-----------------------------------" "------------" "----------------------------"
         
-        ssh "$OSCAR_HOST" 'for d in ~/wsindy-manifold/oscar_output/synthesis_*/; do exp=$(basename "$d"); if [ -f "$d/summary.json" ]; then echo "$exp COMPLETE"; else echo "$exp INCOMPLETE"; fi; done' 2>/dev/null | while read -r exp status; do
+        ssh "$OSCAR_HOST" 'for d in ~/wsindy-manifold/oscar_output/*/; do exp=$(basename "$d"); [ "$exp" = "*" ] && continue; if [ -f "$d/summary.json" ]; then echo "$exp COMPLETE"; else echo "$exp INCOMPLETE"; fi; done' 2>/dev/null | while read -r exp status; do
             if [ "$status" = "COMPLETE" ]; then
                 printf "  %-35s ${GREEN}%-12s${NC}\n" "$exp" "$status"
             else
@@ -231,7 +238,7 @@ case "$MODE" in
         printf "  %-35s %-12s %-12s %s\n" "Experiment" "Oscar" "Local" "Status"
         printf "  %-35s %-12s %-12s %s\n" "-----------------------------------" "------------" "------------" "---------------"
         
-        OSCAR_EXPS=$(ssh "$OSCAR_HOST" 'ls -d ~/wsindy-manifold/oscar_output/synthesis_*/ 2>/dev/null | xargs -I{} basename {}' 2>/dev/null)
+        OSCAR_EXPS=$(ssh "$OSCAR_HOST" 'ls -d ~/wsindy-manifold/oscar_output/*/ 2>/dev/null | xargs -I{} basename {}' 2>/dev/null)
         
         for exp in $OSCAR_EXPS; do
             oscar_status=$(ssh "$OSCAR_HOST" "[ -f ~/wsindy-manifold/oscar_output/$exp/summary.json ] && echo 'COMPLETE' || echo 'RUNNING'" 2>/dev/null)
@@ -268,7 +275,7 @@ case "$MODE" in
         echo ""
         echo -e "${BLUE}Downloading all completed experiments...${NC}"
         
-        COMPLETED_EXPS=$(ssh "$OSCAR_HOST" 'for d in ~/wsindy-manifold/oscar_output/synthesis_*/; do [ -f "$d/summary.json" ] && basename "$d"; done; true' 2>/dev/null)
+        COMPLETED_EXPS=$(ssh "$OSCAR_HOST" 'for d in ~/wsindy-manifold/oscar_output/*/; do [ -f "$d/summary.json" ] && basename "$d"; done; true' 2>/dev/null)
         
         if [ -z "$COMPLETED_EXPS" ]; then
             echo -e "${RED}No completed experiments found on Oscar${NC}"

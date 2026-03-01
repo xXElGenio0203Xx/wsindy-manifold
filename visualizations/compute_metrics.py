@@ -53,27 +53,50 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
     
     print(f"\nComputing metrics for {len(test_metadata)} test runs...")
     
+    skipped_runs = []
     for meta in tqdm(test_metadata, desc="Metrics"):
         run_name = meta["run_name"]
         run_dir = test_dir / run_name
         
-        # Load densities
-        true_data = np.load(run_dir / "density_true.npz")
-        
-        # Load model-specific predictions
+        # Load densities — skip incomplete test runs gracefully
+        true_file = run_dir / "density_true.npz"
         pred_file = run_dir / f"density_pred_{model_name}.npz"
         if not pred_file.exists():
             # Fallback to generic density_pred.npz for backward compatibility
             pred_file = run_dir / "density_pred.npz"
         
-        pred_data = np.load(pred_file)
+        if not true_file.exists() or not pred_file.exists():
+            skipped_runs.append(run_name)
+            continue
+        
+        try:
+            true_data = np.load(true_file)
+            pred_data = np.load(pred_file)
+        except Exception as e:
+            print(f"\n  ⚠ Skipping {run_name}: {e}")
+            skipped_runs.append(run_name)
+            continue
         
         rho_true = true_data["rho"]
         rho_pred = pred_data["rho"]
         times_true = true_data["times"]
         times_pred = pred_data["times"]
         
-        # Handle case where predictions only cover forecast period (not full time range)
+        # Extract forecast_start_idx if available (stored by test_evaluator)
+        forecast_start_idx = int(pred_data["forecast_start_idx"]) if "forecast_start_idx" in pred_data else None
+        
+        # ---- Fix temporal alignment ----
+        # density_true.npz is at raw sim dt (e.g. 0.04s)
+        # density_pred.npz is at ROM dt (e.g. 0.12s = dt * rom_subsample)
+        # We must subsample truth to ROM resolution before frame-by-frame alignment.
+        dt_true = float(times_true[1] - times_true[0]) if len(times_true) > 1 else 1.0
+        dt_pred = float(times_pred[1] - times_pred[0]) if len(times_pred) > 1 else dt_true
+        rom_subsample = max(1, round(dt_pred / dt_true))
+        
+        if rom_subsample > 1:
+            rho_true = rho_true[::rom_subsample]
+            times_true = times_true[::rom_subsample]
+        
         # Align by using only the overlapping time range
         T_true_full = rho_true.shape[0]
         T_pred = rho_pred.shape[0]
@@ -87,28 +110,46 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         times = times_true[true_start_idx:true_start_idx+T_pred]
         
         # Now they should be aligned
-        assert rho_true.shape[0] == T_pred, f"Shape mismatch after alignment: {rho_true.shape[0]} vs {T_pred}"
+        assert rho_true.shape[0] == T_pred, (
+            f"Shape mismatch after alignment: truth {rho_true.shape[0]} vs pred {T_pred}. "
+            f"rom_subsample={rom_subsample}, true_start_idx={true_start_idx}"
+        )
         
         # Flatten for metrics
         T, ny, nx = rho_true.shape
         rho_true_flat = rho_true.reshape(T, ny * nx)
         rho_pred_flat = rho_pred.reshape(T, ny * nx)
         
-        # Compute metrics
-        frame_metrics = compute_frame_metrics(rho_true_flat, rho_pred_flat)
+        # ---- Compute metrics on FORECAST region only ----
+        # The saved density_pred.npz contains conditioning + forecast.
+        # Metrics must be computed only on the forecast portion to avoid
+        # inflating R² with the near-perfect conditioning window.
+        fsi = forecast_start_idx if forecast_start_idx is not None else 0
+        rho_true_fc = rho_true_flat[fsi:]
+        rho_pred_fc = rho_pred_flat[fsi:]
+        
+        # Frame metrics on forecast region only
+        frame_metrics_fc = compute_frame_metrics(rho_true_fc, rho_pred_fc)
         summary = compute_summary_metrics(
-            rho_true_flat,
-            rho_pred_flat,
+            rho_true_fc,
+            rho_pred_fc,
             x_train_mean,
-            frame_metrics
+            frame_metrics_fc
         )
         
-        # Add RMSE (root mean squared error)
-        mse = np.mean((rho_true_flat - rho_pred_flat) ** 2)
+        # Also compute full-trajectory frame metrics for visualization
+        # (the video shows conditioning + forecast, so we need full metrics)
+        frame_metrics = compute_frame_metrics(rho_true_flat, rho_pred_flat)
+        
+        # Add RMSE (root mean squared error) — forecast only
+        mse = np.mean((rho_true_fc - rho_pred_fc) ** 2)
         summary["rmse"] = np.sqrt(mse)
         
         summary["run_name"] = run_name
         summary["ic_type"] = meta[ic_key]
+        summary["forecast_start_idx"] = fsi
+        summary["T_conditioning"] = fsi
+        summary["T_forecast"] = T - fsi
         
         # Load trajectory for later use
         traj_data = np.load(run_dir / "trajectory.npz")
@@ -144,10 +185,19 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
             "traj": traj,
             "vel": vel,
             "ic_type": meta[ic_key],
-            "frame_metrics": frame_metrics
+            "frame_metrics": frame_metrics,          # Full trajectory (for video)
+            "frame_metrics_fc": frame_metrics_fc,     # Forecast-only (for error plots)
+            "forecast_start_idx": forecast_start_idx,
         }
         
         all_metrics.append(summary)
+    
+    if skipped_runs:
+        print(f"\n  ⚠ Skipped {len(skipped_runs)}/{len(test_metadata)} incomplete test runs: {', '.join(skipped_runs[:5])}{'...' if len(skipped_runs) > 5 else ''}")
+    
+    if len(all_metrics) == 0:
+        print("  ✗ No complete test runs found — cannot compute metrics")
+        return pd.DataFrame(), {}, {}
     
     # Convert to DataFrame
     metrics_df = pd.DataFrame(all_metrics)

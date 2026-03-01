@@ -18,6 +18,7 @@ Output: Videos, plots, metrics CSVs, summary JSON
 import numpy as np
 from pathlib import Path
 import json
+import yaml
 import pandas as pd
 import argparse
 import time
@@ -538,10 +539,204 @@ def _generate_experiment_card(data_dir, models_data, oscar_data_dir):
         json.dump(card, f, indent=2)
 
 
+# =============================================================================
+# Multi-Method and WSINDy-Specific Visualization Helpers
+# =============================================================================
+
+METHOD_COLORS = {"mvar": "#2196F3", "lstm": "#FF9800", "wsindy": "#4CAF50"}
+METHOD_LABELS = {"mvar": "MVAR", "lstm": "LSTM", "wsindy": "WSINDy"}
+
+
+def _generate_multimethod_comparison(all_metrics, all_ic_metrics, ic_types,
+                                     plots_dir, all_degradation_info=None):
+    """
+    Generate a multi-panel comparison across all available methods.
+    Produces:
+      - method_comparison_r2.png : Grouped bar chart by IC type
+      - r2_degradation_3method.png : R²(t) overlay if degradation data exists
+    """
+    methods = list(all_metrics.keys())
+    n_methods = len(methods)
+
+    # ── Panel 1: R² by IC type ──────────────────────────────────
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    ax = axes[0]
+    x = np.arange(len(ic_types))
+    width = 0.8 / n_methods
+
+    for i, method in enumerate(methods):
+        ic_met = all_ic_metrics.get(method, {})
+        vals = []
+        for ic in ic_types:
+            if ic in ic_met and 'mean_r2' in ic_met[ic]:
+                vals.append(ic_met[ic]['mean_r2'])
+            else:
+                vals.append(np.nan)
+        offset = (i - (n_methods - 1) / 2) * width
+        ax.bar(x + offset, vals, width, label=METHOD_LABELS.get(method, method),
+               color=METHOD_COLORS.get(method, '#999'), alpha=0.85)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(ic_types, fontsize=9, rotation=30, ha='right')
+    ax.set_ylabel("Mean R²", fontsize=11)
+    ax.set_title("R² by IC Type", fontsize=13, fontweight="bold")
+    ax.legend(fontsize=10)
+    ax.axhline(y=0, color="gray", linestyle="--", alpha=0.3)
+    ax.grid(axis="y", alpha=0.3)
+
+    # ── Panel 2: Overall distribution ────────────────────────────
+    ax2 = axes[1]
+    data_list = []
+    labels_list = []
+    color_list = []
+    for method in methods:
+        df = all_metrics[method]
+        r2_col = 'r2' if 'r2' in df.columns else 'r2_reconstructed'
+        if r2_col in df.columns:
+            data_list.append(df[r2_col].dropna().values)
+            labels_list.append(METHOD_LABELS.get(method, method))
+            color_list.append(METHOD_COLORS.get(method, '#999'))
+
+    if data_list:
+        bp = ax2.boxplot(data_list, labels=labels_list, patch_artist=True)
+        for patch, color in zip(bp['boxes'], color_list):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+        ax2.set_ylabel("R²", fontsize=11)
+        ax2.set_title("Test R² Distribution", fontsize=13, fontweight="bold")
+        ax2.grid(axis="y", alpha=0.3)
+
+        # Print means
+        for method, data in zip(methods, data_list):
+            mean_val = np.nanmean(data)
+            label = METHOD_LABELS.get(method, method)
+            ax2.text(methods.index(method) + 1, mean_val,
+                     f" {mean_val:.3f}", va='center', fontsize=9, fontweight='bold')
+
+    plt.tight_layout()
+    plt.savefig(plots_dir / "method_comparison_r2.png", dpi=200, bbox_inches="tight")
+    plt.close()
+    print(f"   ✓ Saved: method_comparison_r2.png")
+
+    # ── R² degradation overlay (if available) ────────────────────
+    if all_degradation_info:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        has_data = False
+
+        for method in methods:
+            deg = all_degradation_info.get(method, {})
+            if not deg:
+                continue
+            # Try to find the time series from the degradation info
+            times_key = 'times'
+            mean_key = 'mean_r2_vs_time'
+            if times_key in deg and mean_key in deg:
+                t = np.array(deg[times_key])
+                r2 = np.array(deg[mean_key])
+                ax.plot(t, r2, label=METHOD_LABELS.get(method, method),
+                        color=METHOD_COLORS.get(method, '#999'), linewidth=2)
+                has_data = True
+
+        if has_data:
+            ax.axhline(y=0, color="gray", linestyle="--", alpha=0.3)
+            ax.set_xlabel("Time (s)", fontsize=11)
+            ax.set_ylabel("Mean R²", fontsize=11)
+            ax.set_title("R² Degradation Over Forecast Horizon",
+                         fontsize=13, fontweight="bold")
+            ax.legend(fontsize=11)
+            ax.grid(alpha=0.3)
+            plt.tight_layout()
+            plt.savefig(plots_dir / "r2_degradation_3method.png",
+                        dpi=200, bbox_inches="tight")
+            print(f"   ✓ Saved: r2_degradation_3method.png")
+        plt.close()
+
+
+def _generate_wsindy_equation_plot(wsindy_data, plots_dir):
+    """
+    Generate a clean equation-display plot for the discovered WSINDy PDE.
+    Shows active terms with coefficient values and bootstrap CIs.
+
+    Produces: wsindy_equations.png
+    """
+    model_info = wsindy_data.get('model_info', {})
+    mf = model_info.get('multifield', {})
+
+    if not mf:
+        print("   ⚠ No multifield model data — skipping equation plot")
+        return
+
+    equations = {}
+    for eq_name in ['rho', 'px', 'py']:
+        eq = mf.get(eq_name, mf.get(f"{eq_name}_model", {}))
+        if isinstance(eq, dict):
+            terms = eq.get('active_terms', eq.get('terms', []))
+            coeffs = eq.get('coefficients', eq.get('w', []))
+            ci_low = eq.get('ci_low', [None] * len(terms))
+            ci_high = eq.get('ci_high', [None] * len(terms))
+            equations[eq_name] = list(zip(terms, coeffs, ci_low, ci_high))
+
+    if not equations:
+        print("   ⚠ No active terms found in model JSON")
+        return
+
+    n_eq = len(equations)
+    fig, axes = plt.subplots(n_eq, 1, figsize=(10, 2.5 * n_eq))
+    if n_eq == 1:
+        axes = [axes]
+
+    eq_labels = {'rho': 'ρ_t =', 'px': 'p_x_t =', 'py': 'p_y_t ='}
+
+    for ax, (eq_name, terms) in zip(axes, equations.items()):
+        if not terms:
+            ax.axis('off')
+            continue
+
+        names = [t[0] for t in terms]
+        coeffs = [t[1] for t in terms]
+        lo = [t[2] for t in terms]
+        hi = [t[3] for t in terms]
+
+        x = np.arange(len(names))
+
+        # Bar plot of coefficients
+        colors = ['#4CAF50' if c > 0 else '#F44336' for c in coeffs]
+        bars = ax.bar(x, coeffs, color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
+
+        # Error bars if CI available
+        has_ci = any(l is not None for l in lo)
+        if has_ci:
+            err_lo = [c - l if l is not None else 0 for c, l in zip(coeffs, lo)]
+            err_hi = [h - c if h is not None else 0 for c, h in zip(coeffs, hi)]
+            ax.errorbar(x, coeffs, yerr=[err_lo, err_hi],
+                        fmt='none', ecolor='black', capsize=3, capthick=1)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels([n.replace('_', ' ') for n in names],
+                           rotation=30, ha='right', fontsize=9)
+        ax.set_ylabel("Coefficient", fontsize=10)
+        ax.set_title(eq_labels.get(eq_name, eq_name), fontsize=12, fontweight='bold',
+                     loc='left')
+        ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+
+    plt.suptitle("Discovered PDE Coefficients (WSINDy)",
+                 fontsize=14, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(plots_dir / "wsindy_equations.png", dpi=200, bbox_inches="tight")
+    plt.close()
+    print(f"   ✓ Saved: wsindy_equations.png")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Visualization Pipeline (Light Computation)")
     parser.add_argument("--experiment_name", type=str, default="test_sim",
                        help="Name of experiment to visualize (must match data generation experiment_name)")
+    parser.add_argument("--skip_videos", action="store_true",
+                       help="Skip best-run video generation (slow step, ~1hr per IC type)")
+    parser.add_argument("--skip_time_analysis", action="store_true",
+                       help="Skip time-resolved R² analysis")
     
     args = parser.parse_args()
     
@@ -558,6 +753,8 @@ def main():
     MVAR_DIR = DATA_DIR / "MVAR"
     LSTM_DIR = DATA_DIR / "LSTM"
     
+    WSINDY_DIR = DATA_DIR / "WSINDy"
+
     # Determine which structure we're using
     use_unified_structure = ROM_COMMON_DIR.exists()
     
@@ -573,6 +770,10 @@ def main():
             MODEL_DIRS['lstm'] = LSTM_DIR
         elif LSTM_DIR.exists():
             print(f"  ⚠️  LSTM/ directory exists but is empty — skipping LSTM")
+        if (WSINDY_DIR / "test_results.csv").exists():
+            MODEL_DIRS['wsindy'] = WSINDY_DIR
+        elif WSINDY_DIR.exists():
+            print(f"  ⚠️  WSINDy/ directory exists but test_results.csv not found — skipping WSINDy")
     else:
         print(f"\n🔍 Detected legacy single-model structure")
         POD_DIR = OLD_MVAR_DIR
@@ -599,9 +800,13 @@ def main():
         print(f"   python run_data_generation.py --experiment_name {args.experiment_name}")
         return
     
-    if not TRAIN_DIR.exists() or not TEST_DIR.exists():
-        print(f"\n❌ ERROR: Missing train/test directories in {DATA_DIR}")
+    if not TEST_DIR.exists():
+        print(f"\n❌ ERROR: Missing test/ directory in {DATA_DIR}")
         return
+    
+    skip_train = not TRAIN_DIR.exists()
+    if skip_train:
+        print(f"\n   ⚠️  No train/ directory — treating as degradation/test-only experiment")
     
     if not OLD_MVAR_DIR.exists() and not ROM_COMMON_DIR.exists():
         print(f"\n❌ ERROR: No model directories found in {DATA_DIR}")
@@ -618,9 +823,19 @@ def main():
     print("Loading Generated Data")
     print("="*80)
     
-    # Load training metadata
-    with open(TRAIN_DIR / "metadata.json", "r") as f:
-        train_metadata = json.load(f)
+    # Load training metadata (auto-generate if missing)
+    train_meta_path = TRAIN_DIR / "metadata.json"
+    if skip_train:
+        train_metadata = []
+        print("   ⚠️  No train data — skipping train-dependent steps")
+    elif train_meta_path.exists():
+        with open(train_meta_path, "r") as f:
+            train_metadata = json.load(f)
+    else:
+        # Auto-generate from directory listing
+        print("   ⚠️  train/metadata.json not found — generating from directory listing")
+        train_dirs = sorted([d.name for d in TRAIN_DIR.iterdir() if d.is_dir() and d.name.startswith("train_")])
+        train_metadata = [{"run_id": i, "run_name": d, "label": d, "distribution": "unknown", "ic_params": {}, "seed": i, "T": 0} for i, d in enumerate(train_dirs)]
     
     # Load test metadata
     with open(TEST_DIR / "metadata.json", "r") as f:
@@ -671,15 +886,84 @@ def main():
             'training_log': lstm_training_log,
             'dir': lstm_dir
         }
+
+    # Load WSINDy data if available
+    if 'wsindy' in MODEL_DIRS:
+        wsindy_dir = MODEL_DIRS['wsindy']
+        wsindy_model_info = {}
+        # Load multifield model JSON if present
+        mf_path = wsindy_dir / "multifield_model.json"
+        if mf_path.exists():
+            with open(mf_path) as f:
+                wsindy_model_info['multifield'] = json.load(f)
+        # Load test results for quick summary
+        wsindy_tr = wsindy_dir / "test_results.csv"
+        if wsindy_tr.exists():
+            wsindy_test_df = pd.read_csv(wsindy_tr)
+            r2_col = [c for c in wsindy_test_df.columns if 'r2' in c.lower()]
+            if r2_col:
+                wsindy_model_info['mean_r2'] = float(wsindy_test_df[r2_col[0]].mean())
+        models_data['wsindy'] = {
+            'model_info': wsindy_model_info,
+            'dir': wsindy_dir,
+        }
     
-    # Load simulation config from first training run
-    first_run_data = np.load(TRAIN_DIR / train_metadata[0]["run_name"] / "density.npz")
+    # Load simulation config from first available density file (prefer train, fall back to test)
+    first_train_density = TRAIN_DIR / train_metadata[0]["run_name"] / "density.npz" if train_metadata else None
+    first_test_density = TEST_DIR / test_metadata[0]["run_name"] / "density_true.npz"
+    if first_train_density is None or not first_train_density.exists():
+        # Also check for "density.npz" in test dir (old format)
+        first_test_density_old = TEST_DIR / test_metadata[0]["run_name"] / "density.npz"
+        if first_test_density.exists():
+            first_run_data = np.load(first_test_density)
+            print("   ℹ️  Using test density_true.npz for grid info (train density not available)")
+        elif first_test_density_old.exists():
+            first_run_data = np.load(first_test_density_old)
+            print("   ℹ️  Using test density.npz for grid info (train density not available)")
+        else:
+            print("   ❌ No density files found for grid info!")
+            return
+    else:
+        first_run_data = np.load(first_train_density)
     BASE_CONFIG_SIM = {
         "Lx": float(first_run_data["xgrid"][-1] - first_run_data["xgrid"][0] + 
                     (first_run_data["xgrid"][1] - first_run_data["xgrid"][0])),
         "Ly": float(first_run_data["ygrid"][-1] - first_run_data["ygrid"][0] + 
                     (first_run_data["ygrid"][1] - first_run_data["ygrid"][0]))
     }
+    
+    # ── Build config_info string for video overlays ──────────────────────────
+    config_info_str = None
+    config_yaml_path = DATA_DIR / "config_used.yaml"
+    if config_yaml_path.exists():
+        with open(config_yaml_path) as f:
+            full_cfg = yaml.safe_load(f)
+        sim = full_cfg.get('sim', {})
+        rom = full_cfg.get('rom', {})
+        density = full_cfg.get('density', {})
+        forces = full_cfg.get('forces', sim.get('forces', {}))
+        model_cfg = full_cfg.get('model', {})
+        lines = [
+            f"Exp: {args.experiment_name}",
+            f"N={sim.get('N','?')}  Lx={sim.get('Lx','?')}  dt={sim.get('dt','?')}  T={sim.get('T','?')}s  bc={sim.get('bc','?')}",
+            f"speed_mode={model_cfg.get('speed_mode', sim.get('speed_mode','?'))}  eta={sim.get('eta', model_cfg.get('eta','?'))}  R={sim.get('R', model_cfg.get('R','?'))}",
+        ]
+        if isinstance(forces, dict) and forces.get('enabled', False):
+            fp = forces.get('params', {})
+            lines.append(f"forces: Cr={fp.get('Cr','?')} Ca={fp.get('Ca','?')} lr={fp.get('lr','?')} la={fp.get('la','?')} mu_t={fp.get('mu_t','?')}")
+        lines.append(
+            f"KDE: {density.get('nx','?')}x{density.get('ny','?')}  bw={density.get('bandwidth','?')} | "
+            f"POD: d={rom.get('pod_modes','?')}  p={rom.get('mvar_lags','?')}  transform={rom.get('density_transform','?')}"
+        )
+        if rom.get('shift_align', False):
+            sa = rom.get('shift_align', {}) if isinstance(rom.get('shift_align'), dict) else {}
+            lines.append(f"shift_align=ON  spectral_scaling={rom.get('spectral_scaling', '?')}")
+        else:
+            lines.append(f"shift_align=OFF  spectral_scaling={rom.get('spectral_scaling', '?')}")
+        config_info_str = '\n'.join(lines)
+    else:
+        # Minimal fallback from what we know
+        config_info_str = f"Exp: {args.experiment_name} | Lx={BASE_CONFIG_SIM['Lx']:.0f} Ly={BASE_CONFIG_SIM['Ly']:.0f}"
     
     N_TRAIN = len(train_metadata)
     M_TEST = len(test_metadata)
@@ -717,6 +1001,12 @@ def main():
             print(f"   LSTM: final val_loss={final_val_loss:.4f}")
         else:
             print(f"   LSTM: loaded")
+    if 'wsindy' in models_data:
+        ws_info = models_data['wsindy']['model_info']
+        ws_r2 = ws_info.get('mean_r2', None)
+        ws_mode = 'multifield' if 'multifield' in ws_info else 'scalar'
+        r2_str = f", test R²={ws_r2:.4f}" if ws_r2 is not None else ""
+        print(f"   WSINDy: mode={ws_mode}{r2_str}")
     
     # =============================================================================
     # STEP 1: POD Plots
@@ -782,27 +1072,33 @@ def main():
     print("="*80)
     
     all_top_runs = {}
-    for model_name in all_metrics.keys():
-        print(f"\n   Generating best runs for {model_name.upper()}...")
-        
-        model_best_runs_dir = BEST_RUNS_DIR / model_name.upper()
-        model_best_runs_dir.mkdir(exist_ok=True, parents=True)
-        
-        # Get p_lag for this model (MVAR only)
-        model_p_lag = models_data[model_name].get('p_lag', 5) if model_name == 'mvar' else 5
-        
-        top_runs = generate_best_run_visualizations(
-            metrics_df=all_metrics[model_name],
-            test_predictions=all_test_predictions[model_name],
-            ic_metrics=all_ic_metrics[model_name],
-            test_dir=TEST_DIR,
-            best_runs_dir=model_best_runs_dir,
-            base_config_sim=BASE_CONFIG_SIM,
-            p_lag=model_p_lag,
-            n_top=4,
-            model_name=model_name
-        )
-        all_top_runs[model_name] = top_runs
+    if args.skip_videos:
+        print("\n   ⏭️  Skipping best-run video generation (--skip_videos)")
+        for model_name in all_metrics.keys():
+            all_top_runs[model_name] = []
+    else:
+        for model_name in all_metrics.keys():
+            print(f"\n   Generating best runs for {model_name.upper()}...")
+            
+            model_best_runs_dir = BEST_RUNS_DIR / model_name.upper()
+            model_best_runs_dir.mkdir(exist_ok=True, parents=True)
+            
+            # Get p_lag for this model (MVAR only)
+            model_p_lag = models_data[model_name].get('p_lag', 5) if model_name == 'mvar' else 5
+            
+            top_runs = generate_best_run_visualizations(
+                metrics_df=all_metrics[model_name],
+                test_predictions=all_test_predictions[model_name],
+                ic_metrics=all_ic_metrics[model_name],
+                test_dir=TEST_DIR,
+                best_runs_dir=model_best_runs_dir,
+                base_config_sim=BASE_CONFIG_SIM,
+                p_lag=model_p_lag,
+                n_top=4,
+                model_name=model_name,
+                config_info=config_info_str
+            )
+            all_top_runs[model_name] = top_runs
     
     # Use primary model for backward compatibility
     top_4_runs = all_top_runs[primary_model]
@@ -826,23 +1122,26 @@ def main():
     print("="*80)
     
     all_degradation_info = {}
-    for model_name in all_metrics.keys():
-        print(f"\n   Analyzing time evolution for {model_name.upper()}...")
-        
-        model_time_dir = TIME_ANALYSIS_DIR / model_name.upper()
-        model_time_dir.mkdir(exist_ok=True, parents=True)
-        
-        model_dir = models_data[model_name]['dir']
-        
-        degradation_info = generate_time_resolved_analysis(
-            test_metadata=test_metadata,
-            test_dir=TEST_DIR,
-            mvar_dir=model_dir,
-            data_dir=DATA_DIR,
-            time_analysis_dir=model_time_dir,
-            model_name=model_name
-        )
-        all_degradation_info[model_name] = degradation_info
+    if args.skip_time_analysis:
+        print("\n   ⏭️  Skipping time-resolved analysis (--skip_time_analysis)")
+    else:
+        for model_name in all_metrics.keys():
+            print(f"\n   Analyzing time evolution for {model_name.upper()}...")
+            
+            model_time_dir = TIME_ANALYSIS_DIR / model_name.upper()
+            model_time_dir.mkdir(exist_ok=True, parents=True)
+            
+            model_dir = models_data[model_name]['dir']
+            
+            degradation_info = generate_time_resolved_analysis(
+                test_metadata=test_metadata,
+                test_dir=TEST_DIR,
+                mvar_dir=model_dir,
+                data_dir=DATA_DIR,
+                time_analysis_dir=model_time_dir,
+                model_name=model_name
+            )
+            all_degradation_info[model_name] = degradation_info
     
     # Use primary model for backward compatibility
     degradation_info = all_degradation_info.get(primary_model, {})
@@ -884,12 +1183,12 @@ def main():
         )
     
     # =============================================================================
-    # STEP 8: MVAR vs LSTM Comparison (if both models exist)
+    # STEP 8: Multi-Method Comparison
     # =============================================================================
     
     if 'mvar' in all_metrics and 'lstm' in all_metrics:
         print("\n" + "="*80)
-        print("STEP 8: Generating MVAR vs LSTM Comparison")
+        print("STEP 8a: Generating MVAR vs LSTM Comparison")
         print("="*80)
         
         generate_mvar_lstm_comparison(
@@ -900,6 +1199,27 @@ def main():
             ic_types=IC_TYPES,
             plots_dir=PLOTS_DIR
         )
+
+    # --- 3-method comparison (if WSINDy is available) ---
+    available_methods = list(all_metrics.keys())
+    if len(available_methods) >= 2:
+        print("\n" + "="*80)
+        print(f"STEP 8b: {len(available_methods)}-Method Comparison")
+        print("="*80)
+        _generate_multimethod_comparison(
+            all_metrics=all_metrics,
+            all_ic_metrics=all_ic_metrics,
+            ic_types=IC_TYPES,
+            plots_dir=PLOTS_DIR,
+            all_degradation_info=all_degradation_info,
+        )
+
+    # --- WSINDy equation display ---
+    if 'wsindy' in models_data:
+        print("\n" + "="*80)
+        print("STEP 8c: WSINDy Equation Display")
+        print("="*80)
+        _generate_wsindy_equation_plot(models_data['wsindy'], PLOTS_DIR)
     
     # =============================================================================
     # STEP 9: Latent vs Lifted R² Analysis
@@ -952,8 +1272,13 @@ def main():
     print(f"\n🎬 Top 4 Runs by R²:")
     for model_name, top_runs in all_top_runs.items():
         print(f"   {model_name.upper()} ({BEST_RUNS_DIR.name}/{model_name.upper()}/)")
-        for idx, row in top_runs.iterrows():
-            print(f"      • {row[df_ic_key]}/ - {row['run_name']} (R²={row['r2']:.4f})")
+        if hasattr(top_runs, 'iterrows') and len(top_runs) > 0:
+            for idx, row in top_runs.iterrows():
+                print(f"      • {row[df_ic_key]}/ - {row['run_name']} (R²={row['r2']:.4f})")
+        elif isinstance(top_runs, list) and len(top_runs) == 0:
+            print(f"      (videos skipped)")
+        else:
+            print(f"      (no runs)")
     
     print(f"\n📊 Summary Plots ({PLOTS_DIR.name}/):")
     print(f"   • POD singular values + energy spectrum")
@@ -970,6 +1295,16 @@ def main():
         print(f"     - MVAR: R²={mvar_mean:.4f}")
         print(f"     - LSTM: R²={lstm_mean:.4f}")
         print(f"     - Difference: {diff:+.4f}")
+
+    if len(all_metrics) >= 2:
+        print(f"   • {len(all_metrics)}-method comparison: method_comparison_r2.png")
+        for mname, mdf in all_metrics.items():
+            r2_col = 'r2' if 'r2' in mdf.columns else 'r2_reconstructed'
+            if r2_col in mdf.columns:
+                print(f"     - {mname.upper()}: R²={mdf[r2_col].mean():.4f}")
+
+    if 'wsindy' in models_data:
+        print(f"   • WSINDy discovered equations: wsindy_equations.png")
     
     if all_degradation_info:
         print(f"\n⏱️  Time-Resolved Analysis:")

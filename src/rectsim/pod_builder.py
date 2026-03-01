@@ -93,8 +93,26 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
     shift_align = rom_config.get('shift_align', False)
     shift_align_ref = rom_config.get('shift_align_ref', 'mean')
     shift_align_data = None
+    unaligned_svd = None  # Will hold SVD of raw data when alignment is used
     
     if shift_align:
+        # Compute unaligned POD spectra BEFORE alignment (for comparison plots)
+        save_unaligned = rom_config.get('save_unaligned_pod', True)
+        if save_unaligned:
+            print("\nComputing unaligned POD spectrum (for comparison)...")
+            X_raw_mean = X_all.mean(axis=0)
+            X_raw_centered = X_all - X_raw_mean
+            _, S_raw, _ = np.linalg.svd(X_raw_centered.T, full_matrices=False)
+            raw_total = np.sum(S_raw**2)
+            raw_cum = np.cumsum(S_raw**2) / raw_total
+            unaligned_svd = {
+                'S': S_raw,
+                'total_energy': raw_total,
+                'cumulative_energy': raw_cum,
+            }
+            print(f"  ✓ Unaligned spectrum: {len(S_raw)} singular values")
+            del X_raw_centered  # Free memory
+        
         Ny, Nx = density_shape_2d
         print(f"\nApplying shift alignment (ref={shift_align_ref})...")
         densities_2d = X_all.reshape(-1, Ny, Nx)
@@ -124,7 +142,7 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
         snapshot_means = X_all.mean(axis=1, keepdims=True)
         X_all = X_all - snapshot_means
         print(f"\nApplying meansub transform: rho - mean(rho) per snapshot")
-    elif density_transform == 'raw':
+    elif density_transform in ('raw', 'none'):
         print(f"\nNo density transform (raw)")
     else:
         raise ValueError(f"Unknown density_transform: '{density_transform}'. Use 'raw', 'log', 'sqrt', or 'meansub'.")
@@ -180,6 +198,7 @@ def build_pod_basis(train_dir, n_train, rom_config, density_key='rho'):
         'density_transform_eps': density_transform_eps,
         'shift_align': shift_align,
         'shift_align_data': shift_align_data,
+        'unaligned_svd': unaligned_svd,
     }
 
 
@@ -213,6 +232,17 @@ def save_pod_basis(pod_data, mvar_dir):
     )
     
     print(f"✓ POD basis saved to {mvar_dir}/pod_basis.npz")
+    
+    # Save unaligned POD spectrum if computed (for eigenvalue decay comparison)
+    unaligned_svd = pod_data.get('unaligned_svd', None)
+    if unaligned_svd is not None:
+        np.savez_compressed(
+            mvar_dir / "pod_basis_unaligned.npz",
+            all_singular_values=unaligned_svd['S'],
+            total_energy=unaligned_svd['total_energy'],
+            cumulative_ratio=unaligned_svd['cumulative_energy'],
+        )
+        print(f"✓ Unaligned POD spectrum saved to {mvar_dir}/pod_basis_unaligned.npz")
     
     # Save shift alignment data if present
     sa_data = pod_data.get('shift_align_data', None)

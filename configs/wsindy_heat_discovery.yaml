@@ -1,0 +1,43 @@
+# WSINDy Experiment: Heat Equation Discovery
+# u_t = D * Laplacian(u),  D = 0.1
+# Periodic domain [0, 2π]² with multi-mode exact solution
+
+experiment_name: wsindy_heat_discovery
+
+data:
+  pde: heat
+  Lx: 6.283185307179586    # 2π
+  Ly: 6.283185307179586
+  nx: 64
+  ny: 64
+  dt: 0.05
+  T_steps: 100
+  D: 0.1
+
+wsindy:
+  library:
+    max_poly: 3
+    operators: [I, dx, dy, lap]
+    include_constant: true
+
+  model_selection:
+    n_ell: 8
+    p: [2, 2, 2]
+    alpha: 0.10
+    beta: 0.01
+    lambda_min: -3
+    lambda_max: 1
+    n_lambda: 40
+
+  bootstrap:
+    enabled: true
+    B: 50
+
+  stability:
+    enabled: true
+    n_bootstrap: 5
+    threshold: 0.6
+
+  forecast:
+    n_steps: 60
+    clip_negative: false

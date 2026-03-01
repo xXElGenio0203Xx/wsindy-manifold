@@ -1,0 +1,46 @@
+# WSINDy Experiment: Advection-Diffusion Discovery
+# u_t = D * Laplacian(u) - cx * u_x - cy * u_y
+# D = 0.05, cx = 0.5, cy = 0.3
+# Periodic domain [0, 2π]²
+
+experiment_name: wsindy_advdiff_discovery
+
+data:
+  pde: advection_diffusion
+  Lx: 6.283185307179586    # 2π
+  Ly: 6.283185307179586
+  nx: 64
+  ny: 64
+  dt: 0.05
+  T_steps: 120
+  D: 0.05
+  cx: 0.5
+  cy: 0.3
+
+wsindy:
+  library:
+    max_poly: 3
+    operators: [I, dx, dy, lap]
+    include_constant: true
+
+  model_selection:
+    n_ell: 8
+    p: [2, 2, 2]
+    alpha: 0.10
+    beta: 0.01
+    lambda_min: -3
+    lambda_max: 1
+    n_lambda: 40
+
+  bootstrap:
+    enabled: true
+    B: 50
+
+  stability:
+    enabled: true
+    n_bootstrap: 5
+    threshold: 0.6
+
+  forecast:
+    n_steps: 80
+    clip_negative: false

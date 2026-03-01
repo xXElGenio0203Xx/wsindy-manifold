@@ -1,0 +1,120 @@
+---
+# ============================================================================
+# VDYN7 — PURE VICSEK + VARIABLE SPEED
+# ============================================================================
+# Same as DYN7 (no Morse forces, pure alignment) but speed_mode="variable".
+# Note: with no forces, variable speed has minimal effect — agents move at
+# base speed. Included for completeness of the VDYN suite.
+# ============================================================================
+
+experiment_name: "VDYN7_pure_vicsek_varspeed"
+
+sim:
+  N: 200
+  T: 20.0
+  dt: 0.04
+  Lx: 25.0
+  Ly: 25.0
+  bc: "periodic"
+
+test_sim:
+  T: 50.0
+
+model:
+  type: "discrete"
+  speed: 4.0
+  speed_mode: "variable"
+
+params:
+  R: 4.0
+
+noise:
+  kind: "gaussian"
+  eta: 0.2
+  match_variance: true
+
+forces:
+  enabled: false
+
+alignment:
+  enabled: true
+
+density:
+  nx: 64
+  ny: 64
+  bandwidth: 5.0
+
+outputs:
+  density_resolution: 64
+  density_bandwidth: 5.0
+
+train_ic:
+  type: "mixed_comprehensive"
+  gaussian:
+    enabled: true
+    n_runs: 80
+    positions_x: [5.0, 10.0, 15.0, 20.0]
+    positions_y: [5.0, 10.0, 15.0, 20.0]
+    variances: [1.5, 3.0, 5.0]
+    n_samples_per_config: 1
+  uniform:
+    enabled: true
+    n_runs: 40
+    n_samples: 40
+  two_clusters:
+    enabled: true
+    n_runs: 24
+    separations: [4.0, 7.0, 10.0]
+    sigmas: [1.5, 3.0]
+    n_samples_per_config: 4
+  ring:
+    enabled: false
+
+test_ic:
+  type: "mixed_test_comprehensive"
+  gaussian:
+    enabled: false
+  uniform:
+    enabled: true
+    n_runs: 20
+  two_clusters:
+    enabled: false
+  ring:
+    enabled: false
+
+rom:
+  subsample: 3
+  fixed_modes: 19
+  density_transform: "raw"
+  density_transform_eps: 1.0e-10
+  shift_align: true
+  shift_align_ref: "mean"
+  mass_postprocess: "none"
+  models:
+    mvar:
+      enabled: true
+      lag: 5
+      ridge_alpha: 1.0e-4
+    lstm:
+      enabled: true
+      hidden_units: 128
+      num_layers: 2
+      max_epochs: 200
+      learning_rate: 0.001
+      batch_size: 32
+      lag: 5
+      dropout: 0.15
+      gradient_clip: 5.0
+      residual: true
+      use_layer_norm: true
+      normalize_input: true
+      patience: 40
+      multistep_loss: false
+      scheduled_sampling: false
+
+eval:
+  metrics: ["r2", "rmse"]
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.60
+  clamp_mode: "C0"

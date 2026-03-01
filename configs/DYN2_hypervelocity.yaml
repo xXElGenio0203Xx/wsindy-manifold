@@ -103,7 +103,12 @@ rom:
       lag: 5
       ridge_alpha: 1.0e-4
     lstm:
-      enabled: false
+      enabled: true
+      hidden_dim: 128
+      n_layers: 2
+      n_epochs: 200
+      lr: 1.0e-3
+      patience: 20
 
 eval:
   metrics: ["r2", "rmse"]
@@ -111,3 +116,42 @@ eval:
   save_time_resolved: true
   forecast_start: 0.60
   clamp_mode: "C0"
+
+# ================================================================
+# WSINDy PDE Discovery -- 3-field system
+# Hypervelocity: 15x speed, strong Morse
+# ================================================================
+wsindy:
+  enabled: true
+  mode: "multifield"
+
+  n_train: 30
+  subsample: 3
+  seed: 42
+
+  # rho: div_p, lap_rho, div_rho_gradPhi, lap_rho2, lap_rho3  (5)
+  # px:  px, p_sq_px, dx_rho, lap_px, rho_dx_Phi              (5)
+  # py:  py, p_sq_py, dy_rho, lap_py, rho_dy_Phi              (5)
+  multifield_library:
+    morse: true
+    rich: false
+
+  model_selection:
+    n_ell: 12
+    p: [2, 2, 2]
+    stride: [2, 2, 2]
+
+  lambdas:
+    log_min: -5
+    log_max: 2
+    n_points: 60
+
+  bootstrap:
+    enabled: true
+    B: 50
+    ci_alpha: 0.05
+
+  forecast:
+    clip_negative: true
+    mass_conserve: true
+    method: "auto"

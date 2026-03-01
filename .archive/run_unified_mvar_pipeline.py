@@ -32,6 +32,7 @@ from rectsim.simulation_runner import run_simulations_parallel
 from rectsim.pod_builder import build_pod_basis, save_pod_basis
 from rectsim.mvar_trainer import train_mvar_model, save_mvar_model
 from rectsim.test_evaluator import evaluate_test_runs
+from rectsim.forecast_utils import mvar_forecast_fn_factory
 
 
 def main():
@@ -193,12 +194,14 @@ def main():
         TEST_DIR = OUTPUT_DIR / "test"
         ROM_SUBSAMPLE = rom_config.get('subsample', rom_config.get('rom_subsample', 1))
         
+        mvar_forecast_fn = mvar_forecast_fn_factory(mvar_data['model'], mvar_data['P_LAG'])
         test_results_df = evaluate_test_runs(
             test_dir=TEST_DIR,
             n_test=n_test,
             base_config_test=BASE_CONFIG_TEST,
             pod_data=pod_data,
-            mvar_model=mvar_data['model'],
+            forecast_fn=mvar_forecast_fn,
+            lag=mvar_data['P_LAG'],
             density_nx=DENSITY_NX,
             density_ny=DENSITY_NY,
             rom_subsample=ROM_SUBSAMPLE,

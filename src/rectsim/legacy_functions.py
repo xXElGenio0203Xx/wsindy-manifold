@@ -1813,7 +1813,8 @@ def side_by_side_video(
     name: str = "comparison",
     fps: int = 20,
     cmap: str = "viridis",
-    titles: tuple = ("Ground Truth", "Prediction")
+    titles: tuple = ("Ground Truth", "Prediction"),
+    config_info: Optional[str] = None
 ) -> None:
     """
     Create side-by-side comparison video with optional error timeseries below.
@@ -1827,6 +1828,8 @@ def side_by_side_video(
         fps: Frames per second
         cmap: Colormap name
         titles: (left_title, right_title)
+        config_info: Optional multi-line string with experiment config details,
+                     rendered as a header above the panels.
     """
     path.mkdir(parents=True, exist_ok=True)
     video_path = path / f"{name}.mp4"
@@ -1848,15 +1851,22 @@ def side_by_side_video(
     vmax = max(left_frames.max(), right_frames.max())
     
     # Create figure
+    has_header = config_info is not None
     if lower_strip_timeseries is not None:
-        fig = plt.figure(figsize=(14, 7))
+        fig = plt.figure(figsize=(14, 8 if has_header else 7))
         gs = fig.add_gridspec(2, 2, height_ratios=[3, 1], hspace=0.3, wspace=0.3)
         ax_left = fig.add_subplot(gs[0, 0])
         ax_right = fig.add_subplot(gs[0, 1])
         ax_ts = fig.add_subplot(gs[1, :])
     else:
-        fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(14, 5))
+        fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(14, 6 if has_header else 5))
         ax_ts = None
+    
+    # Config info header
+    if has_header:
+        fig.text(0.5, 0.98, config_info, ha='center', va='top', fontsize=8,
+                 fontfamily='monospace', bbox=dict(boxstyle='round,pad=0.3',
+                 facecolor='lightyellow', edgecolor='gray', alpha=0.9))
     
     # Left panel (no transpose - frames already in correct orientation)
     im_left = ax_left.imshow(left_frames[0], origin='lower', cmap=cmap,
@@ -1886,7 +1896,7 @@ def side_by_side_video(
         ax_ts.set_xlim([0, T-1])
         ax_ts.set_ylim([0, lower_strip_timeseries.max() * 1.1])
     
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.93 if has_header else 1.0])
     
     # Write video
     writer = FFMpegWriter(fps=fps, bitrate=3000)
@@ -1919,7 +1929,8 @@ def trajectory_video(
     show_velocities: bool = True,
     quiver_scale: float = 3.0,
     quiver_width: float = 0.004,
-    quiver_alpha: float = 0.8
+    quiver_alpha: float = 0.8,
+    vel: Optional[Array] = None,
 ) -> None:
     """
     Create trajectory video showing particle positions and velocities over time.
@@ -1941,36 +1952,42 @@ def trajectory_video(
         quiver_scale: Scale factor for velocity arrows (higher = shorter arrows)
         quiver_width: Width of velocity arrows
         quiver_alpha: Transparency of velocity arrows
+        vel: Pre-computed velocities (T, N, 2). If provided, used directly
+             instead of recomputing from finite differences. Preferred when
+             the simulation already saved velocities in trajectory.npz.
     """
     path.mkdir(parents=True, exist_ok=True)
     video_path = path / f"{name}.mp4"
     
     T, N, _ = traj.shape
     
-    # Subsample if too many frames
+    # Subsample if too many frames (use fixed stride to keep uniform dt)
     max_frames = 500
     if T > max_frames:
-        indices = np.linspace(0, T - 1, max_frames, dtype=int)
+        stride = max(1, T // max_frames)
+        indices = np.arange(0, T, stride)[:max_frames]
         traj = traj[indices]
         times = times[indices]
-        T = max_frames
+        if vel is not None:
+            vel = vel[indices]
+        T = len(indices)
     
-    # Compute velocities from positions (finite differences)
-    # Handle periodic boundaries to avoid spurious large velocities
-    vel = np.zeros_like(traj)
-    if T > 1:
-        dt = times[1] - times[0] if len(times) > 1 else 1.0
-        for t in range(T - 1):
-            disp = traj[t + 1] - traj[t]
-            
-            # Wrap displacements for periodic boundaries (minimum image convention)
-            disp[:, 0] = np.where(disp[:, 0] > Lx/2, disp[:, 0] - Lx, disp[:, 0])
-            disp[:, 0] = np.where(disp[:, 0] < -Lx/2, disp[:, 0] + Lx, disp[:, 0])
-            disp[:, 1] = np.where(disp[:, 1] > Ly/2, disp[:, 1] - Ly, disp[:, 1])
-            disp[:, 1] = np.where(disp[:, 1] < -Ly/2, disp[:, 1] + Ly, disp[:, 1])
-            
-            vel[t] = disp / dt
-        vel[-1] = vel[-2]  # Copy last velocity
+    # Use saved velocities if provided; otherwise fall back to finite differences
+    if vel is None:
+        vel = np.zeros_like(traj)
+        if T > 1:
+            for t in range(T - 1):
+                disp = traj[t + 1] - traj[t]
+                dt_t = times[t + 1] - times[t] if times[t + 1] != times[t] else 1.0
+                
+                # Wrap displacements for periodic boundaries (minimum image convention)
+                disp[:, 0] = np.where(disp[:, 0] > Lx/2, disp[:, 0] - Lx, disp[:, 0])
+                disp[:, 0] = np.where(disp[:, 0] < -Lx/2, disp[:, 0] + Lx, disp[:, 0])
+                disp[:, 1] = np.where(disp[:, 1] > Ly/2, disp[:, 1] - Ly, disp[:, 1])
+                disp[:, 1] = np.where(disp[:, 1] < -Ly/2, disp[:, 1] + Ly, disp[:, 1])
+                
+                vel[t] = disp / dt_t
+            vel[-1] = vel[-2]  # Copy last velocity
     
     # Create figure with colorbar
     fig = plt.figure(figsize=(10, 8))
