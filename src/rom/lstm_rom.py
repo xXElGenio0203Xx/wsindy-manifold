@@ -263,16 +263,40 @@ def train_lstm_rom(X_all, Y_all, config, out_dir, Y_multi=None):
         patience = lstm_config.patience
     else:
         lstm_config = config['rom']['models']['lstm']
-        batch_size = lstm_config['batch_size']
-        hidden_units = lstm_config['hidden_units']
-        num_layers = lstm_config['num_layers']
-        learning_rate = lstm_config['learning_rate']
-        max_epochs = lstm_config['max_epochs']
-        patience = lstm_config['patience']
+        # ── Backward compatibility for old config key names ──
+        # Old DYN configs use: hidden_dim, n_layers, n_epochs, lr
+        # New configs use:     hidden_units, num_layers, max_epochs, learning_rate
+        _COMPAT_MAP = {
+            'batch_size':    ['batch_size'],
+            'hidden_units':  ['hidden_units', 'hidden_dim'],
+            'num_layers':    ['num_layers', 'n_layers'],
+            'learning_rate': ['learning_rate', 'lr'],
+            'max_epochs':    ['max_epochs', 'n_epochs'],
+            'patience':      ['patience'],
+        }
+        _SENTINEL = object()
+        def _compat_get(key, default=_SENTINEL):
+            for alias in _COMPAT_MAP.get(key, [key]):
+                if alias in lstm_config:
+                    return lstm_config[alias]
+            if default is not _SENTINEL:
+                return default
+            raise KeyError(
+                f"Missing LSTM config key '{key}'. "
+                f"Tried aliases: {_COMPAT_MAP.get(key, [key])}. "
+                f"Available keys: {sorted(lstm_config.keys())}"
+            )
+        batch_size = _compat_get('batch_size', 32)  # default for old DYN configs
+        hidden_units = _compat_get('hidden_units')
+        num_layers = _compat_get('num_layers')
+        learning_rate = _compat_get('learning_rate')
+        max_epochs = _compat_get('max_epochs')
+        patience = _compat_get('patience')
     
     # Optional hyperparameters with sensible defaults
+    # (also handles old-style aliases: grad_clip → gradient_clip, etc.)
     weight_decay     = _get('weight_decay', 1e-5)
-    gradient_clip    = _get('gradient_clip', 5.0)
+    gradient_clip    = _get('gradient_clip', _get('grad_clip', 5.0))
     dropout          = _get('dropout', 0.0)
     residual         = _get('residual', True)
     normalize_input  = _get('normalize_input', True)
