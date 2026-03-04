@@ -715,12 +715,12 @@ def main():
             rich = mf_cfg.get("rich", False)
             kde_bw = mf_cfg.get("kde_bandwidth", 5.0)
 
-            # Morse parameters from sim config
-            sim_cfg = config.get("sim", {})
-            Ca = sim_cfg.get("Ca", 0.8)
-            Cr = sim_cfg.get("Cr", 0.3)
-            la = sim_cfg.get("la", 1.5)
-            lr = sim_cfg.get("lr", 0.5)
+            # Morse parameters from forces config
+            forces_params = raw_config.get("forces", {}).get("params", {})
+            Ca = forces_params.get("Ca", 0.8)
+            Cr = forces_params.get("Cr", 0.3)
+            la = forces_params.get("la", 1.5)
+            lr = forces_params.get("lr", 0.5)
 
             # ── Build 3-equation library ────────────────────────────
             mf_library = build_mf_library(morse=morse_enabled, rich=rich)
@@ -1027,11 +1027,13 @@ def main():
                         vel_test = td["vel"][::w_subsample]
                         mf_cfg = wsindy_config.get("multifield_library", {})
                         kde_bw = mf_cfg.get("kde_bandwidth", 5.0)
-                        px0, py0 = compute_flux_kde(
-                            traj_test[forecast_start],
-                            vel_test[forecast_start],
-                            xgrid, ygrid, bandwidth=kde_bw,
+                        # compute_flux_kde expects (T, N, 2) — wrap single frame
+                        px0_arr, py0_arr = compute_flux_kde(
+                            traj_test[forecast_start:forecast_start+1],
+                            vel_test[forecast_start:forecast_start+1],
+                            xgrid, ygrid, Lx, Ly, bandwidth=kde_bw,
                         )
+                        px0, py0 = px0_arr[0], py0_arr[0]
                     else:
                         # No trajectory → zero flux ICs (degraded mode)
                         print(f"    WARNING: {run_name} has no trajectory.npz, using zero-flux ICs")
@@ -1039,15 +1041,15 @@ def main():
                         py0 = np.zeros_like(rho0)
 
                     # Morse params
-                    sim_cfg = config.get("sim", {})
+                    forces_params_fc = raw_config.get("forces", {}).get("params", {})
                     morse_params = None
                     mf_cfg_lib = wsindy_config.get("multifield_library", {})
                     if mf_cfg_lib.get("morse", True):
                         morse_params = dict(
-                            Cr=sim_cfg.get("Cr", 0.3),
-                            Ca=sim_cfg.get("Ca", 0.8),
-                            lr=sim_cfg.get("lr", 0.5),
-                            la=sim_cfg.get("la", 1.5),
+                            Cr=forces_params_fc.get("Cr", 0.3),
+                            Ca=forces_params_fc.get("Ca", 0.8),
+                            lr=forces_params_fc.get("lr", 0.5),
+                            la=forces_params_fc.get("la", 1.5),
                         )
 
                     fc_method = fc_cfg.get("method", "auto")
@@ -1111,6 +1113,24 @@ def main():
                 "r2_reconstructed": r2_ts[:n_save],
             }).to_csv(run_dir / "r2_vs_time_wsindy.csv", index=False)
 
+            # Save density_metrics_wsindy.csv (analogous to MVAR/LSTM)
+            try:
+                T_pred = U_pred.shape[0]
+                density_var_pred = np.std(U_pred, axis=(1, 2))
+                mass_pred = np.sum(U_pred, axis=(1, 2))
+                density_var_true = np.std(rho_true_fc[:T_pred], axis=(1, 2))
+                mass_true_fc = np.sum(rho_true_fc[:T_pred], axis=(1, 2))
+                dm_df = pd.DataFrame({
+                    't': times_fc[:T_pred],
+                    'density_variance_true': density_var_true,
+                    'density_variance_pred': density_var_pred,
+                    'mass_true': mass_true_fc,
+                    'mass_pred': mass_pred,
+                })
+                dm_df.to_csv(run_dir / "density_metrics_wsindy.csv", index=False)
+            except Exception:
+                pass  # Non-critical
+
             test_results.append({
                 "test_id": ti, "run_name": run_name,
                 "r2_reconstructed": mean_r2,
@@ -1134,6 +1154,26 @@ def main():
             "std_r2": float(std_r2_wsindy) if not np.isnan(std_r2_wsindy) else None,
             "n_test": n_test,
         }
+
+        # Save WSINDy runtime profile (analogous to MVAR/LSTM)
+        wsindy_discovery_time = wsindy_summary.get("model_selection", {}).get("time_s", 0)
+        wsindy_runtime_profile = {
+            "model_name": "WSINDy",
+            "training_time_seconds": wsindy_discovery_time,
+            "model_params": int(wsindy_summary.get("discovered_pde", {}).get("n_active", 0)
+                                if isinstance(wsindy_summary.get("discovered_pde"), dict)
+                                else sum(v.get("n_active", 0)
+                                         for v in wsindy_summary.get("discovered_pde", {}).values()
+                                         if isinstance(v, dict))),
+            "inference": {
+                "single_step": {
+                    "mean_seconds": 0.0,  # PDE integrator, not profiled per-step
+                },
+            },
+            "notes": "WSINDy is a PDE discovery method; training = model selection + bootstrap",
+        }
+        with open(WSINDY_DIR / "runtime_profile.json", "w") as f:
+            json.dump(wsindy_runtime_profile, f, indent=2)
 
         if mean_r2_mvar is not None:
             wsindy_summary["comparison_with_mvar"] = {
@@ -1211,7 +1251,7 @@ def main():
                          "MVAR/runtime_profile.json"]
     if lstm_enabled:
         export_files += ["LSTM/lstm_state_dict.pt", "LSTM/test_results.csv",
-                         "LSTM/training_log.csv"]
+                         "LSTM/training_log.csv", "LSTM/runtime_profile.json"]
     if wsindy_enabled:
         wsindy_mode_used = wsindy_summary.get("mode", "scalar")
         if wsindy_mode_used == "multifield":
@@ -1230,6 +1270,7 @@ def main():
                 "WSINDy/wsindy_model.npz", "WSINDy/test_results.csv",
                 "WSINDy/bootstrap.npz",
             ]
+        export_files.append("WSINDy/runtime_profile.json")
     # Test artifacts
     export_files += ["test/metadata.json"]
     for ti in range(n_test):
@@ -1237,14 +1278,27 @@ def main():
         export_files += [
             prefix + "density_true.npz",
             prefix + "density_pred.npz",
-            prefix + "density_pred_mvar.npz",
             prefix + "r2_vs_time.csv",
             prefix + "metrics_summary.json",
+            prefix + "order_params.csv",
         ]
+        if mvar_enabled:
+            export_files += [
+                prefix + "density_pred_mvar.npz",
+                prefix + "r2_vs_time_mvar.csv",
+                prefix + "density_metrics_mvar.csv",
+            ]
+        if lstm_enabled:
+            export_files += [
+                prefix + "density_pred_lstm.npz",
+                prefix + "r2_vs_time_lstm.csv",
+                prefix + "density_metrics_lstm.csv",
+            ]
         if wsindy_enabled:
             export_files += [
                 prefix + "density_pred_wsindy.npz",
                 prefix + "r2_vs_time_wsindy.csv",
+                prefix + "density_metrics_wsindy.csv",
             ]
 
     with open(OUTPUT_DIR / "export_manifest.json", "w") as f:
