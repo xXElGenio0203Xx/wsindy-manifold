@@ -133,7 +133,7 @@ rom:
       ridge_alpha: 0.0001
     lstm:
       enabled: true
-      lag: 20
+      lag: 5
       hidden_units: 128
       num_layers: 2
       dropout: 0.1

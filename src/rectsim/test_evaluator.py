@@ -242,21 +242,22 @@ def evaluate_test_runs(
         # Determine initial condition window
         T_train = int(forecast_start / base_config_test['sim']['dt'] / rom_subsample)
         
+        # Ensure conditioning period is at least P_LAG steps so the model
+        # receives a full window of real ground-truth data (no zero-padding).
+        if T_train < P_LAG:
+            T_train_orig = T_train
+            T_train = min(P_LAG, T_test - 1)  # push forward, but not past end
+            if test_idx == 0:
+                print(f"  ℹ️  Conditioning period ({T_train_orig} steps) < lag ({P_LAG}); "
+                      f"extended to {T_train} steps for {model_name}")
+        
         # Compute M₀: true total mass at forecast start
         # Always compute for metrics; only apply correction if mass_postprocess != 'none'
         _m0_idx = max(T_train - 1, 0)
         M0 = float(test_density[_m0_idx].sum())  # in cell units
         
-        # Use last P_LAG timesteps from training period as IC
-        if T_train < P_LAG:
-            print(f"⚠️  Warning: Training period ({T_train} steps) < lag ({P_LAG}). Using all available.")
-            ic_window = test_latent[:T_train]
-            # Pad with zeros if needed
-            if len(ic_window) < P_LAG:
-                padding = np.zeros((P_LAG - len(ic_window), R_POD))
-                ic_window = np.vstack([padding, ic_window])
-        else:
-            ic_window = test_latent[T_train-P_LAG:T_train]
+        # Use last P_LAG timesteps from training period as IC (always a full window)
+        ic_window = test_latent[T_train-P_LAG:T_train]
         
         # Forecast using generic forecast function (operates in standardized space if enabled)
         n_forecast_steps = T_test - T_train

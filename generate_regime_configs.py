@@ -153,7 +153,7 @@ def base_config():
                 },
                 'lstm': {
                     'enabled': True,
-                    'lag': 20,
+                    'lag': 5,
                     'hidden_units': 128,
                     'num_layers': 2,
                     'dropout': 0.1,

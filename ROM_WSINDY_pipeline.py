@@ -529,10 +529,13 @@ def main():
                 Y_multi=Y_multi,
             )
         lstm_training_time = timer.elapsed
+        lstm_cfg_lag = lstm_config.get("lag", lag)
+        if lstm_cfg_lag != lag:
+            print(f"  ⚠️  LSTM config lag={lstm_cfg_lag} differs from training lag={lag}; using training lag={lag}")
         lstm_data = {
             "model_path": lstm_model_path,
             "val_loss": lstm_val_loss,
-            "lag": lstm_config.get("lag", lag),
+            "lag": lag,  # must match actual training window, not config
             "hidden_units": lstm_config["hidden_units"],
             "num_layers": lstm_config["num_layers"],
         }
@@ -572,6 +575,28 @@ def main():
 
         TEST_DIR = OUTPUT_DIR / "test"
         ROM_SUBSAMPLE = rom_config.get("subsample", 1)
+
+        # ── Align forecast start across models ──
+        # Both models must begin prediction at the SAME snapshot for fair
+        # comparison.  We compute the minimum conditioning time needed so
+        # every enabled model receives a full ground-truth window.
+        _dt  = BASE_CONFIG_TEST["sim"]["dt"]
+        _raw_forecast_start = eval_config.get("forecast_start", BASE_CONFIG["sim"]["T"])
+        _raw_T_train = int(_raw_forecast_start / _dt / ROM_SUBSAMPLE)
+
+        _max_lag = 0
+        if mvar_enabled:
+            _max_lag = max(_max_lag, mvar_data["P_LAG"])
+        if lstm_enabled:
+            _max_lag = max(_max_lag, lstm_data["lag"])
+
+        if _raw_T_train < _max_lag:
+            _aligned_T_train = _max_lag
+            _aligned_forecast_start = _aligned_T_train * _dt * ROM_SUBSAMPLE
+            print(f"  ℹ️  forecast_start={_raw_forecast_start}s → {_aligned_forecast_start}s "
+                  f"(need {_max_lag} conditioning steps for lag={_max_lag})")
+            eval_config = dict(eval_config)  # shallow copy so we don't mutate original
+            eval_config["forecast_start"] = _aligned_forecast_start
 
         # ── 6a: MVAR eval ──
         if mvar_enabled:
