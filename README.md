@@ -77,6 +77,29 @@ python -m rectsim.cli grid --config examples/configs/grid.yaml
 The grid runner creates per-combination output folders, a `manifest.csv` summary and
 heatmaps of average order parameters versus $(C_r, \ell_r)$.
 
+## KDE Heatmap Generation
+
+Generate Gaussian kernel density estimation (KDE) heatmaps from particle trajectories:
+
+```bash
+# Quick demo with synthetic data
+python examples/generate_kde_heatmaps.py --demo
+
+# From simulation trajectories
+python examples/generate_kde_heatmaps.py \
+    --input simulation/trajectories.npz \
+    --output kde_results/ \
+    --Lx 20 --Ly 20 --nx 128 --ny 128 \
+    --hx 0.6 --hy 0.6 --cmap magma
+```
+
+This generates:
+- `kde_density.npz`: Density data with grid metadata
+- `kde_snapshots_magma.png`: Snapshot grid visualization
+- `kde_animation_magma.gif`: Animated density evolution
+
+See [`docs/KDE_HEATMAP_GUIDE.md`](docs/KDE_HEATMAP_GUIDE.md) for detailed usage and API reference.
+
 ## Latent EF-ROM (rect 2D)
 
 An equation-free reduced-order model pipeline is available under `wsindy_manifold.latent`.
@@ -84,41 +107,16 @@ It transforms raw agent trajectories into density forecasts via KDE movies, POD
 restriction and a multivariate VAR model. Minimal dependencies (`numpy`, `scipy`,
 `matplotlib`) keep scripts CLI-friendly and reproducible.
 
-1. Generate trajectories (or use an existing run):
-   ```bash
-   python -m scripts.run_rect --config configs/rect_demo.yaml
-   ```
-2. Convert trajectories into KDE heatmaps and a movie:
-   ```bash
-   python -m scripts.make_heatmap \
-       --traj_npz outputs/single/trajectories.npz \
-       --Lx 20 --Ly 20 --bc periodic \
-       --nx 128 --ny 128 --hx 0.6 --hy 0.6 \
-       --out_dir artifacts/latent/rect_demo
-   ```
-3. Train the POD + MVAR latent model on the saved heatmaps:
-   ```bash
-   python -m scripts.train_latent_heatmap \
-       --heatmap_npz artifacts/latent/rect_demo/heatmap_true.npz \
-       --energy_keep 0.99 --w 4 --ridge_lambda 1e-6 \
-       --train_frac 0.8 --seed 0 \
-       --out_dir artifacts/latent/rect_demo
-   ```
-4. Forecast future heatmaps (200 frames shown here) and collect metrics:
-   ```bash
-   python -m scripts.forecast_latent_heatmap \
-       --pod_model artifacts/latent/rect_demo/pod_model.npz \
-       --mvar_model artifacts/latent/rect_demo/mvar_model.npz \
-       --seed_npz artifacts/latent/rect_demo/seed_lastw.npz \
-       --grid_meta artifacts/latent/rect_demo/kde_grid.npz \
-       --true_npz artifacts/latent/rect_demo/heldout_true.npz \  # optional
-       --steps 200 \
-       --out_dir artifacts/latent/rect_demo/forecast
-   ```
+For the complete ROM/MVAR workflow:
+1. Generate simulation trajectories
+2. Convert to KDE heatmaps using `examples/generate_kde_heatmaps.py`
+3. Train ROM/MVAR models using `scripts/rom_mvar_train.py`
+4. Evaluate and visualize with `scripts/rom_mvar_eval.py` and `scripts/rom_mvar_visualize.py`
+
+See ROM guides for details: [`ROM_MVAR_GUIDE.md`](ROM_MVAR_GUIDE.md), [`ROM_MVAR_IMPLEMENTATION.md`](ROM_MVAR_IMPLEMENTATION.md)
 
 Use `scripts/compare_heatmaps.py` to produce side-by-side videos for arbitrary runs,
-and `scripts/plot_latent.py` for quick density/latent visualisations. The file
-`configs/latent_rect_heatmap.yaml` collects sensible defaults for the rectangular demo.
+and `scripts/plot_latent.py` for quick density/latent visualisations.
 
 ## Reproducibility
 
