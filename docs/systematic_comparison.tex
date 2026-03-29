@@ -1,0 +1,615 @@
+% ============================================================================
+%  Systematic MVAR vs LSTM Comparison for Crowd Density ROM
+% ============================================================================
+\documentclass[11pt]{article}
+
+% ---- Packages ----
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[font=small]{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{longtable}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{siunitx}
+
+% ---- Colors ----
+\definecolor{mvarblue}{HTML}{1565C0}
+\definecolor{lstmorange}{HTML}{E65100}
+\definecolor{goodgreen}{HTML}{2E7D32}
+\definecolor{badred}{HTML}{C62828}
+\definecolor{accentblue}{HTML}{1565C0}
+\definecolor{lightgray}{HTML}{F5F5F5}
+
+% ---- Custom commands ----
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\ba}{\mathbf{a}}
+\newcommand{\bU}{\mathbf{U}}
+\newcommand{\bA}{\mathbf{A}}
+\newcommand{\MVAR}{\textcolor{mvarblue}{\textbf{MVAR}}}
+\newcommand{\LSTM}{\textcolor{lstmorange}{\textbf{LSTM}}}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=accentblue,
+    citecolor=accentblue,
+    urlcolor=accentblue,
+}
+
+\begin{document}
+
+% ============================================================================
+\section{Mathematical Formulation}
+\label{sec:math}
+% ============================================================================
+
+\subsection{Particle Dynamics}
+
+We simulate $N=300$ self-propelled particles in a periodic
+$[0, L_x]\times[0, L_y]$ domain ($L_x = L_y = 25$).  Each particle $i$
+has position $\bx_i\in\R^2$ and heading $\theta_i\in[0,2\pi)$.
+
+\paragraph{Vicsek alignment.}
+At each timestep, particle $i$ averages the headings of neighbors within
+radius $R=4$:
+\begin{equation}
+    \theta_i^{(t+1)} = \arg\Bigl(\sum_{j:\|\bx_j-\bx_i\|<R}
+        e^{i\theta_j^{(t)}}\Bigr) + \eta\,\xi_i^{(t)},
+    \qquad \xi_i \sim \mathrm{Uniform}(-\pi,\pi),
+    \label{eq:vicsek}
+\end{equation}
+where $\eta\in[0.03, 1.5]$ is the noise intensity.
+
+\paragraph{Morse forces.}
+An additional pairwise Morse-type force modifies particle velocities:
+\begin{equation}
+    \mathbf{F}_{ij} = -\nabla U_{\text{Morse}}(r_{ij}),
+    \qquad
+    U_{\text{Morse}}(r) = C_r\, e^{-r/\ell_r} - C_a\, e^{-r/\ell_a},
+    \label{eq:morse}
+\end{equation}
+where $C_a, C_r$ are attraction/repulsion strengths and $\ell_a, \ell_r$ the
+corresponding length scales.  The net force is truncated at
+$r_{\text{cut}} = 5\,\ell_a$.
+
+\paragraph{Position update.}
+\begin{equation}
+    \bx_i^{(t+1)} = \bx_i^{(t)} + v_0\,
+    \begin{pmatrix}\cos\theta_i^{(t+1)}\\\sin\theta_i^{(t+1)}\end{pmatrix}
+    \Delta t + \mu_t\,\mathbf{F}_i^{(t)}\,\Delta t,
+    \label{eq:position}
+\end{equation}
+with self-propulsion speed $v_0$, force coupling $\mu_t=0.3$, and
+$\Delta t=0.04$\,s.  In ``variable speed'' variants, $v_0$ is modulated
+by the local force magnitude.
+
+\subsection{Kernel Density Estimation}
+
+Particle positions are converted to a continuous density field via a
+Gaussian KDE on a $64\times 64$ grid:
+\begin{equation}
+    \rho(\mathbf{r}) = \frac{1}{N}\sum_{i=1}^N
+        \frac{1}{2\pi h^2}\exp\!\Bigl(-\frac{\|\mathbf{r}-\bx_i\|^2}{2h^2}\Bigr),
+    \label{eq:kde}
+\end{equation}
+with bandwidth $h=5.0$.  Each snapshot is flattened to a vector
+$\rho\in\R^{4096}$.
+
+\subsection{Proper Orthogonal Decomposition (POD)}
+
+Let $\mathbf{S}\in\R^{4096\times (M\cdot T_\mathrm{rom})}$ be the
+snapshot matrix (all training runs, all subsampled timesteps).  We
+perform shift alignment (subtract per-run spatial mean) and then compute
+the truncated SVD:
+\begin{equation}
+    \mathbf{S} - \bar{\mathbf{S}}
+    \approx \bU\,\boldsymbol{\Sigma}\,\mathbf{V}^\top,
+    \qquad
+    \bU\in\R^{4096\times R},\quad R=19.
+    \label{eq:pod}
+\end{equation}
+The number of modes $R=19$ is fixed across all experiments.  The latent
+representation of any density snapshot is:
+\begin{equation}
+    \ba(t) = \bU^\top\bigl(\rho(t) - \bar\rho\bigr) \in \R^{19}.
+    \label{eq:project}
+\end{equation}
+
+\subsection{Model 1: MVAR (Multivariate AutoRegressive)}
+\label{sec:mvar}
+
+The MVAR model assumes a linear relationship between past and future
+latent states.  Given lag $p=5$:
+\begin{equation}
+    \ba(t) = \sum_{k=1}^{p} \bA_k\, \ba(t-k) + \mathbf{b} + \boldsymbol{\epsilon},
+    \label{eq:mvar}
+\end{equation}
+where $\bA_k\in\R^{19\times 19}$ are coefficient matrices and
+$\mathbf{b}\in\R^{19}$ is a bias.  All $\{\bA_k, \mathbf{b}\}$ are
+trained jointly via Ridge regression:
+\begin{equation}
+    \min_{\bA,\mathbf{b}}\;\sum_{t=p+1}^{T}
+    \Bigl\|\ba(t) - \sum_{k=1}^p \bA_k\,\ba(t-k) - \mathbf{b}\Bigr\|^2
+    + \alpha\sum_{k=1}^p\|\bA_k\|_F^2,
+    \qquad \alpha=10^{-4}.
+    \label{eq:ridge}
+\end{equation}
+
+\paragraph{Parameter count.}
+$p\times R\times R + R = 5\times19\times19 + 19 = \mathbf{1{,}824}$.
+
+\paragraph{Stability analysis.}
+The companion matrix $\mathbf{C}\in\R^{pR\times pR}$ is:
+\begin{equation}
+    \mathbf{C} = \begin{pmatrix}
+        \bA_1 & \bA_2 & \cdots & \bA_{p-1} & \bA_p \\
+        \mathbf{I} & \mathbf{0} & \cdots & \mathbf{0} & \mathbf{0}\\
+        \mathbf{0} & \mathbf{I} & \cdots & \mathbf{0} & \mathbf{0}\\
+        \vdots & & \ddots & & \vdots\\
+        \mathbf{0} & \mathbf{0} & \cdots & \mathbf{I} & \mathbf{0}
+    \end{pmatrix}.
+    \label{eq:companion}
+\end{equation}
+The spectral radius $\rho(\mathbf{C})=\max_i|\lambda_i|$ governs
+long-horizon stability: if $\rho>1$, forecasts eventually diverge.
+Our pipeline logs $\rho$ and optionally enforces stability via uniform
+coefficient scaling.
+
+\paragraph{Forecasting.}
+At test time, the model autoregressively rolls forward:
+\begin{equation}
+    \hat{\ba}(t) = \sum_{k=1}^p \bA_k\,\hat\ba(t-k) + \mathbf{b},
+    \qquad t = p+1,\ldots,T_{\text{test}}/\Delta t.
+    \label{eq:mvar_forecast}
+\end{equation}
+
+\subsection{Model 2: LSTM (Long Short-Term Memory)}
+\label{sec:lstm}
+
+The LSTM learns a nonlinear map from a window of past latent states
+to the next state:
+\begin{equation}
+    \hat\ba(t) = f_\theta\!\bigl(\ba(t-L),\ldots,\ba(t-1)\bigr),
+    \qquad L = 20,
+    \label{eq:lstm_map}
+\end{equation}
+where $f_\theta$ is a 2-layer stacked LSTM with 128 hidden units per
+layer.
+
+\paragraph{Architecture details.}
+\begin{itemize}[nosep]
+    \item Input: $[\text{batch}, L, 19]$ sequence of latent vectors
+        (z-scored per mode using training-set statistics).
+    \item LSTM: 2 layers, $N_h=128$ hidden units, dropout 0.1 between layers.
+    \item LayerNorm on last hidden state $\mathbf{h}_{\text{last}}\in\R^{128}$.
+    \item Output head: $\mathbf{W}\mathbf{h}_{\text{last}}+\mathbf{b}\in\R^{19}$.
+    \item Residual connection:
+        $\hat\ba(t) = \ba(t-1) + \Delta\hat\ba(t)$
+        (network predicts the increment $\Delta$).
+\end{itemize}
+
+\paragraph{Parameter count.}
+\begin{align}
+    \text{Layer 1:}\quad & 4(N_h \cdot d + N_h^2 + 2N_h) = 4(128\cdot19+128^2+256) = 76{,}800,\notag\\
+    \text{Layer 2:}\quad & 4(N_h^2 + N_h^2 + 2N_h) = 4(128^2+128^2+256) = 132{,}096\cdot\tfrac{1}{2}\approx 66{,}048,\notag\\[-2pt]
+    \text{LayerNorm:}\quad & 2N_h = 256,\notag\\
+    \text{Output:}\quad & N_h\cdot d + d = 128\cdot19+19 = 2{,}451,\\
+    \text{Total:}\quad & \approx\mathbf{106{,}000}.\notag
+    \label{eq:lstm_params}
+\end{align}
+
+\paragraph{Training protocol.}
+\begin{itemize}[nosep]
+    \item Adam optimizer with learning rate $10^{-3}$, weight decay $10^{-5}$.
+    \item Gradient clipping at norm 1.0.
+    \item 80/20 train/validation split; early stopping with patience 30.
+    \item Maximum 300 epochs; batch size 256.
+    \item MSE loss in normalized latent coordinates.
+\end{itemize}
+
+\subsection{Lifting and Evaluation}
+
+The predicted latent trajectory $\hat\ba(t)$ is lifted back to the
+physical density field:
+\begin{equation}
+    \hat\rho(t) = \bU\,\hat\ba(t) + \bar\rho.
+    \label{eq:lift}
+\end{equation}
+
+Quality is measured by the coefficient of determination and RMSE:
+\begin{equation}
+    R^2(t) = 1 - \frac{\|\rho(t) - \hat\rho(t)\|^2}
+                       {\|\rho(t) - \bar\rho_{\text{test}}\|^2},
+    \qquad
+    \text{RMSE}(t) = \|\rho(t) - \hat\rho(t)\|_2.
+    \label{eq:metrics}
+\end{equation}
+We report both a per-timestep $R^2(t)$ curve and the time-averaged
+overall $R^2$.  The ``POD ceiling'' $R^2_{\text{POD}}$ (projection error
+of the true trajectory onto the basis) provides an upper bound on
+forecast quality.
+
+
+% ============================================================================
+\section{Experimental Design: 54 Physical Configurations}
+\label{sec:configs}
+% ============================================================================
+
+All 54 configs are generated by \texttt{generate\_regime\_configs.py} and
+share identical simulation parameters ($N=300$, $L=25$, $\Delta t=0.04$,
+$T_{\text{train}}=20$\,s, $T_{\text{test}}=200$\,s), KDE settings
+($64\times64$, $h=5.0$), POD settings ($R=19$, shift alignment), and ROM
+hyperparameters (MVAR: $p=5$, $\alpha=10^{-4}$; LSTM: $L=20$,
+$N_h=128$, 2 layers).  Only the \emph{physics} varies.
+
+\vspace{0.5em}
+The 54 experiments decompose as:
+\begin{itemize}[nosep]
+    \item \textbf{NDYN suite} (14~regimes): Vicsek--Morse with extreme diversity.
+    \item \textbf{d'Orsogna suite} (14~regimes): $C_r/C_a$ vs $\ell_r/\ell_a$ taxonomy.
+    \item Each regime $\times$ 2 speed modes (constant, variable) $-$ exceptions.
+\end{itemize}
+
+\subsection{NDYN Suite: 14 Diverse Vicsek--Morse Regimes}
+
+Each NDYN configuration occupies a distinct corner of the physical
+parameter space.  At least two parameter axes differ between any pair.
+
+\begin{longtable}{llp{1.5cm}p{1.0cm}p{5.5cm}}
+    \toprule
+    \textbf{ID} & \textbf{Name} & \textbf{Speed, $\eta$} & \textbf{$C_a$/$C_r$} & \textbf{Description} \\
+    \midrule
+    \endfirsthead
+    \toprule
+    \textbf{ID} & \textbf{Name} & \textbf{Speed, $\eta$} & \textbf{$C_a$/$C_r$} & \textbf{Description} \\
+    \midrule
+    \endhead
+
+    01 & Crawl        & 0.5, 0.03 & 0.8/0.3 & Slow deterministic flock; easy POD baseline \\
+    02 & Flock        & 3.0, 0.10 & 2.0/0.5 & Ordered coherent traveling cluster \\
+    03 & Sprint       & 10.,\;0.10 & 2.0/0.5 & Fast transport; tests shift alignment \\
+    04 & Gas          & 3.0, 1.50 & 0.5/0.2 & High noise destroys all structure \\
+    05 & Black Hole   & 4.0, 0.15 & 20./0.05 & Extreme attraction $\to$ density spike \\
+    06 & Supernova    & 3.0, 0.15 & 0.05/15. & Explosive repulsion; violent dispersal \\
+    07 & Crystal      & 2.0, 0.10 & 3.0/3.0 & Balanced forces $\to$ ring/lattice equilibrium \\
+    08 & Pure Vicsek  & 3.0, 0.30 & \emph{none} & No forces; alignment-only band patterns \\
+    09 & Long Range   & 2.0, 0.20 & 1.5/0.6 & $\ell_a{=}6$, $\ell_r{=}3$; global coupling \\
+    10 & Short Range  & 3.0, 0.15 & 4.0/2.0 & $\ell_a{=}0.3$, $\ell_r{=}0.1$; clumpy fragments \\
+    11 & Noisy Collapse & 3.0, 0.80 & 12./0.1 & Strong attraction vs high noise \\
+    12 & Fast Explosion & 8.0, 0.20 & 0.1/10. & High speed + strong repulsion \\
+    13 & Chaos        & 12.,\;1.20 & 1.0/0.5 & Extreme speed+noise; ROM lower bound \\
+    14 & Var.\,Speed  & 3.0, 0.20 & 2.0/0.8 & Speed coupled to forces \\
+    \bottomrule
+\end{longtable}
+
+All except NDYN08 (no forces) and NDYN14 (already variable-speed)
+get a \texttt{\_VS} duplicate with \texttt{speed\_mode=variable},
+yielding $14 + 12 = 26$ NDYN experiments.
+
+\subsection{d'Orsogna Suite: 14 Regimes from the $(C,\ell)$ Taxonomy}
+
+Following Bhaskar \& Ziegelmeier, we parametrize d'Orsogna dynamics by
+the ratios $C \equiv C_r/C_a$ and $\ell \equiv \ell_r/\ell_a$, fixing
+$C_a=1$, $\ell_a=1$ as reference scales.
+
+\begin{longtable}{llccp{5.5cm}}
+    \toprule
+    \textbf{ID} & \textbf{Regime Class} & $C$ & $\ell$ & \textbf{Expected Behavior} \\
+    \midrule
+    \endfirsthead
+    \toprule
+    \textbf{ID} & \textbf{Regime Class} & $C$ & $\ell$ & \textbf{Expected Behavior} \\
+    \midrule
+    \endhead
+
+    SM01 & Single Mill        & 0.5 & 0.1 & Rotational vortex (weak $C$) \\
+    SM02 & Single Mill        & 3.0 & 0.1 & Rotational vortex (strong $C$) \\
+    SM03 & Single Mill        & 2.0 & 0.5 & Strong $C$, medium range \\
+    DM01 & Double Mill        & 0.9 & 0.5 & Counter-rotating double vortex \\
+    DR01 & Double Ring        & 0.1 & 0.1 & Nested annular structures (small) \\
+    DR02 & Double Ring        & 0.9 & 0.9 & Nested annular structures (large) \\
+    CS01 & Collective Swarm   & 0.1 & 0.5 & Cohesive traveling group (low $C$) \\
+    CS02 & Collective Swarm   & 0.5 & 3.0 & Cohesive traveling group (med $C$) \\
+    CS03 & Collective Swarm   & 0.9 & 3.0 & Cohesive traveling group (high $C$) \\
+    ES01 & Escape (sym.)      & 3.0 & 0.9 & Symmetric particle escape \\
+    EU01 & Escape (unsym.)    & 2.0 & 2.0 & Asymmetric dispersal \\
+    EU02 & Escape (unsym.)    & 3.0 & 3.0 & Asymmetric dispersal (extreme) \\
+    EC01 & Escape (collective) & 2.0 & 3.0 & Group escape \\
+    EC02 & Escape (collective) & 3.0 & 0.5 & Group escape (short range) \\
+    \bottomrule
+\end{longtable}
+
+All 14 receive a \texttt{\_VS} variable-speed variant, yielding $14 + 14
+= 28$ d'Orsogna experiments.  Combined with the 26 NDYN experiments, the
+total is $\mathbf{54}$.
+
+
+% ============================================================================
+\section{Initial Conditions}
+\label{sec:ics}
+% ============================================================================
+
+Diversity of initial conditions is critical to avoid overfitting to
+a single spatial configuration.  All 54 experiments use the same IC
+distributions:
+
+\subsection{Training ICs (168 total per experiment)}
+
+\begin{longtable}{lcp{8cm}}
+    \toprule
+    \textbf{IC Type} & \textbf{Count} & \textbf{Generation Strategy} \\
+    \midrule
+    Gaussian      & 80 & Centers on $4\times4$ grid $\{5,10,15,20\}^2$;
+                         variances $\sigma^2\in\{1.5, 3.0, 5.0\}$;
+                         1 sample per configuration.\\[3pt]
+    Uniform       & 40 & Particles drawn uniformly from $[0,L]^2$. \\[3pt]
+    Two-Cluster   & 24 & Two Gaussian clusters with separations
+                         $d\in\{4,7,10\}$, widths $\sigma\in\{1.5,3.0\}$;
+                         4 samples per config. \\[3pt]
+    Ring          & 24 & Particles on annulus with radii
+                         $r\in\{3,5,8\}$, widths $w\in\{0.5,1.0\}$;
+                         4 samples per config. \\
+    \bottomrule
+\end{longtable}
+
+\subsection{Test ICs (4 total per experiment)}
+
+\begin{longtable}{lcp{9cm}}
+    \toprule
+    \textbf{IC Type} & \textbf{Count} & \textbf{Parameters} \\
+    \midrule
+    Gaussian      & 1 & Center $(12.5, 12.5)$, $\sigma^2=2.5$ \\
+    Uniform       & 1 & Full-domain uniform \\
+    Two-Cluster   & 1 & Separation 7, width 2.0 \\
+    Ring          & 1 & Radius 5.0, width 0.8 \\
+    \bottomrule
+\end{longtable}
+
+Test parameters are chosen to lie between (not on) the training grid
+values, ensuring genuine interpolation tests.
+
+
+% ============================================================================
+\section{Shared POD Basis and Latent Dataset}
+\label{sec:pod}
+% ============================================================================
+
+For each experiment, the 168 training simulations produce density
+snapshots that are subsampled by a factor of 3 (every 3rd timestep at
+$\Delta t_{\text{rom}} = 0.12$\,s).  After shift alignment (subtracting
+each run's spatial mean), all snapshots are stacked into the global
+snapshot matrix $\mathbf{S}\in\R^{4096\times (168 \cdot T_{\text{rom}})}$ and
+the top $R=19$ left singular vectors form the shared POD basis.
+
+Both models operate on the same latent dataset
+$\{\ba_m(t)\}_{m=1}^{168}$, where
+$\ba_m(t) = \bU^\top(\rho_m(t) - \bar\rho)$.
+
+Key outputs at this stage:
+\begin{itemize}[nosep]
+    \item \texttt{rom\_common/pod\_basis.npz}: $\bU$, $\bar\rho$, singular values, energy spectrum.
+    \item \texttt{rom\_common/latent\_trajectories.npz}: Complete latent dataset.
+\end{itemize}
+
+
+% ============================================================================
+\section{Visualization and Analysis Pipeline}
+\label{sec:viz}
+% ============================================================================
+
+After Oscar produces test artifacts, a local 10-step visualization
+pipeline (\texttt{run\_visualizations.py}) generates all plots and
+reports.  The pipeline auto-discovers which models (MVAR, LSTM) have
+results on disk, so it adapts gracefully if one model is absent.
+
+\subsection{Step 1: POD Diagnostic Plots}
+
+\begin{itemize}[nosep]
+    \item \texttt{pod\_singular\_values.png}: Normalized singular value spectrum $\sigma_i/\sigma_1$.
+    \item \texttt{pod\_energy.png}: Cumulative energy $\sum_{i=1}^k \sigma_i^2 / \sum_i \sigma_i^2$.
+    \item \texttt{pod\_modes\_grid.png}: First 6 spatial modes $\bU_{:,i}$ reshaped to $64\times64$.
+\end{itemize}
+
+\subsection{Step 2: Test Metrics Computation}
+
+For each model and each of the 4 test ICs:
+\begin{itemize}[nosep]
+    \item Load true density $\rho(t)$ and predicted trajectory $\hat\rho(t)$.
+    \item Compute time-resolved $R^2(t)$, $\text{RMSE}(t)$, and overall scalars.
+    \item Save \texttt{test\_results.csv} with columns: \texttt{test\_id},
+        \texttt{ic\_type}, \texttt{r2\_reconstructed}, \texttt{r2\_latent},
+        \texttt{r2\_pod}, \texttt{rmse}, etc.
+\end{itemize}
+
+\subsection{Step 3: Best-Run Visualizations}
+
+For the test run with the highest $R^2$:
+\begin{itemize}[nosep]
+    \item Side-by-side density snapshots (true vs predicted) at $t=0, T/4, T/2, 3T/4, T$.
+    \item Latent trajectory comparison in the top-3 POD modes.
+    \item Pointwise error heatmaps $|\rho - \hat\rho|$.
+\end{itemize}
+
+\subsection{Step 4: Summary Plots}
+
+These are the core comparison plots:
+\begin{itemize}[nosep]
+    \item \texttt{r2\_by\_ic\_type.png}: Grouped bar chart of $\overline{R^2}$ by IC type,
+        one bar per model.
+    \item \texttt{error\_by\_ic\_type.png}: Grouped bar chart of $\overline{\text{RMSE}}$ by IC type.
+    \item Per-test scatter showing $R^2_{\text{lifted}}$ vs $R^2_{\text{latent}}$
+        for both models.
+\end{itemize}
+
+\subsection{Step 5: Time-Resolved Analysis}
+
+Captures long-horizon degradation behavior:
+\begin{itemize}[nosep]
+    \item \texttt{r2\_mean\_over\_time.png}: $\overline{R^2}(t)$ curve for each model,
+        with IQR shading. Reveals when/if $R^2$ drops below 0.
+    \item \texttt{survival\_curves.png}: Fraction of tests with $R^2(t)>0.5$
+        and $R^2(t)>0$ vs time.
+    \item \texttt{rmse\_over\_time.png}: Error growth over time.
+    \item \texttt{r2\_heatmap\_by\_test.png}: $R^2(t)$ heatmap (tests $\times$ time).
+\end{itemize}
+
+\subsection{Step 6: LSTM Training Diagnostics}
+
+If the LSTM was trained:
+\begin{itemize}[nosep]
+    \item Training/validation loss curves (log scale) with best-epoch marker.
+    \item Loss improvement rate $-\Delta L_{\text{val}}$ per epoch.
+\end{itemize}
+
+\subsection{Step 7: MVAR vs LSTM 4-Panel Comparison}
+
+A single composite figure with:
+\begin{enumerate}[nosep]
+    \item $R^2$ by IC type (grouped bars).
+    \item RMSE by IC type (grouped bars).
+    \item $R^2$ distribution (violin plot, all tests).
+    \item Numerical summary table (mean, std, winner).
+\end{enumerate}
+
+\subsection{Step 8: Latent vs Lifted Analysis}
+
+Per model:
+\begin{itemize}[nosep]
+    \item Time-resolved $R^2_{\text{latent}}(t)$ vs $R^2_{\text{lifted}}(t)$
+        with IQR envelopes and POD ceiling.
+    \item Lifting gap bar: quantifies how much $R^2$ is lost in the
+        $\bU\hat\ba + \bar\rho$ reconstruction.
+    \item Spectral radius annotation (MVAR only).
+\end{itemize}
+
+\subsection{Step 9: Density Videos}
+
+For each test IC and each model: MP4 animations of true vs predicted
+density fields side-by-side, with $R^2(t)$ overlay.
+
+\subsection{Step 10: Summary JSON}
+
+Machine-readable summary: \texttt{summary.json} with per-model mean
+$R^2$, RMSE, best/worst tests, runtime, spectral radius, IC-type
+breakdown, and the overall winner (MVAR or LSTM).
+
+
+% ============================================================================
+\section{Computational Setup}
+\label{sec:compute}
+% ============================================================================
+
+\begin{itemize}[nosep]
+    \item \textbf{Cluster:} Brown University Oscar HPC.
+    \item \textbf{Job array:} \texttt{sbatch --array=0-53} dispatches all 54 configs.
+    \item \textbf{Resources per task:} 8 cores, 48\,GB RAM, 15\,h walltime, 1 GPU.
+    \item \textbf{Training sims:} 168 runs $\times$ 20\,s $\times$ 500 steps (dominant cost).
+    \item \textbf{Test sims:} 4 runs $\times$ 200\,s $\times$ 5\,000 steps.
+    \item \textbf{MVAR training:} $<1$\,s (Ridge regression in closed form).
+    \item \textbf{LSTM training:} 2--10\,min (300 epochs, early stopping).
+    \item \textbf{Estimated total:} $\sim$54 $\times$ 3\,h $\approx$ 162\,GPU-hours.
+\end{itemize}
+
+
+% ============================================================================
+\section{Expected Outputs and Cross-Experiment Aggregation}
+\label{sec:outputs}
+% ============================================================================
+
+Each of the 54 experiments produces an independent
+\texttt{oscar\_output/<experiment>/} directory with:
+
+\begin{itemize}[nosep]
+    \item \texttt{rom\_common/}: POD basis, singular values, latent dataset.
+    \item \texttt{MVAR/}: Model weights, test results CSV, forecasts NPZ.
+    \item \texttt{LSTM/}: Model checkpoint \texttt{.pt}, training log, normalization stats, test results.
+    \item \texttt{test/}: Per-run true densities, metadata JSON.
+    \item \texttt{plots/}: All generated visualizations (Steps 1--10).
+\end{itemize}
+
+After downloading results, a cross-experiment summary can aggregate the
+54 experiments into global rankings: which regimes are easy/hard, how
+MVAR and LSTM compare by regime class, and whether variable-speed
+consistently helps or hurts.
+
+
+% ============================================================================
+\section{Next Steps: PDE Discovery via Weak SINDy}
+\label{sec:wsindy}
+% ============================================================================
+
+A natural extension of this pipeline is \emph{physics-informed}
+forecasting: instead of learning a generic dynamical system in latent
+space, discover the governing PDE of the density field directly.  Weak
+SINDy (Sparse Identification of Nonlinear Dynamics using weak
+formulations) is a promising approach for this.
+
+\paragraph{Concept.}
+Weak SINDy integrates the density field $\rho(\mathbf{r}, t)$ against
+compactly-supported test functions $\psi(\mathbf{r}, t)$, converting
+PDE residuals into a sparse linear system.  The sparsest model
+consistent with the data is selected via an $\ell_1$ or thresholded
+regression.
+
+\paragraph{Potential benefits.}
+\begin{itemize}[nosep]
+    \item \emph{Interpretability:} The discovered PDE terms (advection,
+        diffusion, nonlinear self-interaction) reveal the macroscopic
+        physics governing the crowd.
+    \item \emph{Generalization:} A physics-based model may extrapolate
+        to regimes not seen during training.
+    \item \emph{Complementarity:} WSINDy forecasts in the full density
+        space, bypassing POD truncation error entirely.
+\end{itemize}
+
+\paragraph{Integration plan.}
+Adding WSINDy as a third model would extend Steps 4--6 of the pipeline.
+The same test ICs and metrics would be used, enabling a direct three-way
+comparison: MVAR (linear latent) vs LSTM (nonlinear latent) vs WSINDy
+(PDE in physical space).  The infrastructure for WSINDy discovery and
+forecasting is being developed and will be incorporated in a future
+iteration of this pipeline.
+
+
+% ============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% ============================================================================
+
+This document describes a systematic, controlled comparison of two
+latent-space forecasting paradigms for crowd density ROM.  By fixing
+every aspect of the pipeline except the forecasting model (MVAR vs LSTM)
+and the underlying physics (54 regimes), we isolate the effect of model
+capacity on prediction quality:
+
+\begin{itemize}[nosep]
+    \item \MVAR{}: 1{,}824 parameters, closed-form training, guaranteed
+        spectral radius analysis---the minimal baseline.
+    \item \LSTM{}: $\sim$106{,}000 parameters, gradient-based training
+        with residual connections and layer normalization---the nonlinear
+        alternative.
+\end{itemize}
+
+The 54 experiments span easy regimes (slow, deterministic flocks) to
+hard regimes (fast, chaotic dispersal), with both Vicsek--Morse and
+d'Orsogna force models, constant and variable speed.  The comprehensive
+visualization pipeline produces 20+ plots per experiment and
+machine-readable summaries, enabling both qualitative inspection and
+large-scale statistical analysis.
+
+Results from the Oscar cluster will reveal whether the LSTM's added
+capacity provides consistent gains across all regimes, or whether the
+simpler MVAR suffices for the quasi-linear dynamics typical of
+POD-compressed crowd densities.
+
+\end{document}

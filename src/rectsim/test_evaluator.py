@@ -143,7 +143,14 @@ def evaluate_test_runs(
     if train_T is None:
         train_T = test_T  # Fallback if not provided
     
-    forecast_start = eval_config.get('forecast_start', train_T)
+    forecast_start_requested = eval_config.get(
+        'forecast_start_requested',
+        eval_config.get('forecast_start', train_T),
+    )
+    forecast_start = eval_config.get(
+        'forecast_start_effective',
+        eval_config.get('forecast_start', train_T),
+    )
     forecast_end = eval_config.get('forecast_end', test_T)
     
     # k-step teacher-forced reset interval (0 or None = disabled)
@@ -168,6 +175,11 @@ def evaluate_test_runs(
     if save_time_resolved:
         print(f"\nTime-resolved evaluation enabled:")
         print(f"   Forecast period: t={forecast_start}s to t={forecast_end}s")
+        if forecast_start_requested != forecast_start:
+            print(
+                f"   Requested forecast start: t={forecast_start_requested}s; "
+                f"using shared effective start t={forecast_start}s"
+            )
     if kstep_reset:
         print(f"\n   k-step teacher-forcing: reset every {kstep_reset} steps")
     if mass_postprocess != 'none':
@@ -240,11 +252,16 @@ def evaluate_test_runs(
             test_latent = (test_latent - latent_mean) / latent_std
         
         # Determine initial condition window
-        T_train = int(forecast_start / base_config_test['sim']['dt'] / rom_subsample)
+        T_train = int(round(forecast_start / (base_config_test['sim']['dt'] * rom_subsample)))
         
         # Ensure conditioning period is at least P_LAG steps so the model
         # receives a full window of real ground-truth data (no zero-padding).
         if T_train < P_LAG:
+            if 'forecast_start_effective' in eval_config:
+                raise ValueError(
+                    f"Shared forecast start is inconsistent with lag={P_LAG} for {model_name}: "
+                    f"T_train={T_train}"
+                )
             T_train_orig = T_train
             T_train = min(P_LAG, T_test - 1)  # push forward, but not past end
             if test_idx == 0:

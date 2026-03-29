@@ -1,0 +1,1469 @@
+% ============================================================================
+%  WSINDy on Manifold: Complete Mathematical Formulation and Code Reference
+% ============================================================================
+\documentclass[11pt]{article}
+
+% ---- Packages ----
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage[font=small]{caption}
+
+% ---- Code listings ----
+\definecolor{codebg}{gray}{0.96}
+\definecolor{codegreen}{rgb}{0.1,0.5,0.1}
+\definecolor{codeblue}{rgb}{0.1,0.1,0.6}
+\definecolor{codegray}{rgb}{0.4,0.4,0.4}
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  keywordstyle=\color{codeblue}\bfseries,
+  commentstyle=\color{codegreen}\itshape,
+  stringstyle=\color{codegray},
+  numbers=left,
+  numberstyle=\tiny\color{codegray},
+  numbersep=5pt,
+  frame=single,
+  framerule=0.4pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  showstringspaces=false,
+  tabsize=4,
+  xleftmargin=2em,
+  framexleftmargin=1.5em,
+  captionpos=b,
+  escapeinside={(*@}{@*)},
+}
+
+% ---- Custom commands ----
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\bp}{\mathbf{p}}
+\newcommand{\bv}{\mathbf{v}}
+\DeclareMathOperator{\Div}{div}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\newcommand{\colvec}[1]{\begin{pmatrix}#1\end{pmatrix}}
+
+\title{%
+  \textbf{Weak SINDy on Manifold}\\[6pt]
+  \large Complete Mathematical Formulation and Code Reference\\
+  \large for Multi-Field PDE Discovery of Vicsek--Morse Crowd Dynamics}
+\author{Macias-Olivares, E.}
+\date{February 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Overview and Module Map}
+% ============================================================================
+
+This document provides the complete mathematical derivation and code reference
+for the WSINDy (Weak Sparse Identification of Nonlinear Dynamics) package
+in \texttt{src/wsindy/}. The codebase discovers governing PDEs from
+spatiotemporal data on 2D periodic domains by:
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Computing fields} (density $\rho$, flux $\bp$, Morse potential $\Phi$) from particle data;
+\item \textbf{Constructing a weak-form linear system} $\mathbf{b} = \mathbf{G}\mathbf{w}$
+  by convolving candidate library terms with compactly-supported test functions;
+\item \textbf{Fitting sparse models} via Modified Sequential Threshold Least Squares (MSTLS);
+\item \textbf{Forecasting} the discovered PDE using RK4 or ETDRK4 time integrators.
+\end{enumerate}
+
+\subsection{Module Structure}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Module} & \textbf{Purpose} \\
+\midrule
+\texttt{grid.py}            & \texttt{GridSpec} dataclass ($\Delta t, \Delta x, \Delta y$) \\
+\texttt{fields.py}          & Field computation: KDE flux, Morse potential, derivatives \\
+\texttt{operators.py}       & Spectral derivative utilities (standalone) \\
+\texttt{test\_functions.py} & Separable test function $\psi$ and its derivatives \\
+\texttt{system.py}          & Weak system builder: query points, FFT convolution \\
+\texttt{library.py}         & \texttt{LibraryBuilder}: polynomial and nonlinear terms \\
+\texttt{multifield.py}      & 3-equation system: library terms, discovery, forecast \\
+\texttt{regression.py}      & MSTLS: preconditioning, dominant-balance thresholding \\
+\texttt{fit.py}             & High-level fitting: precondition $\to$ MSTLS $\to$ unscale \\
+\texttt{select.py}          & Model selection over test-function scales $\ell$ \\
+\texttt{model.py}           & \texttt{WSINDyModel} dataclass \\
+\texttt{integrators.py}     & RK4 and ETDRK4 time integrators \\
+\texttt{forecast.py}        & High-level forecast dispatch \\
+\texttt{rhs.py}             & Strong-form RHS evaluation \\
+\texttt{uncertainty.py}     & Bootstrap UQ for coefficient distributions \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+% ============================================================================
+\section{Grid Specification}
+\label{sec:grid}
+% ============================================================================
+
+The \texttt{GridSpec} dataclass (in \texttt{grid.py}) stores the fundamental discretisation:
+
+\begin{lstlisting}[caption={grid.py --- GridSpec dataclass}]
+@dataclass(frozen=True)
+class GridSpec:
+    dt: float
+    dx: float
+    dy: float
+    periodic_space: bool = True
+    periodic_time: bool = False
+\end{lstlisting}
+
+All spatiotemporal data lives on a uniform grid
+$\Omega = [0, L_x) \times [0, L_y)$ with $N_x \times N_y$ cells and
+temporal spacing $\Delta t$.  Both spatial directions are periodic;
+time is not.
+
+
+% ============================================================================
+\section{Field Computation}
+\label{sec:fields}
+% ============================================================================
+
+The three primary fields are the density $\rho(x,y,t)$, the
+polarisation/flux $\bp(x,y,t) = (p_x, p_y)$, and the Morse potential
+$\Phi(x,y,t)$.  All are defined on the same $(T, N_y, N_x)$ array.
+
+
+\subsection{Density via Histogram + Gaussian Smoothing}
+
+Particle positions $\{\bx_i(t)\}_{i=1}^N$ are binned into a 2D
+histogram $H^t \in \R^{N_y \times N_x}$ and smoothed:
+\begin{equation}
+  \rho(x,y,t) \;=\; \bigl(G_\sigma * H^t\bigr)(x,y),
+  \qquad
+  H^t_{jl} = \frac{1}{\Delta x \,\Delta y}
+  \sum_{i=1}^N \mathbf{1}[\bx_i(t) \in C_{jl}],
+\end{equation}
+where $G_\sigma$ is a 2D Gaussian kernel with bandwidth $\sigma$ (in
+grid-cell units) and the convolution uses periodic wrapping.
+
+
+\subsection{Flux / Polarisation via Velocity-Weighted KDE}
+
+The polarisation field encodes both density and local average velocity:
+\begin{equation}
+  \bp(x,t) = \sum_{i=1}^N K_\sigma\!\bigl(x - \bx_i(t)\bigr)\,\bv_i(t),
+\end{equation}
+i.e., the same Gaussian kernel as the density KDE, but weighted by each
+particle's velocity $\bv_i$.  In practice we compute this per-component:
+
+\begin{lstlisting}[caption={fields.py --- compute\_flux\_kde (key loop)}]
+for out_idx, t in enumerate(range(0, T_full, subsample)):
+    pos_t = traj[t]   # (N, 2)
+    vel_t = vel[t]     # (N, 2)
+
+    # Weighted histograms
+    hx, _, _ = np.histogram2d(
+        pos_t[:, 0], pos_t[:, 1],
+        bins=[x_edges, y_edges],
+        weights=vel_t[:, 0],
+    )
+    hy, _, _ = np.histogram2d(
+        pos_t[:, 0], pos_t[:, 1],
+        bins=[x_edges, y_edges],
+        weights=vel_t[:, 1],
+    )
+
+    # Convert to flux density (per unit area)
+    hx = hx.T / (dx_phys * dy_phys)
+    hy = hy.T / (dx_phys * dy_phys)
+
+    # Gaussian smoothing (same kernel as density)
+    if bandwidth > 0:
+        hx = gaussian_filter(hx, sigma=bandwidth, mode=mode)
+        hy = gaussian_filter(hy, sigma=bandwidth, mode=mode)
+
+    px[out_idx] = hx
+    py[out_idx] = hy
+\end{lstlisting}
+
+
+\subsection{Morse Potential via FFT Convolution}
+
+The Morse interaction potential creates short-range repulsion and
+long-range attraction:
+\begin{equation}
+  W(r) = -C_r \exp\!\bigl(-r/l_r\bigr) + C_a \exp\!\bigl(-r/l_a\bigr),
+  \quad
+  \Phi(x,t) = (W * \rho)(x,t) = \int_\Omega W(|x - x'|)\,\rho(x',t)\,dx'.
+\end{equation}
+
+The self-interaction is removed: $W(0) = 0$.
+On the periodic domain, convolution is computed efficiently via the
+convolution theorem:
+\begin{equation}
+  \Phi(x,t) = \mathcal{F}^{-1}\!\bigl[\hat{W}\cdot\hat{\rho}(\cdot,t)\bigr](x)
+  \;\cdot\;\Delta x\,\Delta y.
+\end{equation}
+
+\begin{lstlisting}[caption={fields.py --- Morse kernel construction}]
+def morse_kernel_grid(xgrid, ygrid, Lx, Ly, Cr, Ca, lr, la, bc="periodic"):
+    nx, ny = len(xgrid), len(ygrid)
+    # FFT-centered distances (periodic wrapping)
+    cx = np.fft.fftfreq(nx, d=1.0) * Lx
+    cy = np.fft.fftfreq(ny, d=1.0) * Ly
+    CX, CY = np.meshgrid(cx, cy)
+    R = np.sqrt(CX**2 + CY**2)
+    R = np.maximum(R, 1e-10)
+    W = -Cr * np.exp(-R / lr) + Ca * np.exp(-R / la)
+    W[0, 0] = 0.0   # remove self-interaction
+    return W
+\end{lstlisting}
+
+\begin{lstlisting}[caption={fields.py --- FFT convolution for $\Phi = W * \rho$}]
+def compute_morse_potential(rho, xgrid, ygrid, Lx, Ly, Cr, Ca, lr, la, bc="periodic"):
+    W = morse_kernel_grid(xgrid, ygrid, Lx, Ly, Cr, Ca, lr, la, bc)
+    dx, dy = Lx / len(xgrid), Ly / len(ygrid)
+    W_hat = np.fft.fft2(W)
+    Phi = np.zeros_like(rho)
+    for t in range(rho.shape[0]):
+        rho_hat = np.fft.fft2(rho[t])
+        Phi[t] = np.real(np.fft.ifft2(W_hat * rho_hat)) * dx * dy
+    return Phi
+\end{lstlisting}
+
+
+\subsection{Spatial Derivatives: FD and Spectral Backends}
+
+The \texttt{FieldData} class computes all spatial derivatives via a
+switchable backend.  By default, training uses finite differences (FD);
+forecasting uses spectral (FFT) derivatives.
+
+\paragraph{Finite-Difference Backend.}
+Central differences with periodic wrapping:
+\begin{equation}
+  \frac{\partial f}{\partial x}\bigg|_{j}
+  \approx \frac{f_{j+1} - f_{j-1}}{2\,\Delta x},
+  \qquad
+  \frac{\partial^2 f}{\partial x^2}\bigg|_{j}
+  \approx \frac{f_{j+1} - 2f_j + f_{j-1}}{\Delta x^2}.
+\end{equation}
+
+The Laplacian is $\Delta f = \partial_{xx} f + \partial_{yy} f$ and
+the biharmonic is $\Delta^2 f = \Delta(\Delta f)$.
+
+\begin{lstlisting}[caption={fields.py --- Finite-difference stencils}]
+def _dx(f, dx):
+    return (np.roll(f, -1, axis=-1) - np.roll(f, 1, axis=-1)) / (2 * dx)
+
+def _dy(f, dy):
+    return (np.roll(f, -1, axis=-2) - np.roll(f, 1, axis=-2)) / (2 * dy)
+
+def _dxx(f, dx):
+    return (np.roll(f, -1, axis=-1) - 2*f + np.roll(f, 1, axis=-1)) / dx**2
+
+def _dyy(f, dy):
+    return (np.roll(f, -1, axis=-2) - 2*f + np.roll(f, 1, axis=-2)) / dy**2
+
+def _lap(f, dx, dy):
+    return _dxx(f, dx) + _dyy(f, dy)
+
+def _bilap(f, dx, dy):
+    return _lap(_lap(f, dx, dy), dx, dy)
+\end{lstlisting}
+
+\paragraph{Spectral (FFT) Backend.}
+Machine-precision on periodic grids, unconditionally stable:
+\begin{equation}
+  \frac{\partial f}{\partial x}
+  = \mathcal{F}^{-1}\bigl[ik_x\,\hat{f}\bigr],
+  \qquad
+  \Delta f = \mathcal{F}^{-1}\bigl[-(k_x^2 + k_y^2)\,\hat{f}\bigr],
+\end{equation}
+where $k_x = 2\pi \cdot \text{fftfreq}(N_x, \Delta x)$ and similarly
+for $k_y$.  The Nyquist mode is zeroed for odd-order derivatives.
+
+\begin{lstlisting}[caption={fields.py --- Spectral derivatives}]
+def _spectral_dx(f, Lx):
+    nx = f.shape[-1]
+    dx = Lx / nx
+    kx = 2 * np.pi * np.fft.fftfreq(nx, d=dx)
+    if nx % 2 == 0:
+        kx[nx // 2] = 0.0   # zero Nyquist
+    f_hat = np.fft.fft(f, axis=-1)
+    return np.real(np.fft.ifft(1j * kx * f_hat, axis=-1))
+
+def _spectral_lap(f, Lx, Ly):
+    ny, nx = f.shape[-2], f.shape[-1]
+    K2 = _spectral_wavenumbers_2d(ny, nx, Lx, Ly)
+    f_hat = np.fft.fft2(f, axes=(-2, -1))
+    return np.real(np.fft.ifft2(-K2 * f_hat, axes=(-2, -1)))
+\end{lstlisting}
+
+
+\subsection{The FieldData Container}
+
+All derived quantities (divergences, Laplacians, nonlinear terms) are
+lazily computed and cached inside \texttt{FieldData}:
+
+\begin{lstlisting}[caption={fields.py --- FieldData with caching dispatch}]
+class FieldData:
+    def __init__(self, rho, px, py, grid, Lx, Ly,
+                 Phi=None, use_spectral=False):
+        self.rho = rho; self.px = px; self.py = py
+        self.Phi = Phi; self.grid = grid
+        self.Lx = Lx; self.Ly = Ly
+        self.use_spectral = use_spectral
+
+    def _ddx(self, f):
+        if self.use_spectral:
+            return _spectral_dx(f, self.Lx)
+        return _dx(f, self.dx)
+
+    def _laplacian(self, f):
+        if self.use_spectral:
+            return _spectral_lap(f, self.Lx, self.Ly)
+        return _lap(f, self.dx, self.dy)
+
+    # Cached derived fields
+    def div_p(self):
+        return self._cache("div_p",
+            lambda: self._ddx(self.px) + self._ddy(self.py))
+
+    def rho_grad_Phi_x(self):
+        return self._cache("rho_grad_Phi_x",
+            lambda: self.rho * self._ddx(self.Phi))
+
+    def div_rho_gradPhi(self):
+        return self._cache("div_rho_gradPhi", lambda: self._div(
+            self.rho_grad_Phi_x(), self.rho_grad_Phi_y()))
+
+    def p_dot_grad_px(self):
+        return self._cache("p_dot_grad_px", lambda:
+            self.px * self._ddx(self.px) + self.py * self._ddy(self.px))
+\end{lstlisting}
+
+The full list of cached derived fields:
+\begin{itemize}[leftmargin=*,itemsep=1pt]
+  \item \textbf{Density:} $\partial_x\rho$, $\partial_y\rho$, $\Delta\rho$, $\rho^2$, $\rho^3$
+  \item \textbf{Flux:} $\nabla\cdot\bp$, $\Delta p_x$, $\Delta p_y$, $\Delta^2 p_x$, $\Delta^2 p_y$, $|\bp|^2$
+  \item \textbf{Nonlinear density:} $\Delta(\rho^2)$, $\Delta(\rho^3)$, $\Delta(|\bp|^2)$
+  \item \textbf{Morse:} $\nabla\Phi$, $\rho\nabla\Phi$, $\nabla\cdot(\rho\nabla\Phi)$
+  \item \textbf{Self-advection:} $(\bp\cdot\nabla)p_x$, $(\bp\cdot\nabla)p_y$
+  \item \textbf{Pressure gradients:} $\partial_x(\rho^2)$, $\partial_y(\rho^2)$
+\end{itemize}
+
+
+% ============================================================================
+\section{Test Functions}
+\label{sec:test_functions}
+% ============================================================================
+
+The weak formulation transfers derivatives from the data onto smooth,
+compactly supported test functions $\psi$, dramatically improving noise
+robustness.
+
+\subsection{Separable Polynomial Bump}
+
+We build $\psi$ as a product of 1-D polynomial bumps:
+\begin{equation}\label{eq:psi_separable}
+  \psi(x,y,t) = \varphi_t(t)\;\varphi_x(x)\;\varphi_y(y),
+\end{equation}
+where each 1-D factor is a compactly supported polynomial bump:
+\begin{equation}\label{eq:bump}
+  \varphi_i(s)
+  = \biggl(1 - \frac{s^2}{\ell_i^2\,\Delta_i^2}\biggr)^{p_i}_{\!+},
+  \qquad |s| \le \ell_i\,\Delta_i,
+\end{equation}
+supported on $2\ell_i + 1$ grid points in direction $i$.  The
+parameters $\ell = (\ell_t, \ell_x, \ell_y)$ control the test-function
+width (number of half-width grid points) and
+$p = (p_t, p_x, p_y)$ control the polynomial exponent (smoothness).
+
+\begin{lstlisting}[caption={test\_functions.py --- 1-D bump construction}]
+def _bump_1d(n_half, p, ds):
+    """Polynomial bump: (1 - (s/(n_half*ds))^2)^p on [-n_half..n_half]."""
+    s = np.arange(-n_half, n_half + 1, dtype=np.float64) * ds
+    width = n_half * ds
+    phi = np.maximum(1.0 - (s / width)**2, 0.0)**p
+    phi /= (phi.sum() * ds)  # normalise
+    return phi
+\end{lstlisting}
+
+
+\subsection{Derivative Bundle}
+
+The weak system requires the following test-function derivatives,
+all computed analytically from the product rule:
+\begin{align}
+  \psi_t &= \varphi_t'(t)\;\varphi_x(x)\;\varphi_y(y), \\
+  \psi_x &= \varphi_t(t)\;\varphi_x'(x)\;\varphi_y(y), \\
+  \psi_y &= \varphi_t(t)\;\varphi_x(x)\;\varphi_y'(y), \\
+  \psi_{xx} &= \varphi_t(t)\;\varphi_x''(x)\;\varphi_y(y), \\
+  \psi_{yy} &= \varphi_t(t)\;\varphi_x(x)\;\varphi_y''(y).
+\end{align}
+
+The 1-D derivatives are computed by central finite differences on the
+bump's own support lattice.
+
+\begin{lstlisting}[caption={test\_functions.py --- make\_separable\_psi}]
+def make_separable_psi(grid, ellt, ellx, elly, pt=2, px=2, py=2):
+    """Build the test-function bundle psi and all derivatives."""
+    phi_t = _bump_1d(ellt, pt, grid.dt)
+    phi_x = _bump_1d(ellx, px, grid.dx)
+    phi_y = _bump_1d(elly, py, grid.dy)
+
+    # 3-D separable product via outer products
+    psi = np.einsum('i,j,k->ijk', phi_t, phi_x, phi_y)
+
+    # Derivatives via product rule + central FD on the 1-D bumps
+    dphi_t = np.gradient(phi_t, grid.dt)
+    dphi_x = np.gradient(phi_x, grid.dx)
+    dphi_y = np.gradient(phi_y, grid.dy)
+    d2phi_x = np.gradient(dphi_x, grid.dx)
+    d2phi_y = np.gradient(dphi_y, grid.dy)
+
+    psi_t  = np.einsum('i,j,k->ijk', dphi_t,  phi_x,   phi_y)
+    psi_x  = np.einsum('i,j,k->ijk', phi_t,   dphi_x,  phi_y)
+    psi_y  = np.einsum('i,j,k->ijk', phi_t,   phi_x,   dphi_y)
+    psi_xx = np.einsum('i,j,k->ijk', phi_t,   d2phi_x, phi_y)
+    psi_yy = np.einsum('i,j,k->ijk', phi_t,   phi_x,   d2phi_y)
+
+    return {"psi": psi, "psi_t": psi_t, "psi_x": psi_x,
+            "psi_y": psi_y, "psi_xx": psi_xx, "psi_yy": psi_yy,
+            "phi_t": phi_t, "phi_x": phi_x, "phi_y": phi_y}
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Weak Formulation}
+\label{sec:weak}
+% ============================================================================
+
+\subsection{From Strong to Weak Form}
+
+Consider a PDE of the form:
+\begin{equation}\label{eq:strong}
+  u_t = \sum_{m=1}^M w_m\, \mathcal{D}_m[f_m(u)],
+\end{equation}
+where $\mathcal{D}_m$ is a spatial differential operator (identity,
+$\partial_x$, $\partial_y$, $\Delta$, etc.) and $f_m$ is a nonlinear
+feature ($u, u^2, u^3, \ldots$).
+
+Multiplying both sides by a test function $\psi$ and integrating by parts
+(exploiting compact support of $\psi$ and periodic boundary conditions):
+\begin{equation}\label{eq:weak_form}
+  \underbrace{\int_\Omega \psi_t \cdot u \;dx\,dt}_{= b}
+  \;=\; \sum_{m=1}^M w_m
+  \underbrace{\int_\Omega \psi^{(m)} \cdot f_m(u) \;dx\,dt}_{= G_m},
+\end{equation}
+where $\psi^{(m)}$ is the \emph{adjoint kernel}: integration by parts
+moves derivatives from $u$ onto $\psi$.  The kernel map is:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Operator $\mathcal{D}_m$ & Kernel $\psi^{(m)}$ used \\
+\midrule
+$I$ (identity) & $\psi$ \\
+$\partial_x$   & $-\psi_x$ \\
+$\partial_y$   & $-\psi_y$ \\
+$\Delta$ (Laplacian) & $\psi_{xx} + \psi_{yy}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[caption={system.py --- Kernel mapping}]
+def get_kernel(op, psi_bundle):
+    """Map operator name to the appropriate psi derivative."""
+    if op == "I":
+        return psi_bundle["psi"]
+    elif op == "dx":
+        return -psi_bundle["psi_x"]
+    elif op == "dy":
+        return -psi_bundle["psi_y"]
+    elif op == "lap":
+        return psi_bundle["psi_xx"] + psi_bundle["psi_yy"]
+    raise ValueError(f"Unknown operator: {op}")
+\end{lstlisting}
+
+
+\subsection{Query Points}
+
+The integrals are discretised by sampling at \emph{query points}
+$(t_q, x_q, y_q)$  on a uniform stride:
+\begin{equation}
+  b_q = (\psi_t * u)(t_q, x_q, y_q),
+  \qquad
+  G_{q,m} = (\psi^{(m)} * f_m(u))(t_q, x_q, y_q).
+\end{equation}
+
+Query points avoid the temporal boundaries (a margin of $\ell_t + 1$
+points on each side) to ensure the test function support lies within
+the data.
+
+\begin{lstlisting}[caption={system.py --- Query point generation}]
+def make_query_indices(T, nx, ny, stride_t=2, stride_x=2, stride_y=2,
+                       t_margin=None):
+    """Uniform strided (t,x,y) query points with time margins."""
+    if t_margin is None:
+        t_margin = 3
+    t_idx = np.arange(t_margin, T - t_margin, stride_t)
+    x_idx = np.arange(0, nx, stride_x)
+    y_idx = np.arange(0, ny, stride_y)
+    # Build (K, 3) array of all (t, x, y) tuples
+    tt, xx, yy = np.meshgrid(t_idx, x_idx, y_idx, indexing='ij')
+    return np.column_stack([tt.ravel(), xx.ravel(), yy.ravel()])
+\end{lstlisting}
+
+
+\subsection{FFT Convolution}
+
+The convolutions $(\psi * u)$ are computed via 3-D FFT, with periodic
+boundary conditions in space and non-periodic (zero-padded) in time:
+
+\begin{lstlisting}[caption={system.py --- FFT convolution (3D)}]
+def fft_convolve3d_same(data, kernel, periodic=(False, True, True)):
+    """3-D FFT convolution returning same-size output.
+
+    Non-periodic axes are zero-padded to avoid wrap-around.
+    Periodic axes use circular convolution (direct FFT).
+    """
+    shape_out = data.shape
+    pad_shape = []
+    for i in range(3):
+        if periodic[i]:
+            pad_shape.append(data.shape[i])  # no padding needed
+        else:
+            pad_shape.append(data.shape[i] + kernel.shape[i] - 1)
+
+    D = np.fft.fftn(data, s=pad_shape)
+    K = np.fft.fftn(kernel, s=pad_shape)
+    conv = np.real(np.fft.ifftn(D * K))
+
+    # Crop to original size (centered for non-periodic axes)
+    slices = []
+    for i in range(3):
+        if periodic[i]:
+            slices.append(slice(0, shape_out[i]))
+        else:
+            offset = kernel.shape[i] // 2
+            slices.append(slice(offset, offset + shape_out[i]))
+    return conv[tuple(slices)]
+\end{lstlisting}
+
+
+\subsection{Building the Weak System}
+
+The full system $\mathbf{b} = \mathbf{G}\mathbf{w}$ is assembled as:
+
+\begin{lstlisting}[caption={system.py --- build\_weak\_system}]
+def build_weak_system(U, grid, psi_bundle, library_terms, query_idx):
+    """Assemble b = G w for the scalar weak-form system.
+
+    U : (T, nx, ny) spatiotemporal data
+    library_terms : list of (op, feature) tuples
+    query_idx : (K, 3) array
+    """
+    qt, qx, qy = query_idx[:, 0], query_idx[:, 1], query_idx[:, 2]
+    K, M = len(qt), len(library_terms)
+    periodic = (False, True, True)
+
+    # LHS: b = conv(psi_t, U) at query points
+    psi_t = psi_bundle["psi_t"]
+    b_full = fft_convolve3d_same(U, psi_t, periodic)
+    b = b_full[qt, qx, qy]
+
+    # RHS: G[:,m] = conv(kernel_m, f_m(U)) at query points
+    G = np.empty((K, M))
+    col_names = []
+    for m, (op, feat) in enumerate(library_terms):
+        kernel = get_kernel(op, psi_bundle)
+        f_U = eval_feature(U, feat)  # e.g., U, U**2, U**3
+        conv_m = fft_convolve3d_same(f_U, kernel, periodic)
+        G[:, m] = conv_m[qt, qx, qy]
+        col_names.append(f"{op}:{feat}")
+
+    return b, G, col_names
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Candidate Library}
+\label{sec:library}
+% ============================================================================
+
+\subsection{Scalar Library Builder}
+
+The \texttt{LibraryBuilder} (in \texttt{library.py}) constructs the set of
+candidate terms as $(operator, feature)$ pairs:
+
+\begin{lstlisting}[caption={library.py --- LibraryBuilder usage}]
+builder = LibraryBuilder()
+builder.add_polynomials(max_power=3, operators=["I","dx","dy","lap"])
+# Generates: I:u, I:u2, I:u3, dx:u, dx:u2, ..., lap:u, lap:u2, lap:u3
+# Excludes nonsensical terms like dx:1
+
+builder.add_nonlinear_diffusion(powers=[2, 3])
+# Adds: lap:u2, lap:u3  (if not already present)
+
+builder.add_gradient_nonlinearity()
+# Adds: I:|nabla u|^2
+\end{lstlisting}
+
+These map to the mathematical library:
+\begin{align}
+  &\text{Polynomials:} &&
+  u,\; u^2,\; u^3,\;
+  \partial_x u,\; \partial_y u,\;
+  \partial_x(u^2),\; \ldots,\;
+  \Delta u,\; \Delta(u^2),\; \Delta(u^3). \\
+  &\text{Gradient nonlinearity:} &&
+  |\nabla u|^2 = (\partial_x u)^2 + (\partial_y u)^2.
+\end{align}
+
+
+\subsection{Multi-Field Library (3-Equation System)}
+\label{sec:multifield_library}
+
+For the coupled Vicsek--Morse system, each equation gets its own
+library of \texttt{LibraryTerm} objects.  Each term directly provides
+a $(T, N_y, N_x)$ field from \texttt{FieldData}.
+
+\paragraph{$\rho$-equation library:}
+\begin{equation}
+  \rho_t = c_1\,\nabla\cdot\bp
+  + c_2\,\Delta\rho
+  + c_3\,\nabla\cdot(\rho\nabla\Phi)
+  + c_4\,\Delta(\rho^2)
+  + c_5\,\Delta(\rho^3)
+  + \ldots
+\end{equation}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Code Name} & \textbf{Math} & \textbf{Category} \\
+\midrule
+\texttt{div\_p} & $\nabla\cdot\bp$ & C1 (continuity) \\
+\texttt{lap\_rho} & $\Delta\rho$ & C1 (diffusion) \\
+\texttt{div\_rho\_gradPhi} & $\nabla\cdot(\rho\nabla\Phi)$ & C2 (Morse aggregation) \\
+\texttt{lap\_rho2} & $\Delta(\rho^2)$ & C3 (nonlinear diffusion) \\
+\texttt{lap\_rho3} & $\Delta(\rho^3)$ & C3 (crowd pressure) \\
+\texttt{lap\_p\_sq} & $\Delta(|\bp|^2)$ & C4 (coupling, dangerous) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{$p_x$-equation library:}
+\begin{equation}
+  (p_x)_t = d_1\, p_x
+  + d_2\,|\bp|^2 p_x
+  + d_3\,\partial_x\rho
+  + d_4\,\Delta p_x
+  + d_5\,\rho\,\partial_x\Phi
+  + \ldots
+\end{equation}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Code Name} & \textbf{Math} & \textbf{Category} \\
+\midrule
+\texttt{px} & $p_x$ & D1 (linear alignment) \\
+\texttt{p\_sq\_px} & $|\bp|^2\,p_x$ & D1 (saturation) \\
+\texttt{dx\_rho} & $\partial_x\rho$ & D2 (pressure) \\
+\texttt{lap\_px} & $\Delta p_x$ & D3 (viscosity) \\
+\texttt{rho\_dx\_Phi} & $\rho\,\partial_x\Phi$ & D5 (Morse forcing) \\
+\texttt{p\_dot\_grad\_px} & $(\bp\cdot\nabla)p_x$ & D4 (self-advection) \\
+\texttt{bilap\_px} & $\Delta^2 p_x$ & D3+ (hyper-viscosity) \\
+\texttt{dx\_rho2} & $\partial_x(\rho^2)$ & D2+ (extended pressure) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The $p_y$ library is symmetric, replacing $\partial_x \to \partial_y$.
+
+\begin{lstlisting}[caption={multifield.py --- Library term example}]
+class LibraryTerm:
+    def __init__(self, name, evaluator, *, latex="", equation="rho",
+                 dangerous=False):
+        self.name = name
+        self.evaluator = evaluator  # f(FieldData) -> (T, ny, nx)
+        self.latex = latex
+        self.equation = equation
+        self.dangerous = dangerous
+
+# Example term factories
+def rho_terms_core():
+    return [
+        LibraryTerm("div_p", lambda fd: fd.div_p(),
+                    latex=r"\nabla\cdot\mathbf{p}", equation="rho"),
+        LibraryTerm("lap_rho", lambda fd: fd.lap_rho(),
+                    latex=r"\Delta\rho", equation="rho"),
+    ]
+
+def rho_terms_morse():
+    return [
+        LibraryTerm("div_rho_gradPhi", lambda fd: fd.div_rho_gradPhi(),
+                    latex=r"\nabla\cdot(\rho\nabla\Phi)", equation="rho"),
+    ]
+\end{lstlisting}
+
+
+\subsection{Default Library Builder}
+
+\begin{lstlisting}[caption={multifield.py --- build\_default\_library}]
+def build_default_library(*, morse=True, rich=False):
+    """Build the recommended thesis-grade library."""
+    rho_lib = rho_terms_core()
+    if morse:
+        rho_lib += rho_terms_morse()
+    rho_lib += rho_terms_nonlinear_diff()
+    if rich:
+        rho_lib += rho_terms_coupling()
+
+    px_lib = (px_terms_linear() + px_terms_pressure()
+              + px_terms_viscosity())
+    if morse:
+        px_lib += px_terms_morse()
+    if rich:
+        px_lib += (px_terms_selfadvect()
+                   + px_terms_hyperviscosity()
+                   + px_terms_pressure_extended())
+
+    py_lib = ...  # symmetric to px
+    return {"rho": rho_lib, "px": px_lib, "py": py_lib}
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Multi-Field Weak System}
+\label{sec:multifield_system}
+% ============================================================================
+
+For the 3-equation system, the weak form is built \emph{per equation}.
+Unlike the scalar case (where the kernel encodes the operator via
+integration by parts), each multi-field library term \emph{directly
+provides} its full $(T,N_y,N_x)$ field.  The convolution is always with
+the plain test function $\psi$ (identity kernel):
+
+\begin{equation}\label{eq:multifield_weak}
+  b_q^{(\alpha)} = (\psi_t * u_\alpha)(t_q, x_q, y_q),
+  \qquad
+  G_{q,m}^{(\alpha)} = (\psi * \Theta_m^{(\alpha)})(t_q, x_q, y_q),
+\end{equation}
+where $\alpha \in \{\rho, p_x, p_y\}$ and $\Theta_m^{(\alpha)}$ is the
+$m$-th library term field for equation $\alpha$.
+
+\begin{lstlisting}[caption={multifield.py --- Multi-field weak system}]
+def build_weak_system_multifield(fd, psi_bundle, library,
+                                  query_idx, target_field):
+    """Build b=Gw for one equation of the multi-field PDE."""
+    periodic = (False, True, True)
+    qt, qx, qy = query_idx[:, 0], query_idx[:, 1], query_idx[:, 2]
+    K, M = query_idx.shape[0], len(library)
+
+    # LHS: b = conv(psi_t, target)
+    psi_t = psi_bundle["psi_t"]
+    b_full = fft_convolve3d_same(target_field, psi_t, periodic)
+    b = b_full[qt, qx, qy]
+
+    # RHS: each term convolved with psi (identity kernel)
+    psi_kern = psi_bundle["psi"]
+    G = np.empty((K, M))
+    col_names = []
+    for m, term in enumerate(library):
+        field_m = term.evaluator(fd)   # (T, ny, nx) - already has derivatives
+        conv_m = fft_convolve3d_same(field_m, psi_kern, periodic)
+        G[:, m] = conv_m[qt, qx, qy]
+        col_names.append(term.name)
+
+    return b, G, col_names
+\end{lstlisting}
+
+\paragraph{Stacking across trajectories.}
+Multiple training trajectories $\{(\rho^{(i)}, \bp^{(i)})\}$ are
+stacked vertically:
+\begin{equation}
+  \mathbf{b} = \begin{pmatrix} \mathbf{b}^{(1)} \\ \vdots \\ \mathbf{b}^{(N_{\rm traj})} \end{pmatrix},
+  \qquad
+  \mathbf{G} = \begin{pmatrix} \mathbf{G}^{(1)} \\ \vdots \\ \mathbf{G}^{(N_{\rm traj})} \end{pmatrix}.
+\end{equation}
+
+
+% ============================================================================
+\section{Regression: MSTLS}
+\label{sec:regression}
+% ============================================================================
+
+\subsection{Preconditioning}
+
+Before regression, each column of $\mathbf{G}$ is normalised to unit
+$\ell_2$ norm:
+\begin{equation}
+  \tilde{G}_{:,m} = \frac{G_{:,m}}{\|G_{:,m}\|_2},
+  \qquad
+  s_m = \|G_{:,m}\|_2.
+\end{equation}
+After fitting $\tilde{\mathbf{w}}$, the physical coefficients are
+recovered by $w_m = \tilde{w}_m / s_m$.
+
+\begin{lstlisting}[caption={regression.py --- Column preconditioning}]
+def precondition_columns(G):
+    """Scale each column to unit L2 norm, return (G_scaled, scales)."""
+    norms = np.linalg.norm(G, axis=0)
+    norms[norms == 0] = 1.0
+    return G / norms, norms
+\end{lstlisting}
+
+
+\subsection{Dominant-Balance Thresholding}
+
+The key innovation of MSTLS over standard STRidge is the
+\emph{dominant-balance mask}: a term is kept only if its normalised
+contribution lies within a threshold band:
+\begin{equation}\label{eq:dominant_balance}
+  \hat{\lambda} \;\le\;
+  \frac{|w_m|\,\|G_{:,m}\|}{\|\mathbf{b}\|}
+  \;\le\; \frac{1}{\hat{\lambda}}.
+\end{equation}
+Terms whose contribution is too small (noise) or too large (dominant
+but trivial) are pruned.
+
+\begin{lstlisting}[caption={regression.py --- Dominant-balance mask}]
+def _dominant_balance_mask(w, G, b, lam_hat):
+    """Boolean mask: True = term passes dominant-balance filter."""
+    b_norm = np.linalg.norm(b)
+    if b_norm == 0:
+        return np.ones(len(w), dtype=bool)
+
+    col_norms = np.linalg.norm(G, axis=0)
+    ratio = np.abs(w) * col_norms / b_norm
+
+    return (ratio >= lam_hat) & (ratio <= 1.0 / lam_hat)
+\end{lstlisting}
+
+
+\subsection{MSTLS Algorithm}
+
+The full MSTLS procedure sweeps over a grid of threshold values
+$\hat{\lambda} \in \{\hat{\lambda}_1, \ldots, \hat{\lambda}_L\}$:
+
+\begin{enumerate}[leftmargin=*]
+\item For each $\hat{\lambda}$:
+  \begin{enumerate}
+    \item Solve $\tilde{\mathbf{w}} = \argmin \|\tilde{\mathbf{G}}\mathbf{w} - \mathbf{b}\|_2$
+      (SVD least squares).
+    \item Compute the dominant-balance mask.
+    \item Restrict to active columns and re-solve.
+    \item Iterate until convergence (active set stabilises or max iterations).
+  \end{enumerate}
+\item Compute the \emph{normalised loss} for each $\hat{\lambda}$:
+  \begin{equation}
+    L(\hat{\lambda}) = \frac{\|\mathbf{G}_{\rm active}\,\mathbf{w}_{\rm active} - \mathbf{b}\|_2}{\|\mathbf{b}\|_2}.
+  \end{equation}
+\item Select the $\hat{\lambda}$ minimising $L$, with ties broken by sparsity.
+\end{enumerate}
+
+\begin{lstlisting}[caption={regression.py --- MSTLS main loop}]
+def mstls(G, b, lambdas, max_iter=25, tol=0.0):
+    """Modified Sequential Threshold Least Squares.
+
+    Returns best (w, active_mask, best_lambda, diagnostics).
+    """
+    K, M = G.shape
+    b_norm = np.linalg.norm(b)
+
+    best_w = None
+    best_loss = np.inf
+    best_lambda = lambdas[0]
+    best_active = np.ones(M, dtype=bool)
+
+    for lam in lambdas:
+        active = np.ones(M, dtype=bool)
+        for _ in range(max_iter):
+            idx = np.where(active)[0]
+            if len(idx) == 0:
+                break
+            w_sub = solve_ls(G[:, idx], b)  # SVD least-squares
+            w_full = np.zeros(M)
+            w_full[idx] = w_sub
+            new_active = _dominant_balance_mask(w_full, G, b, lam)
+            new_active &= (w_full != 0)
+            if np.array_equal(new_active, active):
+                break
+            active = new_active
+
+        # Compute normalised loss
+        idx = np.where(active)[0]
+        if len(idx) > 0:
+            w_sub = solve_ls(G[:, idx], b)
+            residual = G[:, idx] @ w_sub - b
+            loss = np.linalg.norm(residual) / max(b_norm, 1e-15)
+        else:
+            loss = 1.0
+
+        if loss < best_loss or (loss == best_loss
+                and active.sum() < best_active.sum()):
+            best_loss = loss
+            best_lambda = lam
+            best_active = active.copy()
+            best_w = np.zeros(M)
+            if len(idx) > 0:
+                best_w[idx] = w_sub
+
+    r2 = 1.0 - best_loss**2
+    return best_w, best_active, best_lambda, {"normalised_loss": best_loss,
+                                               "r2": r2}
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Fitting Pipeline}
+\label{sec:fit}
+% ============================================================================
+
+The high-level fit (\texttt{fit.py}) combines preconditioning, MSTLS,
+and coefficient unscaling:
+
+\begin{lstlisting}[caption={fit.py --- wsindy\_fit\_regression}]
+def wsindy_fit_regression(b, G, col_names, lambdas=None, max_iter=25,
+                          tol=0.0):
+    """Precondition -> MSTLS -> unscale -> WSINDyModel."""
+    if lambdas is None:
+        lambdas = np.logspace(-4, 1, 40)
+
+    G_sc, scales = precondition_columns(G)
+    w_sc, active, best_lam, diag = mstls(G_sc, b, lambdas,
+                                          max_iter=max_iter, tol=tol)
+
+    # Unscale: w_physical = w_scaled / scale
+    w = np.zeros_like(w_sc)
+    w[active] = w_sc[active] / scales[active]
+
+    return WSINDyModel(
+        col_names=list(col_names),
+        w=w, active=active,
+        best_lambda=best_lam,
+        col_scale=scales,
+        diagnostics=diag,
+    )
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Model Selection}
+\label{sec:select}
+% ============================================================================
+
+\subsection{Composite Score}
+
+The test-function scale $\ell$ is a hyperparameter.  We sweep an
+$\ell$-grid and score each trial by a composite criterion:
+\begin{equation}\label{eq:composite_score}
+  S(\ell) = L_{\rm norm}(\ell)
+  + \alpha\,\frac{n_{\rm active}(\ell)}{M}
+  + \beta\,\max\!\bigl(0,\;\log_{10}\kappa(\ell) - \log_{10}\kappa_0\bigr),
+\end{equation}
+where $L_{\rm norm}$ is the normalised loss, $n_{\rm active}/M$ is the
+complexity ratio, $\kappa$ is the condition number of the active
+sub-matrix, and $\alpha = 0.1$, $\beta = 0.01$, $\kappa_0 = 10^8$ are
+defaults.
+
+\paragraph{Pareto frontier.}
+We also extract the Pareto frontier over $(L_{\rm norm}, n_{\rm active})$
+as non-dominated solutions.
+
+
+\subsection{Multi-Field Model Selection}
+
+For the 3-equation system, each $\ell$ produces three models.
+The score is:
+\begin{equation}
+  S_{\rm multi}(\ell) = \frac{1}{3}\bigl(R^2_\rho + R^2_{p_x} + R^2_{p_y}\bigr)
+  - 0.05\,\frac{n_{\rm active}}{n_{\rm lib}}.
+\end{equation}
+
+\begin{lstlisting}[caption={multifield.py --- model\_selection\_multifield}]
+def model_selection_multifield(field_list, library, ell_grid, ...):
+    best_score = -np.inf
+    for ell in ell_grid:
+        result = discover_multifield(field_list, library, ell, ...)
+        r2_rho = result.rho_model.diagnostics.get("r2", 0)
+        r2_px  = result.px_model.diagnostics.get("r2", 0)
+        r2_py  = result.py_model.diagnostics.get("r2", 0)
+        n_act  = (result.rho_model.n_active
+                  + result.px_model.n_active
+                  + result.py_model.n_active)
+        n_lib  = sum(len(library[eq]) for eq in library)
+        avg_r2 = (r2_rho + r2_px + r2_py) / 3
+        score = avg_r2 - 0.05 * n_act / max(n_lib, 1)
+
+        if score > best_score:
+            best_score = score
+            best_result = result
+    return best_result, best_ell
+\end{lstlisting}
+
+
+% ============================================================================
+\section{WSINDy Model}
+\label{sec:model}
+% ============================================================================
+
+\begin{lstlisting}[caption={model.py --- WSINDyModel dataclass}]
+@dataclass
+class WSINDyModel:
+    col_names: List[str]        # Library term names
+    w: np.ndarray               # Coefficient vector (M,)
+    active: np.ndarray          # Boolean mask (M,)
+    best_lambda: float          # Selected threshold
+    col_scale: np.ndarray       # Column norms used for preconditioning
+    diagnostics: Dict[str, Any] # r2, normalised_loss, etc.
+
+    @property
+    def n_active(self):
+        return int(self.active.sum())
+
+    @property
+    def active_terms(self):
+        return [n for n, a in zip(self.col_names, self.active) if a]
+
+    def summary(self):
+        lines = [f"WSINDyModel: {self.n_active} active terms"]
+        for i, (name, w) in enumerate(zip(self.col_names, self.w)):
+            if self.active[i]:
+                lines.append(f"  {w:+12.4e}  {name}")
+        return "\n".join(lines)
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Strong-Form RHS Evaluation}
+\label{sec:rhs}
+% ============================================================================
+
+For time integration, we need to evaluate $u_t = \sum_m w_m\,\mathcal{D}_m[f_m(u)]$
+in strong form (pointwise on the grid):
+
+\begin{lstlisting}[caption={rhs.py --- wsindy\_rhs}]
+def wsindy_rhs(u, grid, model, Lx=None, Ly=None):
+    """Evaluate discovered RHS in strong form using spectral derivatives."""
+    rhs = np.zeros_like(u)
+    for i in range(len(model.w)):
+        if not model.active[i]:
+            continue
+
+        op, feat = parse_term(model.col_names[i])
+        f_u = eval_feature_pointwise(u, feat)   # u, u^2, u^3, ...
+
+        # Apply differential operator
+        if op == "I":
+            rhs += model.w[i] * f_u
+        elif op == "dx":
+            rhs += model.w[i] * spectral_dx(f_u, Lx)
+        elif op == "dy":
+            rhs += model.w[i] * spectral_dy(f_u, Ly)
+        elif op == "lap":
+            rhs += model.w[i] * spectral_lap(f_u, Lx, Ly)
+    return rhs
+\end{lstlisting}
+
+For the multi-field system, each equation's RHS is evaluated using the
+\texttt{FieldData} container with spectral derivatives:
+
+\begin{lstlisting}[caption={multifield.py --- multifield\_rhs}]
+def multifield_rhs(rho, px, py, grid, Lx, Ly, rho_model, px_model,
+                   py_model, rho_terms, px_terms, py_terms,
+                   morse_params=None, ...):
+    """Evaluate RHS of discovered 3-equation system."""
+    # Build single-frame FieldData (T=1), spectral mode
+    fd = FieldData(rho[np.newaxis], px[np.newaxis], py[np.newaxis],
+                   grid, Lx, Ly, Phi=Phi, use_spectral=True)
+
+    def _eval_rhs(model, terms, fd):
+        rhs = np.zeros((fd.shape[1], fd.shape[2]))
+        for i, t in enumerate(terms):
+            if model.active[i]:
+                rhs += model.w[i] * t.evaluator(fd)[0]
+        return rhs
+
+    return _eval_rhs(rho_model, rho_terms, fd), \
+           _eval_rhs(px_model, px_terms, fd), \
+           _eval_rhs(py_model, py_terms, fd)
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Time Integration}
+\label{sec:integrators}
+% ============================================================================
+
+\subsection{Classical RK4}
+
+For non-stiff systems:
+\begin{align}
+  k_1 &= \Delta t\, F(u^n), \\
+  k_2 &= \Delta t\, F\bigl(u^n + \tfrac{1}{2}k_1\bigr), \\
+  k_3 &= \Delta t\, F\bigl(u^n + \tfrac{1}{2}k_2\bigr), \\
+  k_4 &= \Delta t\, F\bigl(u^n + k_3\bigr), \\
+  u^{n+1} &= u^n + \tfrac{1}{6}\bigl(k_1 + 2k_2 + 2k_3 + k_4\bigr).
+\end{align}
+
+
+\subsection{ETDRK4: Exponential Time Differencing}
+
+For stiff systems with a linear part $u_t = Lu + N(u)$:
+
+\paragraph{Linear operator in Fourier space.}
+We identify terms that are \emph{linear in} $u$ and map their spatial
+operators to Fourier multipliers:
+\begin{equation}\label{eq:L_hat}
+  \hat{L}(k_x, k_y) = \sum_{m \in \text{linear}} w_m\,\sigma_m(k_x, k_y),
+\end{equation}
+where the symbol map is:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+$\mathcal{D}_m$ & $\sigma_m(k)$ \\
+\midrule
+$I$ & $1$ \\
+$\partial_x$ & $ik_x$ \\
+$\Delta$ & $-(k_x^2 + k_y^2)$ \\
+$\Delta^2$ & $(k_x^2 + k_y^2)^2$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[caption={multifield.py --- extracting $\hat{L}$ for ETDRK4}]
+def _extract_linear_spectral(model, terms, nx, ny, Lx, Ly):
+    """Extract L_hat (ny, nx) from linear terms, or None."""
+    K2 = _spectral_wavenumbers_2d(ny, nx, Lx, Ly)
+    L_hat = np.zeros((ny, nx), dtype=np.complex128)
+    has_linear = False
+    for i, t in enumerate(terms):
+        if not model.active[i]:
+            continue
+        c = model.w[i]
+        if t.name.startswith("lap_") and "rho" not in t.name:
+            L_hat += c * (-K2)
+            has_linear = True
+        elif t.name in ("px", "py"):
+            L_hat += c   # linear decay/growth
+            has_linear = True
+    return L_hat if has_linear else None
+\end{lstlisting}
+
+
+\paragraph{ETDRK4 coefficients (Kassam \& Trefethen 2005).}
+Given $z = \hat{L}\,\Delta t$, the $\varphi$-functions are computed via
+contour integrals for numerical stability:
+\begin{align}
+  \varphi_1(z) &= \frac{e^z - 1}{z}, \\
+  \varphi_2(z) &= \frac{e^z - 1 - z}{z^2}, \\
+  \varphi_3(z) &= \frac{e^z - 1 - z - z^2/2}{z^3},
+\end{align}
+approximated by averaging over $M = 32$ points on a circle in the
+complex plane:
+\begin{equation}
+  \varphi_k(z) \approx \frac{1}{M}\sum_{j=1}^M \varphi_k(z + r_j),
+  \qquad
+  r_j = e^{2\pi i(j-1/2)/M}.
+\end{equation}
+
+\begin{lstlisting}[caption={multifield.py --- ETDRK4 coefficient computation}]
+def _etdrk4_coefficients(L_hat, dt):
+    M = 32  # contour integration points
+    z = L_hat * dt
+    r = np.exp(2j * np.pi * (np.arange(1, M+1) - 0.5) / M)
+    z_3d = z[..., np.newaxis]
+    zr = z_3d + r          # (ny, nx, M)
+
+    E  = np.exp(z)
+    E2 = np.exp(z / 2)
+
+    phi1   = np.mean((np.exp(zr) - 1) / zr, axis=-1)
+    phi2   = np.mean((np.exp(zr) - 1 - zr) / zr**2, axis=-1)
+    phi3   = np.mean((np.exp(zr) - 1 - zr - 0.5*zr**2) / zr**3, axis=-1)
+    phi1_h = np.mean((np.exp(zr/2) - 1) / (zr/2), axis=-1)  # half-step
+
+    a21 = dt * phi1_h
+    b1 = dt * (4*phi3 - 3*phi2 + phi1)
+    b2 = dt * 2 * (phi2 - 2*phi3)
+    b3 = b2.copy()
+    b4 = dt * (-phi2 + 4*phi3)
+
+    return E, E2, a21, b1, b2, b3, b4
+\end{lstlisting}
+
+
+\paragraph{ETDRK4 time-stepping.}
+Each step computes 4 stages in Fourier space:
+\begin{align}
+  \hat{a} &= e^{z/2}\,\hat{u}^n + a_{21}\,\hat{N}_1, \\
+  \hat{b} &= e^{z/2}\,\hat{u}^n + a_{21}\,\hat{N}_2, \\
+  \hat{c} &= e^{z/2}\,\hat{a} + a_{21}\,(2\hat{N}_3 - \hat{N}_1), \\
+  \hat{u}^{n+1} &= e^z\,\hat{u}^n + b_1\hat{N}_1 + b_2(\hat{N}_2+\hat{N}_3) + b_4\hat{N}_4,
+\end{align}
+where $\hat{N}_j = \text{FFT}[N(u_j)]$ at the intermediate states.
+
+
+\subsection{Physical Projections}
+
+After each time step, two projections enforce physical consistency:
+\begin{enumerate}
+  \item \textbf{Non-negativity}: $\rho \leftarrow \max(\rho, 0)$
+  \item \textbf{Mass conservation}: $\rho \leftarrow \rho \cdot M_0 / \!\int\!\rho\,dx$
+\end{enumerate}
+
+\begin{lstlisting}[caption={multifield.py --- physical projections}]
+def _project(rho, px_cur, py_cur):
+    if clip_negative_rho:
+        rho = np.maximum(rho, 0.0)
+    if mass_conserve and M0 > 0:
+        M = float(np.sum(rho))
+        if M > 0:
+            rho = rho * (M0 / M)
+    return rho, px_cur, py_cur
+\end{lstlisting}
+
+
+\subsection{Forecast Dispatch}
+
+\begin{lstlisting}[caption={multifield.py --- forecast\_multifield (dispatch)}]
+def forecast_multifield(rho0, px0, py0, result, grid, Lx, Ly,
+                        n_steps, morse_params=None, ...
+                        method="auto"):
+    """
+    method="auto": use ETDRK4 if any equation has Laplacian/
+    bilaplacian terms, else RK4.
+    """
+    # Extract linear operators
+    L_rho = _extract_linear_spectral(result.rho_model, ...)
+    L_px  = _extract_linear_spectral(result.px_model, ...)
+    L_py  = _extract_linear_spectral(result.py_model, ...)
+
+    has_stiff = any(L is not None for L in [L_rho, L_px, L_py])
+    use_etdrk4 = (method == "etdrk4") or (method == "auto" and has_stiff)
+
+    if not use_etdrk4:
+        # Classical RK4 loop
+        for n in range(n_steps):
+            k1r, k1x, k1y = rhs(rho, px, py)
+            ...
+            rho, px, py = _project(rho, px, py)
+    else:
+        # ETDRK4 loop in Fourier space
+        coeff_rho = _etdrk4_coefficients(L_rho, dt)
+        ...
+        for n in range(n_steps):
+            # 4 stages of ETDRK4 per field
+            ...
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Bootstrap Uncertainty Quantification}
+\label{sec:bootstrap}
+% ============================================================================
+
+\subsection{Scalar Bootstrap}
+
+We assess coefficient uncertainty by resampling the query-point rows of
+the weak system:
+\begin{enumerate}
+\item Draw $K$ rows with replacement from $(\mathbf{b}, \mathbf{G})$.
+\item Refit MSTLS on the bootstrap sample.
+\item Record $\mathbf{w}^{(b)}$ and which terms are active.
+\item Repeat $B$ times (default $B=100$).
+\end{enumerate}
+
+\begin{equation}
+  P_{\rm incl}(m) = \frac{1}{B}\sum_{b=1}^B \mathbf{1}[w_m^{(b)} \ne 0],
+  \qquad
+  \text{CI}_{95\%}(m) = \bigl[w_m^{(2.5\%)},\; w_m^{(97.5\%)}\bigr].
+\end{equation}
+
+\begin{lstlisting}[caption={uncertainty.py --- bootstrap\_wsindy}]
+def bootstrap_wsindy(b, G, col_names, B=100, *, lambdas=None,
+                     rng=None, replace=True, subsample_frac=1.0):
+    rng = rng or np.random.default_rng()
+    K, M = G.shape
+    n_sample = max(1, int(K * subsample_frac))
+
+    base_model = wsindy_fit_regression(b, G, col_names, lambdas=lambdas)
+    coeff_samples = np.zeros((B, M))
+    active_counts = np.zeros(M, dtype=np.intp)
+
+    for rep in range(B):
+        idx = rng.choice(K, size=n_sample, replace=replace)
+        try:
+            m = wsindy_fit_regression(b[idx], G[idx, :], col_names,
+                                       lambdas=lambdas)
+            coeff_samples[rep, :] = m.w
+            active_counts += m.active.astype(np.intp)
+        except Exception:
+            pass
+
+    return BootstrapResult(coeff_samples, active_counts, col_names,
+                            base_model, B)
+\end{lstlisting}
+
+
+\subsection{Multi-Field Bootstrap}
+
+For the 3-equation system, bootstrap operates at the \emph{trajectory
+level}: resample entire trajectories (not individual rows) to capture
+inter-trajectory variability.
+
+\begin{lstlisting}[caption={multifield.py --- bootstrap\_multifield}]
+def bootstrap_multifield(field_list, library, ell, ..., B=50, seed=42):
+    rng = np.random.default_rng(seed)
+    N_traj = len(field_list)
+    for eq_name, target_fn in [("rho", ...), ("px", ...), ("py", ...)]:
+        for rep in range(B):
+            # Resample *trajectories* (not rows)
+            idx = rng.choice(N_traj, size=N_traj, replace=True)
+            fd_sub = [field_list[i] for i in idx]
+            model, _, _, _ = fit_equation_multifield(fd_sub, ...)
+            samples[rep] = model.w
+            active_counts += model.active
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Full Discovery Pipeline}
+\label{sec:pipeline}
+% ============================================================================
+
+Putting it all together, the \texttt{discover\_multifield} function:
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Build fields:}
+  $\texttt{build\_field\_data}(\rho, \text{traj}, \text{vel}, \ldots) \to \texttt{FieldData}$
+  (one per trajectory, containing $\rho, \bp, \Phi$ and all cached derivatives).
+
+\item \textbf{Build library:}
+  $\texttt{build\_default\_library}(\text{morse}=\text{True}) \to
+  \{\rho: [\text{terms}], p_x: [\text{terms}], p_y: [\text{terms}]\}$.
+
+\item \textbf{Fit each equation:}
+  For each $\alpha \in \{\rho, p_x, p_y\}$:
+  \begin{enumerate}
+    \item Construct test function $\psi$ at scale $\ell$.
+    \item Stack weak systems across trajectories.
+    \item Precondition $\to$ MSTLS $\to$ unscale.
+    \item Record \texttt{WSINDyModel}.
+  \end{enumerate}
+
+\item \textbf{Model selection:}
+  Sweep $\ell$-grid, score by average $R^2_{\rm weak}$ minus complexity penalty.
+
+\item \textbf{Forecast:}
+  Auto-detect stiffness $\to$ ETDRK4 or RK4 $\to$ time-step with
+  projections (non-negativity, mass conservation).
+
+\item \textbf{Uncertainty:}
+  Bootstrap at trajectory level $\to$ coefficient distributions,
+  inclusion probabilities, 95\% CIs.
+\end{enumerate}
+
+\begin{lstlisting}[caption={multifield.py --- discover\_multifield}]
+def discover_multifield(field_list, library, ell, p=(2,2,2),
+                        stride=(2,2,2), lambdas=None, verbose=True):
+    if lambdas is None:
+        lambdas = np.logspace(-4, 1, 40)
+
+    results = {}
+    for eq_name, target_fn in [("rho", lambda fd: fd.rho),
+                                ("px", lambda fd: fd.px),
+                                ("py", lambda fd: fd.py)]:
+        model, b, G, cn = fit_equation_multifield(
+            field_list, library[eq_name], target_fn,
+            ell=ell, p=p, stride=stride, lambdas=lambdas)
+        results[eq_name] = (model, b, G, cn)
+
+    return MultiFieldResult(
+        rho_model=results["rho"][0],
+        px_model=results["px"][0],
+        py_model=results["py"][0],
+        rho_terms=library["rho"],
+        px_terms=library["px"],
+        py_terms=library["py"],
+    )
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Standalone Spectral Operators}
+\label{sec:operators}
+% ============================================================================
+
+The \texttt{operators.py} module provides spectral derivatives as
+standalone functions (used before \texttt{FieldData} was introduced):
+
+\begin{lstlisting}[caption={operators.py --- standalone spectral utilities}]
+def fft_wavenumbers(n, d):
+    """Wavenumbers: k_j = 2*pi*fftfreq(n, d)."""
+    return 2 * np.pi * np.fft.fftfreq(n, d)
+
+def grad_spectral(u, dx, dy):
+    """Spectral gradient: (u_x, u_y)."""
+    ny, nx = u.shape
+    kx = fft_wavenumbers(nx, dx)
+    ky = fft_wavenumbers(ny, dy)
+    u_hat = np.fft.fft2(u)
+    ux = np.real(np.fft.ifft2(1j * kx[np.newaxis, :] * u_hat))
+    uy = np.real(np.fft.ifft2(1j * ky[:, np.newaxis] * u_hat))
+    return ux, uy
+
+def laplacian_spectral(u, dx, dy):
+    """Spectral Laplacian: -(kx^2 + ky^2) * u_hat."""
+    ny, nx = u.shape
+    kx = fft_wavenumbers(nx, dx)
+    ky = fft_wavenumbers(ny, dy)
+    K2 = kx[np.newaxis, :]**2 + ky[:, np.newaxis]**2
+    u_hat = np.fft.fft2(u)
+    return np.real(np.fft.ifft2(-K2 * u_hat))
+\end{lstlisting}
+
+
+% ============================================================================
+\section{Summary of Mathematical Objects}
+\label{sec:math_summary}
+% ============================================================================
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lp{8.5cm}}
+\toprule
+\textbf{Symbol} & \textbf{Definition} \\
+\midrule
+$\Omega = [0,L_x)\times[0,L_y)$ & Periodic spatial domain \\
+$\rho(x,y,t)$ & Density field (KDE from particles) \\
+$\bp(x,y,t) = (p_x, p_y)$ & Polarisation / flux field \\
+$W(r) = -C_r e^{-r/l_r} + C_a e^{-r/l_a}$ & Morse interaction kernel \\
+$\Phi = W * \rho$ & Morse potential (FFT convolution) \\
+$\psi = \varphi_t\,\varphi_x\,\varphi_y$ & Separable test function \\
+$\varphi_i(s) = (1 - s^2/(\ell_i\Delta_i)^2)_+^{p_i}$ & 1-D polynomial bump \\
+$\ell = (\ell_t, \ell_x, \ell_y)$ & Test-function half-widths \\
+$p = (p_t, p_x, p_y)$ & Polynomial exponents \\
+$\mathbf{b} = \mathbf{G}\mathbf{w}$ & Weak-form linear system \\
+$b_q = (\psi_t * u)(q)$ & LHS at query point $q$ \\
+$G_{q,m} = (\psi^{(m)} * f_m(u))(q)$ & RHS column $m$ at query $q$ \\
+$\hat{\lambda}$ & Dominant-balance threshold \\
+$L_{\rm norm} = \|G_{\rm act} w - b\|/\|b\|$ & Normalised residual \\
+$\hat{L}(k) = \sum_m w_m\,\sigma_m(k)$ & Linear operator in Fourier space \\
+$\varphi_k(z) = \frac{e^z - \sum_{j<k} z^j/j!}{z^k}$ & ETDRK4 $\varphi$-functions \\
+$M_0 = \int\rho_0\,dx$ & Conserved total mass \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+\end{document}

@@ -6,3 +6,4 @@ pyyaml
 imageio
 pandas
 numba
+statsmodels

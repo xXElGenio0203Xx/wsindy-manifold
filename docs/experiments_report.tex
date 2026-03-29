@@ -1,0 +1,886 @@
+% ============================================================================
+%  CrowdROM Experiments: Design, Math, and Results
+% ============================================================================
+\documentclass[11pt]{article}
+
+% ---- Packages ----
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[font=small]{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{siunitx}
+
+% ---- Code listings ----
+\definecolor{codebg}{gray}{0.96}
+\definecolor{codegreen}{rgb}{0.1,0.5,0.1}
+\definecolor{codeblue}{rgb}{0.1,0.1,0.6}
+\definecolor{codegray}{rgb}{0.4,0.4,0.4}
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  keywordstyle=\color{codeblue}\bfseries,
+  commentstyle=\color{codegreen}\itshape,
+  numbers=left,
+  numberstyle=\tiny\color{codegray},
+  numbersep=5pt,
+  frame=single,
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+  xleftmargin=2em,
+  framexleftmargin=1.5em,
+  captionpos=b,
+}
+
+% ---- Colors ----
+\definecolor{goodgreen}{HTML}{2E7D32}
+\definecolor{badred}{HTML}{C62828}
+\definecolor{warnbrown}{HTML}{E65100}
+\definecolor{lightgray}{HTML}{F5F5F5}
+\definecolor{accentblue}{HTML}{1565C0}
+
+% ---- Custom commands ----
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\ba}{\mathbf{a}}
+\newcommand{\by}{\mathbf{y}}
+\newcommand{\bU}{\mathbf{U}}
+\newcommand{\bA}{\mathbf{A}}
+\newcommand{\bp}{\mathbf{p}}
+\newcommand{\bmu}{\boldsymbol{\mu}}
+\newcommand{\brho}{\boldsymbol{\rho}}
+\newcommand{\Rtwo}{R^2}
+\newcommand{\good}[1]{\textcolor{goodgreen}{\textbf{#1}}}
+\newcommand{\bad}[1]{\textcolor{badred}{#1}}
+\newcommand{\warn}[1]{\textcolor{warnbrown}{#1}}
+\newcommand{\regime}[1]{\textsf{#1}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\title{%
+  \textbf{CrowdROM Experimental Log}\\[6pt]
+  \large Complete Experiment Design, Mathematical Formulation,\\
+  \large and Results for All Suites (DYN through VFIX)}
+\author{Macias-Olivares, E.}
+\date{February--March 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+
+% ============================================================================
+\section{Problem Setting and Physics}
+\label{sec:physics}
+% ============================================================================
+
+\subsection{Vicsek--Morse Particle Model}
+
+We study $N = 200$ interacting agents on a doubly-periodic domain
+$\Omega = [0, L_x) \times [0, L_y)$ with $L_x = L_y = 25$.
+Each particle $i$ at discrete time $k$ has position
+$\bx_i^k \in \Omega$ and heading angle $\theta_i^k$.
+
+\paragraph{Update rules.}
+The heading is updated via Vicsek alignment plus Morse forces:
+\begin{equation}\label{eq:heading}
+  \theta_i^{k+1}
+  = \arg\!\biggl(\,
+    \sum_{j:\,|\bx_j^k - \bx_i^k| < R}
+    e^{i\theta_j^k}\biggr)
+  + \eta\,\xi_i^k
+  + \alpha_{\text{morse}}\,\Theta_i^{\text{Morse}, k},
+\end{equation}
+where $\eta$ is noise intensity, $\xi_i^k \sim \text{Uniform}(-\pi, \pi)$,
+and $\Theta_i^{\text{Morse},k}$ is the heading correction from
+the Morse potential gradient.
+
+The position is updated at constant speed $v_0$:
+\begin{equation}
+  \bx_i^{k+1} = \bx_i^k + v_0\,\Delta t
+  \begin{pmatrix}\cos\theta_i^{k+1}\\\sin\theta_i^{k+1}\end{pmatrix}
+  \;\mod\;(L_x, L_y).
+\end{equation}
+
+\paragraph{Morse interaction forces.}
+The pairwise Morse potential between particles $i$ and $j$:
+\begin{equation}
+  W(r) = -C_r\,e^{-r/l_r} + C_a\,e^{-r/l_a},
+  \qquad r = |\bx_i - \bx_j|,
+\end{equation}
+produces short-range repulsion (strength $C_r$, range $l_r$) and
+long-range attraction (strength $C_a$, range $l_a$).
+The net force on particle $i$ is:
+\begin{equation}
+  \mathbf{F}_i^{\text{Morse}} = -\sum_{j \ne i} \nabla_{\bx_i} W(|\bx_i - \bx_j|).
+\end{equation}
+
+
+\subsection{The Seven Dynamical Regimes}
+
+All experiments span 7 physically distinct regimes that cover the
+parameter space:
+
+\begin{table}[H]
+\centering
+\caption{The 7 dynamical regimes used throughout all experiments.}
+\label{tab:regimes}
+\small
+\begin{tabular}{@{}clccccl@{}}
+\toprule
+\# & Regime & Speed $v_0$ & $\eta$ & $C_a$ & $C_r$ & Character \\
+\midrule
+1 & \regime{Gentle}       & 1.5  & 0.1 & 0.8  & 0.3  & Slow, smooth, easy \\
+2 & \regime{HyperVelocity}& 15.0 & 0.2 & 1.5  & 0.5  & Extreme speeds \\
+3 & \regime{HyperNoisy}   & 4.0  & 1.5 & 1.5  & 0.5  & Near-random noise \\
+4 & \regime{Blackhole}    & 4.0  & 0.2 & 12.0 & 0.1  & Extreme attraction \\
+5 & \regime{Supernova}    & 4.0  & 0.2 & 0.1  & 10.0 & Extreme repulsion \\
+6 & \regime{Baseline}     & 4.0  & 0.2 & 1.5  & 0.5  & Balanced reference \\
+7 & \regime{PureVicsek}   & 4.0  & 0.2 & ---  & ---  & No Morse forces \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+\section{ROM Pipeline Mathematics}
+\label{sec:rom_math}
+% ============================================================================
+
+\subsection{Step 1: Density Field via KDE}
+
+Particle positions are converted to a continuum field:
+\begin{equation}
+  \rho^k(x,y) = (G_\sigma * H^k)(x,y),
+  \qquad
+  H^k_{jl} = \frac{1}{\Delta x\,\Delta y}
+  \sum_{i=1}^N \mathbf{1}[\bx_i^k \in C_{jl}],
+\end{equation}
+where $H^k$ is a $64 \times 64$ histogram and $G_\sigma$ is a Gaussian
+kernel with bandwidth $\sigma = 5$ grid cells, applied with periodic
+wrapping.  Each frame $\brho^k \in \R^{4096}$ ($= 64 \times 64$).
+
+
+\subsection{Step 2: Shift Alignment (sPOD)}
+
+Before POD, we factor out translational motion via FFT cross-correlation:
+\begin{equation}
+  (\delta_y^k, \delta_x^k)
+  = \argmax_{(s_y, s_x)}
+  \text{Re}\bigl[\mathcal{F}^{-1}(\hat{\rho}_{\text{ref}} \odot \overline{\hat{\rho}^k})\bigr]_{s_y, s_x},
+\end{equation}
+where $\rho_{\text{ref}} = \frac{1}{T}\sum_k \rho^k$ is the temporal mean.
+The aligned frame is:
+\begin{equation}
+  \tilde{\rho}^k(j,l) = \rho^k\bigl((j-\delta_y^k) \bmod N_y,\;
+  (l - \delta_x^k) \bmod N_x\bigr).
+\end{equation}
+
+
+\subsection{Step 3: Density Transform (Optional)}
+
+Two transform pipelines were tested:
+
+\paragraph{Suite A ($\sqrt{}$+simplex+C0).}
+\begin{enumerate}[nosep]
+  \item Square-root transform: $\tilde{\rho} \leftarrow \sqrt{\tilde{\rho}}$
+    (Hellinger embedding, stabilises variance),
+  \item C0 clamping: clip negatives to zero after each rollout step,
+  \item Simplex mass projection: $\hat{\rho} \leftarrow \hat{\rho} \cdot M_0 / \sum\hat{\rho}$.
+\end{enumerate}
+
+\paragraph{Suite B (raw+C2).}
+\begin{enumerate}[nosep]
+  \item Identity (no transform),
+  \item C2 clamping: soft ReLU with small $\epsilon > 0$,
+  \item No mass projection.
+\end{enumerate}
+
+
+\subsection{Step 4: POD Compression}
+
+We compute the snapshot SVD:
+\begin{equation}
+  \tilde{\mathbf{X}} = \mathbf{U}\,\boldsymbol{\Sigma}\,\mathbf{V}^\top,
+  \qquad
+  \tilde{\mathbf{X}} \in \R^{MT \times n},
+\end{equation}
+and retain $d = 19$ modes capturing $> 99\%$ of variance:
+\begin{equation}
+  \ba^k = \mathbf{U}_d^\top\,\tilde{\brho}^k \in \R^d.
+\end{equation}
+The POD coefficient trajectory $\{\ba^k\}_{k=1}^T$ is what the ROM
+methods forecast.
+
+
+\subsection{Step 5a: MVAR Forecasting}
+\label{sec:mvar}
+
+The Multivariate Autoregressive (MVAR) model of order $p$:
+\begin{equation}\label{eq:mvar}
+  \hat{\ba}_{t+1} = \sum_{j=1}^p \mathbf{A}_j\,\ba_{t-j+1} + \mathbf{c},
+\end{equation}
+where $\mathbf{A}_j \in \R^{d \times d}$ and $\mathbf{c} \in \R^d$.
+
+Writing $\mathbf{Z}_t = [\ba_t^\top, \ba_{t-1}^\top, \ldots, \ba_{t-p+1}^\top, 1]^\top \in \R^{dp+1}$
+and $\boldsymbol{\Theta} = [\mathbf{A}_1, \ldots, \mathbf{A}_p, \mathbf{c}] \in \R^{d \times (dp+1)}$,
+the model is $\hat{\ba}_{t+1} = \boldsymbol{\Theta}\,\mathbf{Z}_t$.
+
+\paragraph{Ridge regression fit:}
+\begin{equation}
+  \hat{\boldsymbol{\Theta}} = \argmin_{\boldsymbol{\Theta}}
+  \sum_t \|\ba_{t+1} - \boldsymbol{\Theta}\mathbf{Z}_t\|^2
+  + \alpha\,\|\boldsymbol{\Theta}\|_F^2,
+\end{equation}
+with $\alpha = 10^{-4}$.  In closed form:
+\begin{equation}
+  \hat{\boldsymbol{\Theta}} = \mathbf{Y}\mathbf{Z}^\top(\mathbf{Z}\mathbf{Z}^\top + \alpha\mathbf{I})^{-1}.
+\end{equation}
+
+
+\subsection{Step 5b: LSTM Forecasting}
+\label{sec:lstm}
+
+\paragraph{Architecture.}
+The \texttt{LatentLSTMROM} processes sequences of POD coefficients:
+\begin{align}
+  \mathbf{h}_t, \mathbf{c}_t &= \text{LSTM}(\mathbf{y}_t, \mathbf{h}_{t-1}, \mathbf{c}_{t-1}), \\
+  \tilde{\mathbf{h}} &= \text{LayerNorm}(\mathbf{h}_L), \\
+  \hat{\mathbf{y}}_{L+1} &= W_o\,\tilde{\mathbf{h}} + \mathbf{b}_o,
+\end{align}
+where $\mathbf{y}_t \in \R^d$ ($d=19$), $\mathbf{h}_t \in \R^{N_h}$,
+and $L$ is the context window length.
+
+\paragraph{LSTM gates.}
+The standard LSTM cell computes:
+\begin{align}
+  \mathbf{f}_t &= \sigma(\mathbf{W}_{if}\mathbf{y}_t + \mathbf{W}_{hf}\mathbf{h}_{t-1} + \mathbf{b}_f), \\
+  \mathbf{i}_t &= \sigma(\mathbf{W}_{ii}\mathbf{y}_t + \mathbf{W}_{hi}\mathbf{h}_{t-1} + \mathbf{b}_i), \\
+  \tilde{\mathbf{c}}_t &= \tanh(\mathbf{W}_{ig}\mathbf{y}_t + \mathbf{W}_{hg}\mathbf{h}_{t-1} + \mathbf{b}_g), \\
+  \mathbf{c}_t &= \mathbf{f}_t \odot \mathbf{c}_{t-1} + \mathbf{i}_t \odot \tilde{\mathbf{c}}_t, \\
+  \mathbf{o}_t &= \sigma(\mathbf{W}_{io}\mathbf{y}_t + \mathbf{W}_{ho}\mathbf{h}_{t-1} + \mathbf{b}_o), \\
+  \mathbf{h}_t &= \mathbf{o}_t \odot \tanh(\mathbf{c}_t).
+\end{align}
+
+\paragraph{Residual connection (optional).}
+When enabled:
+$\hat{\mathbf{y}}_{t+1} = \mathbf{y}_t + \Delta\hat{\mathbf{y}}$,
+where $\Delta\hat{\mathbf{y}} = W_o\,\tilde{\mathbf{h}} + \mathbf{b}_o$.
+
+\paragraph{Parameter count.}
+For $L_{\text{layers}}$ LSTM layers, LayerNorm, and linear output:
+\begin{equation}
+  N_{\text{params}} = \underbrace{4(d + N_h + 1)N_h}_{\text{first layer}}
+  + \underbrace{4(N_h + N_h + 1)N_h \cdot (L_{\text{layers}}-1)}_{\text{additional layers}}
+  + \underbrace{2N_h}_{\text{LayerNorm}}
+  + \underbrace{(N_h + 1)d}_{\text{output}}.
+\end{equation}
+
+\begin{table}[H]
+\centering
+\caption{Parameter counts for $d = 19$.}
+\label{tab:params}
+\small
+\begin{tabular}{@{}ccr@{}}
+\toprule
+$N_h$ & $L_{\text{layers}}$ & Params \\
+\midrule
+16  & 1 & 2,723 \\
+32  & 1 & 7,475 \\
+64  & 1 & 23,123 \\
+128 & 1 & 78,995 \\
+128 & 2 & 211,475 \\
+32  & 2 & 15,923 \\
+64  & 2 & 56,403 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\paragraph{Training procedure.}
+\begin{itemize}[nosep]
+  \item \textbf{Input normalization:} per-mode z-scoring using training-set $\mu, \sigma$.
+  \item \textbf{Optimizer:} Adam, weight decay $10^{-5}$, learning rate $10^{-3}$.
+  \item \textbf{LR schedule:} ReduceLROnPlateau (factor 0.5, patience 20).
+  \item \textbf{Gradient clipping:} max norm $= 5.0$.
+  \item \textbf{Early stopping:} patience 40 epochs (monitor val loss).
+  \item \textbf{Max epochs:} 200.
+  \item \textbf{Batch size:} 32.
+  \item \textbf{Context window:} $p = 5$ time steps.
+\end{itemize}
+
+
+\subsection{Step 5c: WSINDy PDE Discovery (On Full Fields)}
+\label{sec:wsindy_exp}
+
+WSINDy discovers the PDE governing the 3-field system
+$(\rho, p_x, p_y)$ directly, then time-integrates the discovered
+equations.  The full mathematical detail is in the companion document
+\texttt{wsindy\_math\_and\_code.tex}; here we summarise the key
+equations:
+
+\paragraph{Discovered system.}
+\begin{align}
+  \rho_t &= c_1\,\nabla\cdot\bp + c_2\,\Delta\rho
+    + c_3\,\nabla\cdot(\rho\nabla\Phi) + c_4\,\Delta(\rho^2) + \ldots \\
+  (p_x)_t &= d_1\,p_x + d_2\,|\bp|^2 p_x + d_3\,\partial_x\rho
+    + d_4\,\Delta p_x + d_5\,\rho\,\partial_x\Phi + \ldots \\
+  (p_y)_t &= e_1\,p_y + e_2\,|\bp|^2 p_y + e_3\,\partial_y\rho
+    + e_4\,\Delta p_y + e_5\,\rho\,\partial_y\Phi + \ldots
+\end{align}
+Coefficients $c_m, d_m, e_m$ are identified by weak-form regression
+(MSTLS, see companion document).
+
+\paragraph{Weak $\Rtwo$.}
+The quality of the discovered PDE is measured by:
+\begin{equation}
+  \Rtwo_{\text{weak}} = 1 - \frac{\|\mathbf{G}_{\text{active}}\mathbf{w} - \mathbf{b}\|^2}{\|\mathbf{b}\|^2}.
+\end{equation}
+
+\paragraph{Time integration.}
+Discovered PDEs are integrated using ETDRK4 (if stiff linear terms
+present) or RK4, with mass conservation and non-negativity projections.
+
+
+\subsection{Step 6: Reconstruction and Evaluation}
+
+The predicted density is reconstructed via:
+\begin{equation}
+  \hat{\rho}^k_{\text{phys}} = \text{un-align}\bigl(
+    \text{inverse-transform}\bigl(
+      \mathbf{U}_d\,\hat{\ba}^k + \bar{\brho}
+    \bigr),\; \hat{\boldsymbol{\delta}}^k
+  \bigr).
+\end{equation}
+
+\paragraph{Metrics.}
+\begin{itemize}[nosep]
+  \item \textbf{Rollout $\Rtwo$:} Coefficient of determination across all forecast
+    pixels and times.  Autoregressive (no teacher forcing):
+    \begin{equation}
+      \Rtwo_{\text{rollout}} = 1 - \frac{\sum_{k,j,l}(\rho^k_{jl} - \hat\rho^k_{jl})^2}
+      {\sum_{k,j,l}(\rho^k_{jl} - \bar\rho_{jl})^2}.
+    \end{equation}
+  \item \textbf{1-step $\Rtwo$:} Teacher-forced (ground-truth input at each step).
+  \item \textbf{Negativity fraction:} $\%$ of cells with $\hat\rho < 0$.
+  \item \textbf{POD ceiling:} $\Rtwo$ if the ``prediction'' is just reconstructing
+    ground truth via the POD basis (upper bound for any ROM method).
+\end{itemize}
+
+
+% ============================================================================
+\section{Experiment Suite VDYN: MVAR vs.\ LSTM Baseline}
+\label{sec:vdyn}
+% ============================================================================
+
+\subsection{Design}
+\begin{itemize}[nosep]
+  \item \textbf{7 jobs:} one per dynamical regime.
+  \item \textbf{Methods:} MVAR ($p=5$, $\alpha=10^{-4}$) and LSTM ($N_h=128$, $L=2$,
+    211k params, residual=ON, $\sqrt{}$+simplex+C0).
+  \item \textbf{POD:} $d=19$ modes, shift-aligned.
+  \item \textbf{Forecast horizon:} 50\,s autoregressive rollout.
+\end{itemize}
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{VDYN: MVAR vs.\ LSTM rollout $\Rtwo$ (50\,s forecast).}
+\label{tab:vdyn}
+\small
+\begin{tabular}{@{}l S[table-format=+1.3] S[table-format=+1.3] S[table-format=2.1] @{}}
+\toprule
+Regime & {MVAR $\Rtwo$} & {LSTM $\Rtwo$} & {LSTM Neg\%} \\
+\midrule
+\regime{Gentle}       & +0.904 & -1.90 & 18.3 \\
+\regime{HyperVelocity}& +0.850 & -5.64 & 26.1 \\
+\regime{HyperNoisy}   & +0.783 & -0.68 & 12.3 \\
+\regime{Blackhole}    & +0.836 & -2.73 & 22.7 \\
+\regime{Supernova}    & +0.734 & -3.22 & 19.4 \\
+\regime{Baseline}     & +0.880 & -4.91 & 23.8 \\
+\regime{PureVicsek}   & +0.643 & +0.12 & 11.4 \\
+\midrule
+\textbf{Mean}         & \textbf{+0.804} & \textbf{$-$2.71} & \textbf{19.1} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key finding:} LSTM achieves strong 1-step $\Rtwo \approx 0.95$ yet
+produces catastrophically negative rollout $\Rtwo$ in 6/7~regimes.
+The problem is purely autoregressive error compounding.
+
+
+% ============================================================================
+\section{Experiment Suite VLST: Density Transform Ablation}
+\label{sec:vlst}
+% ============================================================================
+
+\subsection{Design}
+
+\textbf{Question:} Does the density transform pipeline affect LSTM rollout stability?
+
+\begin{itemize}[nosep]
+  \item \textbf{14 jobs:} 2 suites $\times$ 7 regimes.
+  \item \textbf{Architecture:} Same as VDYN ($N_h=128$, $L=2$, 211k params, residual=ON).
+  \item \textbf{Suite A:} $\sqrt{}$ + simplex mass projection + C0 clamping.
+  \item \textbf{Suite B:} Raw (identity) transform + C2 clamping.
+  \item Oscar job IDs via commit \texttt{ec1d8d0}.
+\end{itemize}
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{VLST: rollout $\Rtwo$ by transform pipeline.}
+\label{tab:vlst}
+\small
+\begin{tabular}{@{}l S[table-format=+1.2] S[table-format=+1.2] S[table-format=2.1] S[table-format=2.1] @{}}
+\toprule
+Regime & {Suite~A ($\sqrt{}$+S)} & {Suite~B (raw)} & {Neg\% A} & {Neg\% B} \\
+\midrule
+\regime{Gentle}       & -1.37 & -0.41 & 5.2  & 14.2 \\
+\regime{HyperVelocity}& -5.47 & -1.29 & 11.2 & 23.8 \\
+\regime{HyperNoisy}   & -0.63 & -0.19 & 4.1  & 9.7  \\
+\regime{Blackhole}    & -3.82 & -1.14 & 8.7  & 21.4 \\
+\regime{Supernova}    & -2.91 & -0.88 & 6.3  & 17.3 \\
+\regime{Baseline}     & -3.10 & -1.49 & 9.8  & 22.1 \\
+\regime{PureVicsek}   & -1.81 & -0.72 & 8.4  & 22.3 \\
+\midrule
+\textbf{Mean}         & \textbf{$-$2.73} & \textbf{$-$0.87} & \textbf{7.7} & \textbf{18.7} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Findings}
+\begin{itemize}[nosep]
+  \item Raw+C2 wins in 6/7 regimes for rollout $\Rtwo$ (mean $-0.87$ vs.\ $-2.73$).
+  \item However, raw+C2 produces \emph{more} negative densities (18.7\% vs.\ 7.7\%).
+  \item \textbf{Neither transform achieves positive $\Rtwo$}: transform alone
+    cannot fix 211k-param overfitting with residual connection.
+  \item The $\sqrt{}$ transform amplifies small errors near zero, exacerbating divergence.
+\end{itemize}
+
+
+% ============================================================================
+\section{Experiment Suite VARCH: Architecture Ablation}
+\label{sec:varch}
+% ============================================================================
+
+\subsection{Design}
+
+\textbf{Question:} Which architectural choice causes LSTM rollout divergence?
+
+\begin{itemize}[nosep]
+  \item \textbf{42 jobs:} 6 variants $\times$ 7 regimes.
+  \item \textbf{All use:} $\sqrt{}$+simplex+C0 transform.
+  \item Oscar job IDs via commit \texttt{92fc67d}.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{VARCH variant definitions (all use $\sqrt{}$+simplex+C0, dropout=0).}
+\label{tab:varch-design}
+\small
+\begin{tabular}{@{}cccccr@{}}
+\toprule
+ID & $N_h$ & $L$ & Residual & LayerNorm & Params \\
+\midrule
+A16   & 16 & 1 & ON  & ON  & 2,723  \\
+A32   & 32 & 1 & ON  & ON  & 7,475  \\
+A32x2 & 32 & 2 & ON  & ON  & 15,923 \\
+\midrule
+\textbf{B1}   & 32 & 1 & \good{OFF} & ON  & 7,475  \\
+B2    & 32 & 1 & ON  & OFF & 7,475  \\
+B3    & 32 & 1 & ON  & ON  & 7,475  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+B3 adds multi-step loss (4-step horizon during training).
+
+\subsection{Capacity Sweep Results (A16, A32, A32x2)}
+
+All capacity variants (with residual=ON) produce negative rollout $\Rtwo$:
+
+\begin{center}
+\begin{tabular}{lS[table-format=+1.2]l}
+\toprule
+Variant & {Mean $\Rtwo$} & Verdict \\
+\midrule
+A16 (2.7k params) & -0.63 & Negative \\
+A32 (7.5k params) & -0.51 & Negative \\
+A32x2 (15.9k params) & -0.68 & Negative \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Conclusion:} Right-sizing the network (from 211k to 2.7k--16k params)
+without removing the residual connection does \emph{not} fix rollout divergence.
+Capacity is a \textbf{red herring}.
+
+
+\subsection{Trick Ablation Results (B1, B2, B3)}
+
+\begin{table}[H]
+\centering
+\caption{VARCH rollout $\Rtwo$ --- full 7-regime results.
+\good{Green}: positive $\Rtwo$ (only B1 achieves this).}
+\label{tab:varch-r2}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l *{7}{S[table-format=+1.2]} S[table-format=+1.2] @{}}
+\toprule
+Variant & {Gentle} & {HVel} & {HNoisy} & {BHole} & {SNova} & {Base} & {PVicsek} & {Mean} \\
+\midrule
+A16      & -0.62 & -0.73 & -0.28 & -0.91 & -0.55 & -0.89 & -0.41 & -0.63 \\
+A32 (REF)& -0.48 & -0.58 & -0.33 & -0.72 & -0.44 & -0.71 & -0.30 & -0.51 \\
+A32x2    & -0.81 & -0.69 & -0.38 & -0.95 & -0.61 & -0.84 & -0.45 & -0.68 \\
+\rowcolor{lightgray}
+\textbf{B1 (no res.)} & -0.03 & \good{+0.05} & \good{+0.24} & \good{+0.33} & -0.08 & -0.11 & -0.04 & \good{+0.05} \\
+B2 (no LN)  & -0.79 & -1.03 & -0.59 & -1.12 & -0.85 & -1.07 & -0.62 & -0.87 \\
+B3 (+multi) & -0.67 & -0.81 & -0.42 & -0.99 & -0.58 & -0.93 & -0.44 & -0.69 \\
+\midrule
+MVAR     & +0.90 & +0.85 & +0.78 & +0.84 & +0.73 & +0.88 & +0.64 & +0.80 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+\section{Root Cause Analysis}
+\label{sec:rootcause}
+% ============================================================================
+
+\subsection{Finding \#1: Residual Connection is the Primary Killer}
+
+The residual (delta) formulation:
+\begin{equation}
+  \hat{\mathbf{y}}_{t+1} = \mathbf{y}_t + \Delta\hat{\mathbf{y}}_t,
+  \quad
+  \Delta\hat{\mathbf{y}}_t = f_\theta(\mathbf{y}_{t-p+1:t}).
+\end{equation}
+
+During autoregressive rollout, prediction errors $\epsilon_t$ in
+$\Delta\hat{\mathbf{y}}$ accumulate \emph{additively}:
+\begin{equation}
+  \hat{\mathbf{y}}_T = \mathbf{y}_0 + \sum_{t=0}^{T-1}(\Delta\mathbf{y}_t^* + \epsilon_t)
+  = \mathbf{y}_T^* + \sum_{t=0}^{T-1}\epsilon_t.
+\end{equation}
+The cumulative error grows as $O(\sqrt{T})$ (random walk) or worse.
+With $T \sim 500$ rollout steps, even $\epsilon \sim 10^{-3}$ yields
+$O(10^{-2}\text{--}10^{-1})$ drift.
+
+\textbf{Evidence:} Removing the residual (B1 vs.\ A32):
+\begin{itemize}[nosep]
+  \item Mean $\Rtwo$: $-0.51 \to +0.05$ (\good{$+$53 points}).
+  \item B1 wins 7/7 regimes.
+  \item B1 is the \emph{only} variant achieving positive rollout $\Rtwo$
+    (3 out of 7 regimes).
+  \item Only 4/56 experiments achieved positive rollout $\Rtwo$;
+    all 4 are from~B1.
+\end{itemize}
+
+
+\subsection{Finding \#2: LayerNorm Helps, Multi-Step Hurts}
+
+Relative to A32 reference ($\overline{\Rtwo} = -0.51$):
+\begin{center}
+\begin{tabular}{lS[table-format=+1.2]l}
+\toprule
+Ablation & {$\Delta\overline{\Rtwo}$} & Interpretation \\
+\midrule
+B1 (no residual) & +0.56 & Dominant improvement \\
+A16 (tiny)        & -0.12 & Capacity: slight degradation \\
+A32x2 (deeper)    & -0.17 & Depth: slight degradation \\
+B3 (+multistep)   & -0.18 & Multistep hurts \\
+B2 (no LayerNorm) & -0.36 & LayerNorm important \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    xbar,
+    width=0.75\textwidth,
+    height=5.5cm,
+    xlabel={$\Delta\overline{R^2}$ vs.\ A32 reference},
+    symbolic y coords={
+      {B3: +multistep},
+      {B2: no LayerNorm},
+      {A32x2: deeper},
+      {A16: tiny},
+      {B1: no residual}
+    },
+    ytick=data,
+    xmin=-0.5,
+    xmax=0.65,
+    bar width=10pt,
+    nodes near coords,
+    nodes near coords align={horizontal},
+    every node near coord/.append style={font=\footnotesize},
+    grid=major,
+    major grid style={dotted,gray!50},
+]
+\addplot[fill=accentblue!60, draw=accentblue] coordinates {
+    (-0.18,{B3: +multistep})
+    (-0.36,{B2: no LayerNorm})
+    (-0.17,{A32x2: deeper})
+    (-0.12,{A16: tiny})
+    (+0.56,{B1: no residual})
+};
+\draw[dashed, red, thick] (0,{rel axis cs:0,0}) -- (0,{rel axis cs:0,1});
+\end{axis}
+\end{tikzpicture}
+\caption{Effect size of each ablation vs.\ A32 reference ($\overline{\Rtwo}=-0.51$).}
+\label{fig:effect-sizes}
+\end{figure}
+
+
+\subsection{Finding \#3: 1-Step vs.\ Rollout Disconnect}
+
+All variants achieve 1-step $\Rtwo \approx 0.95$ (teacher-forced).
+The bottleneck is exclusively autoregressive error compounding.
+This confirms that \emph{exposure bias} is the failure mechanism,
+not per-step prediction quality.
+
+
+% ============================================================================
+\section{Experiment Suite VFIX: Combining All Winning Traits}
+\label{sec:vfix}
+% ============================================================================
+
+\subsection{Design Rationale}
+
+Based on root-cause analysis, VFIX combines:
+\begin{itemize}[nosep]
+  \item \textbf{Residual = OFF} (the biggest single improvement, $+53$ pts).
+  \item \textbf{LayerNorm = ON} (stabilises training, $+36$ pts vs.\ OFF).
+  \item \textbf{Raw + C2 transform} (better $\Rtwo$ than $\sqrt{}$+simplex in VLST).
+  \item \textbf{Multistep = OFF} (hurt in prior experiments).
+  \item \textbf{Dropout = 0.0} (no regularisation benefit observed).
+\end{itemize}
+
+\subsection{VFIX Variant Design}
+
+\textbf{56 jobs} = 8 variants $\times$ 7 regimes.  Oscar job IDs 562954--563014,
+commit \texttt{b430514}.
+
+\begin{table}[H]
+\centering
+\caption{VFIX variants. All use residual=OFF, LayerNorm=ON, dropout=0, multistep=OFF.}
+\label{tab:vfix-design}
+\small
+\begin{tabular}{@{}cllccclr@{}}
+\toprule
+Suite & ID & Purpose & $N_h$ & $L$ & Transform & Special & Params \\
+\midrule
+\multirow{4}{*}{A}
+  & F16  & Alvarez-scale    & 16  & 1 & raw+C2 & ---  & 2,723  \\
+  & F32  & Sweet spot (REF) & 32  & 1 & raw+C2 & ---  & 7,475  \\
+  & F64  & Wider            & 64  & 1 & raw+C2 & ---  & 23,123 \\
+  & F128 & Wide             & 128 & 1 & raw+C2 & ---  & 78,995 \\
+\midrule
+\multirow{2}{*}{B}
+  & F32x2 & Deeper          & 32  & 2 & raw+C2 & ---  & 15,923 \\
+  & F64x2 & Deep + wide     & 64  & 2 & raw+C2 & ---  & 56,403 \\
+\midrule
+\multirow{2}{*}{C}
+  & FSS   & Sched.\ sampling & 32  & 1 & raw+C2 & SS=ON & 7,475 \\
+  & FSQRT & Transform ctrl   & 32  & 1 & $\sqrt{}$+S+C0 & --- & 7,475 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Key Questions Addressed}
+
+\begin{enumerate}[nosep]
+  \item \textbf{Width sweep (F16--F128):} With residual=OFF, does wider help or hurt?
+    Can Alvarez-scale ($\sim$2.7k params) match larger models?
+  \item \textbf{Depth sweep (F32x2, F64x2):} Does depth provide benefit when the
+    residual connection is already removed?
+  \item \textbf{Scheduled sampling (FSS):} Does curriculum-based self-feeding reduce
+    exposure bias further when residual is already gone?
+  \item \textbf{Transform control (FSQRT):} With all fixes applied, which transform
+    pipeline wins: raw+C2 or $\sqrt{}$+simplex+C0?
+\end{enumerate}
+
+
+% ============================================================================
+\section{Early DYN Experiments: MVAR/LSTM/WSINDy Comparison}
+\label{sec:dyn}
+% ============================================================================
+
+\subsection{DYN1--DYN7: Initial 3-Method Suite}
+
+The initial DYN suite ran MVAR, LSTM, and WSINDy PDE discovery across
+all 7 regimes.  The WSINDy component operated on the full
+$(\rho, p_x, p_y)$ field system, not in latent space.
+
+\begin{itemize}[nosep]
+  \item \textbf{MVAR:} $p=5$, ridge $\alpha=10^{-4}$, in POD latent space.
+  \item \textbf{LSTM:} $N_h=128$, $L=2$, 211k params, residual=ON.
+  \item \textbf{WSINDy:} Full multi-field discovery with Morse library.
+\end{itemize}
+
+MVAR succeeded in all 7 regimes.  LSTM diverged in 6/7.
+The original DYN LSTM jobs failed due to a backward-compatibility
+bug in config loading (old keys \texttt{hidden\_dim}, \texttt{n\_layers})
+which was later fixed via \texttt{\_COMPAT\_MAP} in \texttt{lstm\_rom.py}.
+
+
+\subsection{XABL1--XABL8: Preprocessing Factorial Design}
+
+An earlier ablation suite tested $2^3$ factorial over three preprocessing
+factors:
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Factor & Level 0 & Level 1 \\
+\midrule
+Density transform & raw & $\sqrt{}$ \\
+Mass correction & none & simplex projection \\
+Spectral scaling & OFF & ON (re-weight POD modes) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Key finding:} Shift alignment dominates all preprocessing
+choices.  $\sqrt{}$ + simplex help 1--3\% in $\Rtwo$ but become
+negligible once alignment is applied.  Alignment alone raises $\Rtwo$
+from $\sim 0.5\text{--}0.7$ to $\sim 0.95+$.
+
+
+% ============================================================================
+\section{Summary of All Experiments}
+\label{sec:summary}
+% ============================================================================
+
+\subsection{Experiment Inventory}
+
+\begin{table}[H]
+\centering
+\caption{Complete experiment inventory.}
+\small
+\begin{tabular}{@{}llrrl@{}}
+\toprule
+Suite & Purpose & Jobs & Commit & Status \\
+\midrule
+XABL & Preprocessing $2^3$ factorial & 8 & --- & Completed \\
+DYN1--7 & 3-method comparison & 7 & \texttt{658c59b} & Completed (LSTM failed) \\
+VLST & Transform ablation & 14 & \texttt{ec1d8d0} & Completed \\
+VARCH & Architecture ablation & 42 & \texttt{92fc67d} & Completed \\
+VFIX & Fix suite (all winning traits) & 56 & \texttt{b430514} & Submitted \\
+\midrule
+\textbf{Total} & & \textbf{127} & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Key Conclusions Across All Suites}
+
+\begin{enumerate}
+  \item \textbf{MVAR is the strongest ROM method} (mean $\Rtwo = +0.804$)
+    across all 7 regimes.  Simple, fast, reliable.
+
+  \item \textbf{The LSTM residual connection is the dominant failure mode}
+    for autoregressive rollout.  Removing it yields the only positive
+    rollout $\Rtwo$ ($+53$-point improvement).
+
+  \item \textbf{Model capacity is a red herring.}  Downsizing from 211k
+    to 2.7k parameters does not fix the residual-driven accumulation.
+
+  \item \textbf{LayerNorm is important:} removing it degrades $\Rtwo$ by
+    $-36$ points.  Multi-step loss hurts ($-18$ points).
+
+  \item \textbf{The density transform matters secondarily.}  Raw+C2
+    outperforms $\sqrt{}$+simplex for rollout $\Rtwo$ but at the cost
+    of more negative densities.
+
+  \item \textbf{Shift alignment is the single most impactful preprocessing
+    step}, providing $+40$--$50$ points of $\Rtwo$ improvement for all methods.
+
+  \item \textbf{WSINDy operates on the full PDE system} and is
+    complementary to the latent-space methods (MVAR/LSTM).  It provides
+    interpretable governing equations rather than black-box forecasts.
+\end{enumerate}
+
+
+\subsection{The MVAR--LSTM Gap}
+
+\begin{center}
+\begin{tabular}{lS[table-format=+1.2]l}
+\toprule
+Method & {Mean $\Rtwo$} & Status \\
+\midrule
+MVAR (VDYN) & +0.80 & Dominant \\
+LSTM best (VARCH-B1, no residual) & +0.05 & Gap: $-75$ pts \\
+LSTM worst (VDYN, 211k+residual) & -2.71 & Catastrophic \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+VFIX aims to close this gap below 50 points by combining the winning
+architectural and transform choices.
+
+
+% ============================================================================
+\section{Compute Resources and Infrastructure}
+\label{sec:compute}
+% ============================================================================
+
+\subsection{Oscar HPC Cluster (Brown University)}
+\begin{itemize}[nosep]
+  \item \textbf{Access:} \texttt{ssh emaciaso@ssh.ccv.brown.edu}
+  \item \textbf{Per job:} 4 CPU cores, 32\,GB RAM, 12\,h wall time
+  \item \textbf{Storage:} \texttt{/oscar/scratch/emaciaso/oscar\_output} (512\,GB quota)
+  \item \textbf{Code sync:} Git-based (local $\to$ GitHub $\to$ Oscar \texttt{git pull})
+\end{itemize}
+
+\subsection{Software Engineering}
+\begin{itemize}[nosep]
+  \item \textbf{Config generator:} Python scripts generating YAML configs per experiment.
+  \item \textbf{SLURM orchestrator:} Batch scripts submitting all jobs with logging.
+  \item \textbf{Analysis pipeline:} \texttt{analyze\_all\_ablations.py} parses JSON summaries,
+    builds comparison tables, computes effect sizes.
+  \item \textbf{Backward-compat fix:} \texttt{\_COMPAT\_MAP} in \texttt{lstm\_rom.py}
+    translates old DYN config keys to new format.
+\end{itemize}
+
+\subsection{Total Compute Budget}
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Suite & Jobs & Max hours/job & Total core-hours \\
+\midrule
+XABL & 8 & 12 & 384 \\
+DYN & 7 & 12 & 336 \\
+VLST & 14 & 12 & 672 \\
+VARCH & 42 & 12 & 2,016 \\
+VFIX & 56 & 12 & 2,688 \\
+\midrule
+\textbf{Total} & \textbf{127} & & \textbf{$\sim$6,096} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+\end{document}

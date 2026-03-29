@@ -1846,9 +1846,32 @@ def side_by_side_video(
             lower_strip_timeseries = lower_strip_timeseries[indices]
         T = max_frames
     
-    # Shared colormap limits
-    vmin = min(left_frames.min(), right_frames.min())
-    vmax = max(left_frames.max(), right_frames.max())
+    # Colormap limits: base on truth (left) frames so divergent predictions
+    # don't crush the truth panel into a flat color.
+    # Use robust percentiles (1st/99th) to ignore minor outliers in truth too.
+    vmin_left = float(np.percentile(left_frames, 1))
+    vmax_left = float(np.percentile(left_frames, 99))
+    if vmax_left - vmin_left < 1e-8:
+        vmin_left, vmax_left = float(left_frames.min()), float(left_frames.max())
+
+    # Check if prediction range is within ~2x of truth range (healthy)
+    pred_min, pred_max = float(right_frames.min()), float(right_frames.max())
+    truth_range = vmax_left - vmin_left
+    pred_range = pred_max - pred_min
+    pred_diverged = (pred_range > 5 * truth_range) or (pred_min < vmin_left - 2 * truth_range) or (pred_max > vmax_left + 2 * truth_range)
+
+    if pred_diverged:
+        # Separate color scales: truth gets its own range, prediction gets clipped
+        vmin_right = pred_min
+        vmax_right = pred_max
+        shared_scale = False
+    else:
+        # Shared scale (original behavior) — both within a reasonable range
+        vmin_left = min(vmin_left, pred_min)
+        vmax_left = max(vmax_left, pred_max)
+        vmin_right = vmin_left
+        vmax_right = vmax_left
+        shared_scale = True
     
     # Create figure
     has_header = config_info is not None
@@ -1868,9 +1891,13 @@ def side_by_side_video(
                  fontfamily='monospace', bbox=dict(boxstyle='round,pad=0.3',
                  facecolor='lightyellow', edgecolor='gray', alpha=0.9))
     
+    if pred_diverged:
+        fig.text(0.5, 0.01, '⚠ Prediction diverged — separate color scales',
+                 ha='center', va='bottom', fontsize=9, color='red', fontstyle='italic')
+    
     # Left panel (no transpose - frames already in correct orientation)
     im_left = ax_left.imshow(left_frames[0], origin='lower', cmap=cmap,
-                             vmin=vmin, vmax=vmax, aspect='auto')
+                             vmin=vmin_left, vmax=vmax_left, aspect='auto')
     ax_left.set_title(titles[0], fontsize=13, fontweight='bold')
     ax_left.set_xlabel('x', fontsize=11)
     ax_left.set_ylabel('y', fontsize=11)
@@ -1878,7 +1905,7 @@ def side_by_side_video(
     
     # Right panel (no transpose - frames already in correct orientation)
     im_right = ax_right.imshow(right_frames[0], origin='lower', cmap=cmap,
-                               vmin=vmin, vmax=vmax, aspect='auto')
+                               vmin=vmin_right, vmax=vmax_right, aspect='auto')
     ax_right.set_title(titles[1], fontsize=13, fontweight='bold')
     ax_right.set_xlabel('x', fontsize=11)
     ax_right.set_ylabel('y', fontsize=11)

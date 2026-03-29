@@ -1,0 +1,18 @@
+{
+  "experiment": "NDYN06_supernova",
+  "M_used_latent": 50,
+  "T_rom": 167,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 19,
+  "n_modes": 19,
+  "all_stationary": true,
+  "w_max": 50,
+  "lag_bic": 2,
+  "lag_aic": 50,
+  "lag_hqic": 4,
+  "lag_fpe": 49,
+  "var_elapsed_s": 6.072171926498413,
+  "total_elapsed_s": 16.182458639144897
+}

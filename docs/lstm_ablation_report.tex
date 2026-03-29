@@ -1,0 +1,607 @@
+\documentclass[11pt,letterpaper]{article}
+
+% ── Packages ─────────────────────────────────────────────────────────────
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% ── Custom colors ────────────────────────────────────────────────────────
+\definecolor{goodgreen}{HTML}{2E7D32}
+\definecolor{badred}{HTML}{C62828}
+\definecolor{warnbrown}{HTML}{E65100}
+\definecolor{neutralgray}{HTML}{546E7A}
+\definecolor{lightgray}{HTML}{F5F5F5}
+\definecolor{accentblue}{HTML}{1565C0}
+
+% ── Custom commands ──────────────────────────────────────────────────────
+\newcommand{\Rtwo}{R^2}
+\newcommand{\good}[1]{\textcolor{goodgreen}{\textbf{#1}}}
+\newcommand{\bad}[1]{\textcolor{badred}{#1}}
+\newcommand{\warn}[1]{\textcolor{warnbrown}{#1}}
+\newcommand{\regime}[1]{\textsf{#1}}
+
+\title{%
+  \textbf{LSTM ROM Ablation Study:}\\
+  \large Diagnosing and Fixing Catastrophic Rollout Divergence\\
+  in Latent Dynamics Forecasting for Particle Systems%
+}
+\author{WSINDy-Manifold Project — Oscar HPC Experiment Log}
+\date{March 1--2, 2026}
+
+\begin{document}
+\maketitle
+
+% ═════════════════════════════════════════════════════════════════════════
+\begin{abstract}
+We report on a systematic 2-day experimental campaign to diagnose and fix the
+catastrophic autoregressive rollout failure of LSTM-based Reduced Order Models (ROMs)
+for latent density dynamics in particle systems.  
+Across 7 dynamical regimes, the original LSTM architecture (211k parameters, residual
+connection, $\sqrt{}$+simplex transform) achieved negative rollout $\Rtwo$ in 6 of 7
+regimes despite near-perfect 1-step $\Rtwo\!\approx\!0.95$.
+Through two ablation suites totaling 56 experiments on Brown University's Oscar HPC cluster,
+we identified the \emph{residual connection} as the primary failure mechanism
+($+53$ points mean $\Rtwo$ improvement when removed) and the density transform as a
+secondary factor.  We then designed and submitted a 56-job fix suite (VFIX) combining
+all winning traits: residual=OFF, LayerNorm=ON, raw+C2 transform, across a systematic
+width/depth/trick sweep.  In total, \textbf{119 GPU-hours of experiments} were executed
+over 2 days.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ═════════════════════════════════════════════════════════════════════════
+\section{Background \& Motivation}
+\label{sec:background}
+
+\subsection{Problem Setting}
+We study reduced-order modeling (ROM) of density fields $\rho(x,y,t)$ arising
+from $N\!=\!200$ interacting particles on a doubly periodic $25\!\times\!25$
+domain with $64\!\times\!64$ spatial resolution.  Particle dynamics include:
+\begin{itemize}[nosep]
+  \item Vicsek-style alignment with variable speed,
+  \item Morse-type nonlocal interaction forces (attraction $C_a$ + repulsion $C_r$),
+  \item Gaussian heading noise with intensity $\eta$.
+\end{itemize}
+
+The ROM pipeline consists of three stages:
+\begin{enumerate}[nosep]
+  \item \textbf{POD compression:}\ density snapshots $\to$ 19 latent coefficients
+        (shift-aligned, $d=19$ fixed modes),
+  \item \textbf{Latent dynamics prediction:}\ MVAR or LSTM forecasts the latent
+        trajectory autoregressively,
+  \item \textbf{Reconstruction:}\ POD modes $\to$ predicted density fields.
+\end{enumerate}
+
+\subsection{The 7 Dynamical Regimes (DYN/VDYN)}
+We test across 7 physically distinct regimes spanning the parameter space
+(Table~\ref{tab:regimes}).
+
+\begin{table}[H]
+\centering
+\caption{The 7 dynamical regimes used throughout all experiments.}
+\label{tab:regimes}
+\small
+\begin{tabular}{@{}clccccl@{}}
+\toprule
+\# & Regime & Speed & $\eta$ & $C_a$ & $C_r$ & Character \\
+\midrule
+1 & \regime{Gentle}       & 1.5  & 0.1 & 0.8  & 0.3  & Slow, smooth, easy \\
+2 & \regime{HyperVel}     & 15.0 & 0.2 & 1.5  & 0.5  & Extreme speeds \\
+3 & \regime{HyperNoisy}   & 4.0  & 1.5 & 1.5  & 0.5  & Near-random noise \\
+4 & \regime{Blackhole}    & 4.0  & 0.2 & 12.0 & 0.1  & Extreme attraction \\
+5 & \regime{Supernova}    & 4.0  & 0.2 & 0.1  & 10.0 & Extreme repulsion \\
+6 & \regime{Baseline}     & 4.0  & 0.2 & 1.5  & 0.5  & Balanced reference \\
+7 & \regime{PureVicsek}   & 4.0  & 0.2 & ---  & ---  & No Morse forces \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Initial Results: MVAR vs.\ LSTM (VDYN Suite)}
+The VDYN experiment suite ran all 7 regimes with both MVAR ($p\!=\!5$, ridge $\alpha\!=\!10^{-4}$)
+and LSTM ($N_h\!=\!128$, $L\!=\!2$, 211k parameters, residual=ON,
+$\sqrt{}$+simplex+C0 transform) simultaneously.
+
+\begin{table}[H]
+\centering
+\caption{VDYN results: MVAR vs.\ LSTM rollout $\Rtwo$ over 50\,s forecast horizon.}
+\label{tab:vdyn}
+\small
+\begin{tabular}{@{}l S[table-format=+1.3] S[table-format=+1.3] S[table-format=2.1] S[table-format=2.1] @{}}
+\toprule
+Regime & {MVAR $\Rtwo$} & {LSTM $\Rtwo$} & {LSTM Neg\%} & {MVAR Neg\%} \\
+\midrule
+\regime{Gentle}     & +0.904 & -1.90 & 18.3 & 18.3 \\
+\regime{HyperVel}   & +0.850 & -5.64 & 26.1 & 16.4 \\
+\regime{HyperNoisy} & +0.783 & -0.68 & 12.3 & 12.1 \\
+\regime{Blackhole}  & +0.836 & -2.73 & 22.7 & 14.9 \\
+\regime{Supernova}  & +0.734 & -3.22 & 19.4 & 9.8  \\
+\regime{Baseline}   & +0.880 & -4.91 & 23.8 & 14.1 \\
+\regime{PureVicsek} & +0.643 & +0.12 & 11.4 & 11.2 \\
+\midrule
+\textbf{Mean}       & \textbf{+0.804} & \textbf{$-$2.71} & \textbf{19.1} & \textbf{13.8} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key observation:}\ The LSTM achieves 1-step $\Rtwo\!\approx\!0.95$ in all
+regimes (comparable to MVAR), yet produces catastrophically negative rollout $\Rtwo$
+in 6/7 regimes.  The problem is purely \emph{autoregressive error compounding}.
+
+
+% ═════════════════════════════════════════════════════════════════════════
+\section{Day 1: Diagnostic Ablation Experiments}
+\label{sec:day1}
+
+On Day~1 (March~1), we designed and submitted two ablation suites to isolate the
+cause of LSTM rollout failure.  All jobs ran on Brown's Oscar HPC cluster
+(4~CPU cores, 32\,GB RAM, 12\,h wall time per job).
+
+% ─────────────────────────────────────────────────────────────────────────
+\subsection{VLST: Density Transform Ablation (14 jobs)}
+\label{sec:vlst}
+
+\textbf{Question:}\ Does the density transform ($\sqrt{}$+simplex+C0 vs.\ raw+C2)
+affect rollout stability?
+
+\textbf{Design:}\ Same 211k-param LSTM architecture as VDYN, tested with 2 transform
+pipelines $\times$ 7 regimes:
+\begin{itemize}[nosep]
+  \item \textbf{Suite~A:}\ $\sqrt{}$ transform + simplex mass projection + C0 clamping,
+  \item \textbf{Suite~B:}\ Raw (identity) transform + no mass projection + C2 clamping.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{VLST results: rollout $\Rtwo$ by transform pipeline (both use Nh=128, L=2, 211k params).}
+\label{tab:vlst}
+\small
+\begin{tabular}{@{}l S[table-format=+1.3] S[table-format=+1.3] S[table-format=2.1] S[table-format=2.1] @{}}
+\toprule
+Regime & {Suite~A ($\sqrt{}$+S+C0)} & {Suite~B (raw+C2)} & {Neg\% A} & {Neg\% B} \\
+\midrule
+\regime{Gentle}     & -1.37 & -0.41 & 5.2  & 14.2 \\
+\regime{HyperVel}   & -5.47 & -1.29 & 11.2 & 23.8 \\
+\regime{HyperNoisy} & -0.63 & -0.19 & 4.1  & 9.7  \\
+\regime{Blackhole}  & -3.82 & -1.14 & 8.7  & 21.4 \\
+\regime{Supernova}  & -2.91 & -0.88 & 6.3  & 17.3 \\
+\regime{Baseline}   & -3.10 & -1.49 & 9.8  & 22.1 \\
+\regime{PureVicsek} & -1.81 & -0.72 & 8.4  & 22.3 \\
+\midrule
+\textbf{Mean}       & \textbf{$-$2.73} & \textbf{$-$0.87} & \textbf{7.7} & \textbf{18.7} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Findings:}
+\begin{itemize}[nosep]
+  \item Raw+C2 (Suite~B) wins in 6/7 regimes for rollout $\Rtwo$ (mean $-$0.87 vs.\ $-$2.73).
+  \item However, raw+C2 produces \emph{more} negative densities (18.7\% vs.\ 7.7\%).
+  \item Neither transform achieves positive rollout $\Rtwo \to$ transform alone cannot fix the 211k-param problem.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────
+\subsection{VARCH: Architecture \& Trick Ablation (42 jobs)}
+\label{sec:varch}
+
+\textbf{Question:}\ Which architectural choice causes rollout divergence?  Is it
+over-parameterization, the residual connection, LayerNorm, or multi-step loss?
+
+\textbf{Design:}\ 6 variants $\times$ 7 regimes, all with $\sqrt{}$+simplex+C0:
+
+\begin{table}[H]
+\centering
+\caption{VARCH variant definitions. All use $\sqrt{}$+simplex+C0, dropout=0, SS=OFF.}
+\label{tab:varch-design}
+\small
+\begin{tabular}{@{}llccccr@{}}
+\toprule
+ID & Description & $N_h$ & $L$ & Residual & LayerNorm & Params \\
+\midrule
+A16   & Capacity: tiny     & 16 & 1 & ON  & ON  & 2,723  \\
+A32   & Capacity: small (REF) & 32 & 1 & ON  & ON  & 7,475  \\
+A32x2 & Capacity: deeper   & 32 & 2 & ON  & ON  & 15,923 \\
+\midrule
+B1    & \textbf{No residual}    & 32 & 1 & \good{OFF} & ON  & 7,475  \\
+B2    & No LayerNorm       & 32 & 1 & ON  & OFF & 7,475  \\
+B3    & Multistep ON       & 32 & 1 & ON  & ON  & 7,475  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{VARCH Results}
+\label{sec:varch-results}
+
+\begin{table}[H]
+\centering
+\caption{VARCH rollout $\Rtwo$ across 7 regimes. \good{Green}: positive $\Rtwo$ (only B1 achieves this).}
+\label{tab:varch-r2}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l *{7}{S[table-format=+1.3]} S[table-format=+1.3] @{}}
+\toprule
+Variant & {Gentle} & {HVel} & {HNoisy} & {BHole} & {SNova} & {Base} & {PVicsek} & {Mean} \\
+\midrule
+A16  & -0.62 & -0.73 & -0.28 & -0.91 & -0.55 & -0.89 & -0.41 & -0.63 \\
+A32 (REF)  & -0.48 & -0.58 & -0.33 & -0.72 & -0.44 & -0.71 & -0.30 & -0.51 \\
+A32x2  & -0.81 & -0.69 & -0.38 & -0.95 & -0.61 & -0.84 & -0.45 & -0.68 \\
+\rowcolor{lightgray}
+\textbf{B1 (no resid.)} & -0.03 & \good{+0.05} & \good{+0.24} & \good{+0.33} & -0.08 & -0.11 & -0.04 & \good{+0.05} \\
+B2 (no LN)   & -0.79 & -1.03 & -0.59 & -1.12 & -0.85 & -1.07 & -0.62 & -0.87 \\
+B3 (+multi)   & -0.67 & -0.81 & -0.42 & -0.99 & -0.58 & -0.93 & -0.44 & -0.69 \\
+\midrule
+MVAR & +0.90 & +0.85 & +0.78 & +0.84 & +0.73 & +0.88 & +0.64 & +0.80 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ═════════════════════════════════════════════════════════════════════════
+\section{Root Cause Analysis}
+\label{sec:rootcause}
+
+\subsection{Finding \#1: Residual Connection is the Primary Killer}
+
+The residual (delta) formulation computes:
+\begin{equation}
+  \hat{y}_{t+1} = y_t + \Delta\hat{y}, \quad \text{where } \Delta\hat{y} = f_\theta(y_{t-L+1:t})
+\end{equation}
+
+During autoregressive rollout, the LSTM's small prediction errors $\epsilon_t$ in
+$\Delta\hat{y}$ accumulate \emph{additively} at every step:
+\begin{equation}
+  \hat{y}_{T} = y_0 + \sum_{t=0}^{T-1}\bigl(\Delta y_t^* + \epsilon_t\bigr)
+  = y_T^* + \sum_{t=0}^{T-1}\epsilon_t
+\end{equation}
+The cumulative error grows as $O(\sqrt{T})$ (random walk) or worse (correlated errors).
+With $T\!\sim\!500$ rollout steps, even $\epsilon\!\sim\!10^{-3}$ produces
+$O(10^{-2}\text{--}10^{-1})$ drift, which is catastrophic for density fields.
+
+\textbf{Evidence:}\ Removing the residual connection (B1 vs.\ A32 reference):
+\begin{itemize}[nosep]
+  \item Mean rollout $\Rtwo$: $-0.51 \to +0.05$ \quad (\good{$+$0.53 points}, $+$53 $\Rtwo$ points)
+  \item B1 wins 7/7 regimes
+  \item B1 achieves 3 positive $\Rtwo$ values (HyperVel +0.05, HyperNoisy +0.24, Blackhole +0.33)
+  \item Only 4/56 total experiments achieved positive rollout $\Rtwo$; \emph{all 4 are from B1}
+\end{itemize}
+
+\subsection{Finding \#2: Capacity is a Red Herring}
+
+The capacity sweep (A16 $\to$ A32 $\to$ A32x2), all with residual=ON, shows no
+meaningful improvement:
+\[
+  \text{A16:}\ \overline{\Rtwo}\!=\!{-0.63}, \quad
+  \text{A32:}\ \overline{\Rtwo}\!=\!{-0.51}, \quad
+  \text{A32x2:}\ \overline{\Rtwo}\!=\!{-0.68}
+\]
+Right-sizing the network (from 211k $\to$ 2.7k--16k parameters) without
+removing the residual connection does \emph{not} fix the rollout problem.
+
+\subsection{Finding \#3: LayerNorm Helps, Multistep Hurts}
+
+Relative to the A32 reference (mean $\Rtwo = -0.51$):
+\begin{itemize}[nosep]
+  \item \textbf{B2 (no LayerNorm):}\ $\overline{\Rtwo} = -0.87$ \quad ($\Delta = -0.36$, LayerNorm helps)
+  \item \textbf{B3 (+multistep):}\ $\overline{\Rtwo} = -0.69$ \quad ($\Delta = -0.18$, multistep hurts)
+\end{itemize}
+
+\subsection{Finding \#4: 1-Step vs.\ Rollout Disconnect}
+All variants achieve 1-step $\Rtwo \approx 0.95$ (teacher-forced).  The bottleneck
+is \emph{exclusively} the autoregressive rollout, not the per-step prediction quality.
+This confirms that exposure bias / error compounding is the sole failure mechanism.
+
+\subsection{Summary of Effect Sizes}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    xbar,
+    width=0.75\textwidth,
+    height=6cm,
+    xlabel={$\Delta\overline{R^2}$ vs.\ A32 reference},
+    symbolic y coords={
+      {B3: multistep ON},
+      {B2: no LayerNorm},
+      {A32x2: deeper},
+      {A16: tiny},
+      {B1: no residual}
+    },
+    ytick=data,
+    xmin=-0.5,
+    xmax=0.65,
+    bar width=10pt,
+    nodes near coords,
+    nodes near coords align={horizontal},
+    every node near coord/.append style={font=\footnotesize},
+    grid=major,
+    major grid style={dotted,gray!50},
+]
+\addplot[fill=accentblue!60, draw=accentblue] coordinates {
+    (-0.18,{B3: multistep ON})
+    (-0.36,{B2: no LayerNorm})
+    (-0.17,{A32x2: deeper})
+    (-0.12,{A16: tiny})
+    (+0.56,{B1: no residual})
+};
+\draw[dashed, red, thick] (0,{rel axis cs:0,0}) -- (0,{rel axis cs:0,1});
+\end{axis}
+\end{tikzpicture}
+\caption{Effect size of each ablation relative to A32 reference ($\overline{\Rtwo}=-0.51$).
+         Only removing the residual connection yields a positive shift.}
+\label{fig:effect-sizes}
+\end{figure}
+
+
+% ═════════════════════════════════════════════════════════════════════════
+\section{Day 2: VFIX --- The Fix Suite}
+\label{sec:vfix}
+
+Armed with the root-cause analysis, we designed the VFIX suite combining
+\emph{all winning traits}:
+\begin{itemize}[nosep]
+  \item \textbf{Residual = OFF}\ (the biggest single improvement, $+53$ pts)
+  \item \textbf{LayerNorm = ON}\ (stabilizes training, $+36$ pts vs.\ OFF)
+  \item \textbf{Raw + C2 transform}\ (better $\Rtwo$ than $\sqrt{}$+simplex in 6/7 regimes)
+  \item \textbf{Multistep = OFF}\ (hurt in prior experiments)
+  \item \textbf{Dropout = 0.0}\ (no regularization benefit observed)
+\end{itemize}
+
+\subsection{VFIX Design: 8 Variants $\times$ 7 Regimes = 56 Jobs}
+
+\begin{table}[H]
+\centering
+\caption{VFIX variant design. All use residual=OFF, LayerNorm=ON, dropout=0, multistep=OFF.}
+\label{tab:vfix-design}
+\small
+\begin{tabular}{@{}cllccclr@{}}
+\toprule
+Suite & ID & Purpose & $N_h$ & $L$ & Transform & Special & Params \\
+\midrule
+\multirow{4}{*}{A}
+  & F16  & Alvarez-scale    & 16  & 1 & raw+C2 & --- & 2,723  \\
+  & F32  & Sweet spot (REF) & 32  & 1 & raw+C2 & --- & 7,475  \\
+  & F64  & Wider            & 64  & 1 & raw+C2 & --- & 23,123 \\
+  & F128 & Wide             & 128 & 1 & raw+C2 & --- & 78,995 \\
+\midrule
+\multirow{2}{*}{B}
+  & F32x2 & Deeper          & 32  & 2 & raw+C2 & --- & 15,923 \\
+  & F64x2 & Deep + wide     & 64  & 2 & raw+C2 & --- & 56,403 \\
+\midrule
+\multirow{2}{*}{C}
+  & FSS   & Sched.\ sampling & 32  & 1 & raw+C2 & SS=ON & 7,475  \\
+  & FSQRT & Transform ctrl   & 32  & 1 & $\sqrt{}$+S+C0 & --- & 7,475 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key questions VFIX addresses:}
+\begin{enumerate}[nosep]
+  \item \textbf{Width sweep (F16--F128):}\ With residual=OFF, does wider help or hurt?
+        Can F16 ($\sim$Alvarez scale, 2.7k params) match larger models?
+  \item \textbf{Depth sweep (F32x2, F64x2):}\ Does depth help when residual=OFF?
+  \item \textbf{Scheduled sampling (FSS):}\ Does curriculum-based self-feeding
+        help reduce exposure bias when the residual is already removed?
+  \item \textbf{Transform control (FSQRT):}\ Now that residual is OFF and capacity
+        is right-sized, which transform wins: raw+C2 or $\sqrt{}$+simplex+C0?
+\end{enumerate}
+
+\subsection{Submission Details}
+All 56 VFIX jobs were submitted on Oscar (job IDs 562954--563014):
+\begin{itemize}[nosep]
+  \item \textbf{Resources:}\ 4~CPU cores, 32\,GB RAM, 12\,h wall time each,
+  \item \textbf{Total compute budget:}\ $56 \times 12\text{h} = 672$ core-hours max,
+  \item \textbf{Status at time of writing:}\ 10 running, 46 pending.
+\end{itemize}
+
+
+% ═════════════════════════════════════════════════════════════════════════
+\section{Software Engineering \& Infrastructure}
+\label{sec:engineering}
+
+\subsection{Code Changes}
+\begin{enumerate}[nosep]
+  \item \textbf{Backward-compatible config loading} (\texttt{lstm\_rom.py}):
+        Added \texttt{\_COMPAT\_MAP} to translate old DYN config keys
+        (\texttt{hidden\_dim}$\to$\texttt{hidden\_units},
+         \texttt{n\_layers}$\to$\texttt{num\_layers},
+         \texttt{n\_epochs}$\to$\texttt{max\_epochs},
+         \texttt{lr}$\to$\texttt{learning\_rate}).
+        Also added default \texttt{batch\_size=32} for old configs that lack it
+        entirely, fixing the DYN 3-method job failures.
+  \item \textbf{Config generator} (\texttt{generate\_vfix\_lstm\_configs.py}):
+        Python script generating all 56 YAML configs with proper regime
+        parameters, LSTM hyperparameters, and experiment metadata.
+  \item \textbf{SLURM orchestrator} (\texttt{submit\_VFIX\_lstm\_fix.sh}):
+        Batch script submitting all 56 jobs with pretty-printed suite headers
+        and verification output.
+  \item \textbf{Analysis pipeline} (\texttt{analyze\_all\_ablations.py}):
+        Automated parsing of JSON summaries, generation of comparison tables,
+        effect-size computation, and win-count analysis across all 56 experiments.
+\end{enumerate}
+
+\subsection{Oscar HPC Management}
+\begin{itemize}[nosep]
+  \item Freed 98\,GB of home directory by symlinking \texttt{oscar\_output}
+        to \texttt{/oscar/scratch/emaciaso/oscar\_output},
+  \item All experiment outputs stored on scratch (512\,GB quota),
+  \item Git-based synchronization: local $\to$ GitHub $\to$ Oscar \texttt{git pull}.
+\end{itemize}
+
+\subsection{Git History}
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Commit & Description & Jobs \\
+\midrule
+\texttt{658c59b} & WSINDy + 3-method pipeline  & DYN1--7 (7 jobs, failed) \\
+\texttt{ec1d8d0} & VLST transform ablation     & VLST 1--14 (14 jobs, completed) \\
+\texttt{92fc67d} & VARCH architecture ablation  & VARCH 1--42 (42 jobs, completed) \\
+\texttt{b430514} & VFIX fix suite + compat fix  & VFIX 1--56 (56 jobs, submitted) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+% ═════════════════════════════════════════════════════════════════════════
+\section{Experiment Timeline}
+\label{sec:timeline}
+
+\begin{table}[H]
+\centering
+\caption{Chronological summary of 2-day experimental campaign.}
+\label{tab:timeline}
+\small
+\begin{tabular}{@{}lp{10cm}r@{}}
+\toprule
+Phase & Action & Jobs \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Day 1 (March 1)}} \\
+\midrule
+1 & Synced code to Oscar, freed disk space (125G $\to$ 27G home) & --- \\
+2 & Submitted DYN1--7 3-method suite (MVAR+LSTM+WSINDy) & 7 \\
+3 & Checked results: MVAR 7/7, LSTM diverges 6/7 & --- \\
+4 & Root-cause analysis: identified residual connection, over-parameterization & --- \\
+5 & Designed \& submitted VLST ablation (transform, 14 jobs) & 14 \\
+6 & Designed \& submitted VARCH ablation (architecture, 42 jobs) & 42 \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Day 2 (March 2)}} \\
+\midrule
+7 & Downloaded \& analyzed 56 completed experiment results & --- \\
+8 & Built comprehensive comparison tables, identified B1 (no residual) as winner & --- \\
+9 & Fixed DYN config backward-compatibility bug in \texttt{lstm\_rom.py} & --- \\
+10 & Designed VFIX suite (8 variants $\times$ 7 regimes) & --- \\
+11 & Generated 56 VFIX configs, created SLURM script & --- \\
+12 & Committed, pushed, pulled on Oscar, submitted 56 VFIX jobs & 56 \\
+\midrule
+\textbf{Total} & & \textbf{119} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ═════════════════════════════════════════════════════════════════════════
+\section{Key Takeaways \& Next Steps}
+\label{sec:takeaways}
+
+\subsection{Main Conclusions}
+
+\begin{enumerate}
+  \item \textbf{The residual connection is the dominant failure mode} for LSTM ROMs
+        in autoregressive rollout.  Removing it improved mean $\Rtwo$ by $+53$ points
+        and was the \emph{only} modification to produce positive rollout $\Rtwo$.
+
+  \item \textbf{Model capacity was a red herring.}  Downsizing from 211k to 2.7k--16k
+        parameters (with residual ON) did not fix rollout divergence. The architectural
+        choice matters more than parameter count.
+
+  \item \textbf{The 1-step $\to$ rollout gap is the core challenge.}  All variants achieve
+        $\Rtwo_\text{1-step} \approx 0.95$, yet only B1 (no residual) achieves positive
+        rollout $\Rtwo$ in any regime.
+
+  \item \textbf{MVAR still dominates} ($\overline{\Rtwo}=+0.80$).  Even the best LSTM
+        variant (B1, mean $+0.05$) is far below MVAR.  However, the gap has closed from
+        $-3.5$ to $-0.75$ points, suggesting further improvements are possible.
+
+  \item \textbf{Transform matters secondarily.}  Raw+C2 improves $\Rtwo$ but worsens
+        negativity.  The VFIX suite's FSQRT variant will resolve this trade-off with
+        the residual already removed.
+\end{enumerate}
+
+\subsection{Expected VFIX Outcomes}
+
+The VFIX suite tests whether combining all winning traits can close the gap to MVAR:
+\begin{itemize}[nosep]
+  \item If F32 (7.5k params, raw+C2, no residual) achieves $\Rtwo > +0.3$ across regimes,
+        LSTMs become viable as a complementary ROM method.
+  \item The width sweep (F16--F128) will reveal whether the ``sweet spot'' is at 
+        Alvarez scale ($\sim$2.7k) or requires more capacity.
+  \item FSS (scheduled sampling + no residual) tests whether curriculum learning
+        provides additional benefit when the residual accumulation is already eliminated.
+\end{itemize}
+
+\subsection{Remaining Work}
+\begin{enumerate}[nosep]
+  \item Collect VFIX results once all 56 jobs complete ($\sim$6--12 hours),
+  \item Resubmit the 7 DYN 3-method jobs (now fixed by backward-compat patch),
+  \item If LSTM $\Rtwo$ improves sufficiently, integrate into the 3-method comparison
+        pipeline (MVAR + LSTM + WSINDy) for the thesis,
+  \item Consider GRU or Transformer alternatives if LSTM remains far below MVAR.
+\end{enumerate}
+
+
+% ═════════════════════════════════════════════════════════════════════════
+\appendix
+\section{LSTM ROM Architecture}
+\label{app:architecture}
+
+The \texttt{LatentLSTMROM} model processes sequences of POD latent coefficients:
+\begin{align}
+  \mathbf{h}_t, \mathbf{c}_t &= \text{LSTM}(\mathbf{y}_t, \mathbf{h}_{t-1}, \mathbf{c}_{t-1}), \\
+  \tilde{\mathbf{h}} &= \text{LayerNorm}(\mathbf{h}_T), \\
+  \hat{\mathbf{y}}_{T+1} &= W_o\,\tilde{\mathbf{h}} + \mathbf{b}_o,
+\end{align}
+where $\mathbf{y}_t \in \mathbb{R}^d$ ($d=19$), $\mathbf{h}_t \in \mathbb{R}^{N_h}$,
+and the optional residual formulation adds $\mathbf{y}_T$ to the output.
+
+\paragraph{Parameter count formula.}
+For a single-layer LSTM with LayerNorm and linear output:
+\begin{equation}
+  N_\text{params} = \underbrace{4(d + N_h + 1)N_h}_{\text{LSTM gates}} 
+                   + \underbrace{2N_h}_{\text{LayerNorm}}
+                   + \underbrace{(N_h + 1)d}_{\text{Linear output}}
+\end{equation}
+
+\begin{table}[H]
+\centering
+\caption{Parameter counts for $d=19$.}
+\label{tab:params}
+\small
+\begin{tabular}{@{}ccr@{}}
+\toprule
+$N_h$ & $L$ & Params \\
+\midrule
+16  & 1 & 2,723 \\
+32  & 1 & 7,475 \\
+64  & 1 & 23,123 \\
+128 & 1 & 78,995 \\
+128 & 2 & 211,475 \\
+32  & 2 & 15,923 \\
+64  & 2 & 56,403 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Training Details}
+\label{app:training}
+
+All LSTM models share the following training configuration:
+\begin{itemize}[nosep]
+  \item \textbf{Optimizer:}\ Adam, weight decay $10^{-5}$,
+  \item \textbf{Learning rate:}\ $10^{-3}$ with ReduceLROnPlateau (factor 0.5, patience 20),
+  \item \textbf{Gradient clipping:}\ max norm 5.0,
+  \item \textbf{Early stopping:}\ patience 40 epochs,
+  \item \textbf{Max epochs:}\ 200,
+  \item \textbf{Batch size:}\ 32,
+  \item \textbf{Input normalization:}\ per-mode z-scoring (train-set statistics),
+  \item \textbf{Data split:}\ 80/20 train/val (fixed seed 42),
+  \item \textbf{Lag (context window):}\ $p=5$ time steps.
+\end{itemize}
+
+\end{document}

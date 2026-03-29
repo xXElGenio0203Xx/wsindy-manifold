@@ -253,45 +253,44 @@ def train_lstm_rom(X_all, Y_all, config, out_dir, Y_multi=None):
         else:
             return config['rom']['models']['lstm'].get(key, default)
     
+    # ── Compat helper: resolve old vs new LSTM key names ──
+    _ALIAS = {
+        'batch_size':    ['batch_size'],
+        'hidden_units':  ['hidden_units', 'hidden_dim'],
+        'num_layers':    ['num_layers', 'n_layers'],
+        'learning_rate': ['learning_rate', 'lr'],
+        'max_epochs':    ['max_epochs', 'n_epochs'],
+        'patience':      ['patience'],
+    }
+    def _resolve(obj, key, default=None):
+        """Try each alias on an OmegaConf/Namespace/dict object."""
+        for alias in _ALIAS.get(key, [key]):
+            if hasattr(obj, alias):
+                val = getattr(obj, alias, None)
+                if val is not None:
+                    return val
+            if isinstance(obj, dict) and alias in obj:
+                return obj[alias]
+        if default is not None:
+            return default
+        raise KeyError(f"Missing LSTM key '{key}', tried {_ALIAS.get(key, [key])}")
+
     if hasattr(config, 'rom'):
         lstm_config = config.rom.models.lstm
-        batch_size = lstm_config.batch_size
-        hidden_units = lstm_config.hidden_units
-        num_layers = lstm_config.num_layers
-        learning_rate = lstm_config.learning_rate
-        max_epochs = lstm_config.max_epochs
-        patience = lstm_config.patience
+        batch_size    = _resolve(lstm_config, 'batch_size', 32)
+        hidden_units  = _resolve(lstm_config, 'hidden_units')
+        num_layers    = _resolve(lstm_config, 'num_layers')
+        learning_rate = _resolve(lstm_config, 'learning_rate')
+        max_epochs    = _resolve(lstm_config, 'max_epochs')
+        patience      = _resolve(lstm_config, 'patience')
     else:
         lstm_config = config['rom']['models']['lstm']
-        # ── Backward compatibility for old config key names ──
-        # Old DYN configs use: hidden_dim, n_layers, n_epochs, lr
-        # New configs use:     hidden_units, num_layers, max_epochs, learning_rate
-        _COMPAT_MAP = {
-            'batch_size':    ['batch_size'],
-            'hidden_units':  ['hidden_units', 'hidden_dim'],
-            'num_layers':    ['num_layers', 'n_layers'],
-            'learning_rate': ['learning_rate', 'lr'],
-            'max_epochs':    ['max_epochs', 'n_epochs'],
-            'patience':      ['patience'],
-        }
-        _SENTINEL = object()
-        def _compat_get(key, default=_SENTINEL):
-            for alias in _COMPAT_MAP.get(key, [key]):
-                if alias in lstm_config:
-                    return lstm_config[alias]
-            if default is not _SENTINEL:
-                return default
-            raise KeyError(
-                f"Missing LSTM config key '{key}'. "
-                f"Tried aliases: {_COMPAT_MAP.get(key, [key])}. "
-                f"Available keys: {sorted(lstm_config.keys())}"
-            )
-        batch_size = _compat_get('batch_size', 32)  # default for old DYN configs
-        hidden_units = _compat_get('hidden_units')
-        num_layers = _compat_get('num_layers')
-        learning_rate = _compat_get('learning_rate')
-        max_epochs = _compat_get('max_epochs')
-        patience = _compat_get('patience')
+        batch_size    = _resolve(lstm_config, 'batch_size', 32)
+        hidden_units  = _resolve(lstm_config, 'hidden_units')
+        num_layers    = _resolve(lstm_config, 'num_layers')
+        learning_rate = _resolve(lstm_config, 'learning_rate')
+        max_epochs    = _resolve(lstm_config, 'max_epochs')
+        patience      = _resolve(lstm_config, 'patience')
     
     # Optional hyperparameters with sensible defaults
     # (also handles old-style aliases: grad_clip → gradient_clip, etc.)
@@ -305,7 +304,8 @@ def train_lstm_rom(X_all, Y_all, config, out_dir, Y_multi=None):
     # Scheduled sampling — 2-phase cosine/linear ramp (professor's suggestion)
     # Phase 1: epochs ss_warmup..ss_phase1_end → ramp 0% → ss_phase1_ratio
     # Phase 2: epochs ss_phase1_end..ss_phase2_end → ramp to ss_max_ratio
-    scheduled_sampling = _get('scheduled_sampling', True)
+    # NOTE: Default False — empirically hurts rollout R² (LST8: -9.98 vs LST4: 0.97)
+    scheduled_sampling = _get('scheduled_sampling', False)
     ss_warmup         = _get('ss_warmup', 20)         # Pure teacher-forcing warmup
     ss_phase1_end     = _get('ss_phase1_end', 200)     # End of gentle ramp
     ss_phase1_ratio   = _get('ss_phase1_ratio', 0.3)   # Ratio at end of phase 1
@@ -321,7 +321,8 @@ def train_lstm_rom(X_all, Y_all, config, out_dir, Y_multi=None):
     
     # Multi-step rollout loss (professor's 5th suggestion)
     # Loss = (1-α)*L_1step + α*L_kstep, where L_kstep rolls forward k steps
-    multistep_loss    = _get('multistep_loss', True)
+    # NOTE: Default False — empirically hurts rollout R² (LST3: 0.36 vs LST4: 0.97)
+    multistep_loss    = _get('multistep_loss', False)
     multistep_k       = _get('multistep_k', 5)          # Rollout horizon
     multistep_alpha   = _get('multistep_alpha', 0.3)     # Weight of k-step loss
     

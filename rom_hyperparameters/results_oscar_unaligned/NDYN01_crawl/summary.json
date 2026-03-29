@@ -1,0 +1,19 @@
+{
+  "experiment": "NDYN01_crawl",
+  "alignment": "unaligned",
+  "M_used_latent": 50,
+  "T_rom": 167,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 12,
+  "n_modes": 19,
+  "all_stationary": false,
+  "w_max": 50,
+  "lag_bic": 2,
+  "lag_aic": 8,
+  "lag_hqic": 3,
+  "lag_fpe": 8,
+  "var_elapsed_s": 4.822684049606323,
+  "total_elapsed_s": 44.21702575683594
+}

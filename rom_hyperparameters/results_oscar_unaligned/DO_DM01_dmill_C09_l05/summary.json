@@ -1,0 +1,19 @@
+{
+  "experiment": "DO_DM01_dmill_C09_l05",
+  "alignment": "unaligned",
+  "M_used_latent": 50,
+  "T_rom": 167,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 19,
+  "n_modes": 19,
+  "all_stationary": true,
+  "w_max": 50,
+  "lag_bic": 4,
+  "lag_aic": 6,
+  "lag_hqic": 5,
+  "lag_fpe": 6,
+  "var_elapsed_s": 4.952817678451538,
+  "total_elapsed_s": 41.654672384262085
+}

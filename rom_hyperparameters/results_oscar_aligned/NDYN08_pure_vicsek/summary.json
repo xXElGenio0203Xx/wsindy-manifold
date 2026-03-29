@@ -1,0 +1,18 @@
+{
+  "experiment": "NDYN08_pure_vicsek",
+  "M_used_latent": 50,
+  "T_rom": 167,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 13,
+  "n_modes": 19,
+  "all_stationary": false,
+  "w_max": 50,
+  "lag_bic": 2,
+  "lag_aic": 10,
+  "lag_hqic": 4,
+  "lag_fpe": 10,
+  "var_elapsed_s": 6.070724964141846,
+  "total_elapsed_s": 15.729454755783081
+}

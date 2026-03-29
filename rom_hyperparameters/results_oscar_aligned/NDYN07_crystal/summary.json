@@ -1,0 +1,18 @@
+{
+  "experiment": "NDYN07_crystal",
+  "M_used_latent": 50,
+  "T_rom": 167,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 19,
+  "n_modes": 19,
+  "all_stationary": true,
+  "w_max": 50,
+  "lag_bic": 3,
+  "lag_aic": 50,
+  "lag_hqic": 6,
+  "lag_fpe": 40,
+  "var_elapsed_s": 5.914674282073975,
+  "total_elapsed_s": 14.56125020980835
+}

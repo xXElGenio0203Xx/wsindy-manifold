@@ -1,0 +1,18 @@
+{
+  "experiment": "DO_CS01_swarm_C01_l05",
+  "M_used_latent": 50,
+  "T_rom": 167,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 19,
+  "n_modes": 19,
+  "all_stationary": true,
+  "w_max": 50,
+  "lag_bic": 23,
+  "lag_aic": 50,
+  "lag_hqic": 37,
+  "lag_fpe": 50,
+  "var_elapsed_s": 5.931306600570679,
+  "total_elapsed_s": 15.359944581985474
+}

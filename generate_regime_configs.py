@@ -13,7 +13,7 @@ All configs share identical:
   - 64x64 KDE density, bandwidth=5.0
   - 19 POD modes, shift alignment (raw, no sqrt/simplex), save unaligned POD
   - MVAR(p=5, alpha=1e-4) AND LSTM enabled
-  - Training ICs: 80 gaussian + 40 uniform + 24 two-cluster + 24 ring
+  - Training ICs: 80 gaussian + 80 uniform + 80 two-cluster + 80 ring (320 total)
   - Test ICs: 4 tests (1 gaussian, 1 uniform, 1 two-cluster, 1 ring)
   - Same eval settings
 
@@ -85,25 +85,25 @@ def base_config():
                 'positions_x': [5.0, 10.0, 15.0, 20.0],
                 'positions_y': [5.0, 10.0, 15.0, 20.0],
                 'variances': [1.5, 3.0, 5.0],
-                'n_samples_per_config': 1,
+                'n_samples_per_config': 2,
             },
             'uniform': {
                 'enabled': True,
-                'n_runs': 40,
-                'n_samples': 40,
+                'n_runs': 80,
+                'n_samples': 80,
             },
             'two_clusters': {
                 'enabled': True,
-                'n_runs': 24,
-                'separations': [4.0, 7.0, 10.0],
-                'sigmas': [1.5, 3.0],
-                'n_samples_per_config': 4,
+                'n_runs': 80,
+                'separations': [3.0, 5.0, 7.0, 10.0],
+                'sigmas': [1.0, 2.0, 3.0],
+                'n_samples_per_config': 7,
             },
             'ring': {
                 'enabled': True,
-                'n_runs': 24,
-                'radii': [3.0, 5.0, 8.0],
-                'widths': [0.5, 1.0],
+                'n_runs': 80,
+                'radii': [2.0, 3.5, 5.0, 6.5, 8.0],
+                'widths': [0.4, 0.8, 1.2, 1.8],
                 'n_samples_per_config': 4,
             },
         },
@@ -139,12 +139,12 @@ def base_config():
         'rom': {
             'subsample': 3,
             'fixed_modes': 19,
-            'density_transform': 'raw',
+            'density_transform': 'sqrt',
             'density_transform_eps': 1.0e-10,
             'shift_align': True,
             'shift_align_ref': 'mean',
             'save_unaligned_pod': True,
-            'mass_postprocess': 'none',
+            'mass_postprocess': 'simplex',
             'models': {
                 'mvar': {
                     'enabled': True,
@@ -153,17 +153,23 @@ def base_config():
                 },
                 'lstm': {
                     'enabled': True,
+                    # Keep the default lag short unless a regime-specific sweep
+                    # justifies something larger. Oscar results showed that a
+                    # global lag=20 default is not robust, while the strongest
+                    # gains came from the transformed-density pipeline.
                     'lag': 5,
-                    'hidden_units': 128,
+                    'hidden_units': 64,
                     'num_layers': 2,
                     'dropout': 0.1,
                     'residual': True,
                     'use_layer_norm': True,
+                    'normalize_input': True,
                     'max_epochs': 300,
-                    'patience': 30,
-                    'lr': 1.0e-3,
-                    'batch_size': 256,
-                    'grad_clip': 1.0,
+                    'patience': 40,
+                    'learning_rate': 7.0e-4,
+                    'batch_size': 512,
+                    'gradient_clip': 5.0,
+                    'weight_decay': 1.0e-5,
                 },
             },
         },
@@ -455,6 +461,7 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    generated_paths = []
 
     print("=" * 60)
     print("Generating Systematic Regime Configs")
@@ -467,7 +474,9 @@ def main():
         cfg = base_config()
         cfg['experiment_name'] = name
         deep_update(cfg, overrides)
-        write_config(cfg, output_dir / f'{name}.yaml')
+        out_path = output_dir / f'{name}.yaml'
+        write_config(cfg, out_path)
+        generated_paths.append(out_path)
 
     # d'Orsogna suite (constant speed) + variable-speed duplicates
     do_all = duplicate_with_varspeed(dorsogna_configs())
@@ -476,10 +485,18 @@ def main():
         cfg = base_config()
         cfg['experiment_name'] = name
         deep_update(cfg, overrides)
-        write_config(cfg, output_dir / f'{name}.yaml')
+        out_path = output_dir / f'{name}.yaml'
+        write_config(cfg, out_path)
+        generated_paths.append(out_path)
+
+    manifest_path = output_dir / 'manifest.txt'
+    with open(manifest_path, 'w') as f:
+        for path in sorted(generated_paths):
+            f.write(f"{path.as_posix()}\n")
 
     total = len(ndyn_all) + len(do_all)
     print(f"\nGenerated {total} configs in {output_dir}/")
+    print(f"Wrote manifest: {manifest_path}")
     print("Done.")
 
 

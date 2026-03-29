@@ -1,0 +1,1471 @@
+% ══════════════════════════════════════════════════════════════════
+%  Weak SINDy for Multi-Field Vicsek–Morse PDE Discovery
+%  Mathematical Foundations and Implementation Details
+% ══════════════════════════════════════════════════════════════════
+\documentclass[11pt, letterpaper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage[ruled, vlined, linesnumbered]{algorithm2e}
+\usepackage{hyperref}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+
+% ── theorem environments ─────────────────────────────────────────
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{remark}{Remark}[section]
+
+% ── custom commands ──────────────────────────────────────────────
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\vp}{\mathbf{p}}
+\newcommand{\vx}{\mathbf{x}}
+\newcommand{\vv}{\mathbf{v}}
+\newcommand{\vw}{\mathbf{w}}
+\newcommand{\vb}{\mathbf{b}}
+\newcommand{\vG}{\mathbf{G}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\abs}[1]{\left\lvert #1 \right\rvert}
+\newcommand{\ip}[2]{\langle #1 ,\, #2 \rangle}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\pderiv}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\lap}{\Delta}
+\newcommand{\bilap}{\Delta^{2}}
+\newcommand{\divop}{\nabla\!\cdot}
+\newcommand{\grad}{\nabla}
+\DeclareMathOperator{\fftn}{FFT}
+\DeclareMathOperator{\ifftn}{IFFT}
+\DeclareMathOperator{\fftfreq}{fftfreq}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\cond}{cond}
+
+\pagestyle{fancy}
+\fancyhead[L]{\small WSINDy Multi-Field PDE Discovery}
+\fancyhead[R]{\small\thepage}
+\fancyfoot{}
+
+% ═════════════════════════════════════════════════════════════════
+\title{%
+  \textbf{Weak SINDy for Multi-Field Vicsek--Morse PDE Discovery}\\[6pt]
+  \large Mathematical Foundations and Implementation Details}
+\author{WSINDy-Manifold Project}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document provides a self-contained mathematical description of the
+Weak Sparse Identification of Nonlinear Dynamics (WSINDy) pipeline as
+implemented in the \texttt{src/wsindy/} package for discovering
+coupled partial differential equations governing the macroscopic
+density $\rho$, polarisation $p_x$, and polarisation $p_y$ fields of
+a Vicsek--Morse active-matter system.  Part~I develops the full
+abstract theory with arbitrary dimensions.  Part~II instantiates every
+formula with concrete numbers from the configuration
+\texttt{DO\_CS01\_swarm\_C01\_l05}, walking through the entire pipeline
+from particle data to KDE fields, Morse potential, test-function
+construction, weak-form linear system assembly, MSTLS sparse
+regression, model selection, bootstrap uncertainty quantification,
+and ETDRK4 time integration for forecasting.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ╔═══════════════════════════════════════════════════════════════╗
+% ║                  PART I — ABSTRACT FRAMEWORK                 ║
+% ╚═══════════════════════════════════════════════════════════════╝
+
+\part{Abstract Mathematical Framework}
+\label{part:abstract}
+
+% ─────────────────────────────────────────────────────────────────
+\section{Problem Setup and Grid}
+\label{sec:setup}
+% ─────────────────────────────────────────────────────────────────
+
+We consider a system of $N$ self-propelled particles on a doubly-periodic
+domain $\Omega = [0, L_x) \times [0, L_y)$ observed at $T_{\mathrm{full}}$
+discrete time steps separated by $\delta t$.  The raw data are
+trajectories $\vx_i(t) \in \Omega$ and velocities
+$\vv_i(t) \in \R^{2}$ for $i = 1, \dots, N$.
+
+These particle-level data are projected onto a uniform Eulerian grid
+with $N_x$ and $N_y$ cells in the $x$- and $y$-directions.
+
+\begin{definition}[Grid Specification (\texttt{GridSpec})]
+\label{def:gridspec}
+The spatiotemporal grid is defined by
+\begin{align}
+  \Delta x &= \frac{L_x}{N_x}, &
+  \Delta y &= \frac{L_y}{N_y}, &
+  \Delta t &= s \cdot \delta t,
+\end{align}
+where $s \in \N$ is a temporal sub-sampling factor applied to the raw
+simulation output.  After sub-sampling the data contain
+$T = \lceil T_{\mathrm{full}} / s \rceil$ frames.
+The spatial grid is periodic in both directions; the temporal axis is
+\emph{not} periodic.
+\end{definition}
+
+All field arrays throughout this document have shape $(T, N_y, N_x)$,
+following the axis convention \texttt{(t, y, x)}.
+
+% ─────────────────────────────────────────────────────────────────
+\section{Field Construction from Particle Data}
+\label{sec:fields}
+% ─────────────────────────────────────────────────────────────────
+
+Given the particle trajectories and velocities we construct three
+primary fields and one nonlocal interaction field.
+
+% ── 2.1  Density KDE ────────────────────────────────────────────
+\subsection{Density Field via Kernel Density Estimation}
+\label{sec:kde-density}
+
+The density field $\rho(x, y, t)$ is constructed in two stages:
+
+\paragraph{Step 1: Binning.}
+At each frame $t_n$ a 2-D histogram with bin edges
+$\{0, \Delta x, 2\Delta x, \dots, L_x\}$ and
+$\{0, \Delta y, 2\Delta y, \dots, L_y\}$ counts particles per cell
+and divides by the cell area:
+\begin{equation}
+  \tilde{\rho}_{j,k}^{(n)}
+  = \frac{1}{\Delta x \, \Delta y}
+    \sum_{i=1}^{N}
+    \mathbf{1}\!\bigl[
+      x_i(t_n) \in [j\Delta x, (j\!+\!1)\Delta x),\;
+      y_i(t_n) \in [k\Delta y, (k\!+\!1)\Delta y)
+    \bigr].
+\end{equation}
+
+\paragraph{Step 2: Gaussian Smoothing.}
+The histogram is convolved with a 2-D Gaussian kernel of standard
+deviation $\sigma$ (in \emph{grid-cell} units) using periodic
+boundary conditions:
+\begin{equation}
+\label{eq:gauss-smooth}
+  \rho_{j,k}^{(n)}
+  = \bigl(G_{\sigma} * \tilde{\rho}^{(n)}\bigr)_{j,k},
+  \qquad
+  G_{\sigma}(j,k)
+  = \frac{1}{2\pi\sigma^{2}}
+    \exp\!\Bigl(-\frac{j^{2}+k^{2}}{2\sigma^{2}}\Bigr).
+\end{equation}
+In code this is \texttt{scipy.ndimage.gaussian\_filter} with
+\texttt{mode='wrap'} for periodic wrapping.
+
+% ── 2.2  Flux (Polarisation) KDE ────────────────────────────────
+\subsection{Flux / Polarisation Fields via Velocity-Weighted KDE}
+\label{sec:kde-flux}
+
+The polarisation (momentum) fields $p_x$ and $p_y$ are constructed
+identically to $\rho$ except that each particle carries a
+\emph{velocity weight}:
+\begin{equation}
+\label{eq:flux-kde}
+  \tilde{p}_{\alpha,j,k}^{(n)}
+  = \frac{1}{\Delta x \, \Delta y}
+    \sum_{i=1}^{N}
+    v_{i,\alpha}(t_n)\;\mathbf{1}\!\bigl[
+      \vx_i(t_n) \in \text{cell } (j,k)
+    \bigr],
+  \qquad \alpha \in \{x, y\},
+\end{equation}
+followed by the same Gaussian smoothing~\eqref{eq:gauss-smooth}:
+\begin{equation}
+  p_{\alpha,j,k}^{(n)}
+  = \bigl(G_{\sigma} * \tilde{p}_{\alpha}^{(n)}\bigr)_{j,k}.
+\end{equation}
+
+\begin{remark}
+The bandwidth $\sigma$ is shared between $\rho$ and $\vp$, so both
+fields live on the same effective resolution scale.
+\end{remark}
+
+% ── 2.3  Morse Potential ────────────────────────────────────────
+\subsection{Morse Potential via FFT Convolution}
+\label{sec:morse}
+
+The pairwise Morse interaction potential is
+\begin{equation}
+\label{eq:morse-kernel}
+  W(r) = -C_r \, e^{-r/\ell_r} + C_a \, e^{-r/\ell_a},
+  \qquad W(0) = 0,
+\end{equation}
+where $C_r, C_a > 0$ are repulsive and attractive strengths and
+$\ell_r, \ell_a > 0$ are the corresponding length scales.
+
+\paragraph{Kernel construction on the FFT grid.}
+The kernel is evaluated on distances that wrap around the periodic
+domain.  Define centred offsets via the FFT frequency convention:
+\begin{equation}
+  \xi_j = \fftfreq(N_x, 1) \cdot L_x, \qquad
+  \eta_k = \fftfreq(N_y, 1) \cdot L_y,
+\end{equation}
+so that $\xi_j \in [-L_x/2, L_x/2)$ and similarly for $\eta_k$.
+The distance array is
+\begin{equation}
+  R_{j,k} = \sqrt{\xi_j^{2} + \eta_k^{2}}, \qquad
+  R_{0,0} \leftarrow \varepsilon \quad (\text{regularised to avoid } 0/0),
+\end{equation}
+and the kernel is $W_{j,k} = W(R_{j,k})$ with $W_{0,0} = 0$
+(self-interaction removed).
+
+\paragraph{Potential evaluation.}
+The macroscopic Morse potential field is the circular convolution
+\begin{equation}
+\label{eq:morse-potential}
+  \Phi(\cdot, t_n)
+  = \bigl(W * \rho(\cdot, t_n)\bigr) \cdot \Delta x \, \Delta y
+  = \mathcal{F}^{-1}\!\bigl[\hat{W} \cdot \hat{\rho}^{(n)}\bigr]
+    \,\Delta x \,\Delta y,
+\end{equation}
+where $\hat{\cdot}$ denotes the 2-D DFT.  The factor
+$\Delta x\,\Delta y$ converts the discrete sum into a Riemann
+approximation of the continuous convolution integral
+$\Phi = \int_{\Omega} W(\lVert \vx - \vx'\rVert)\,\rho(\vx',t)\,\dd\vx'$.
+
+% ── 2.4  Derived quantities ─────────────────────────────────────
+\subsection{Spatial Derivatives and Derived Fields}
+\label{sec:derivatives}
+
+All spatial derivatives are computed via one of two backends packaged
+in the \texttt{FieldData} container class.
+
+\subsubsection{Finite-Difference (FD) Backend}
+On the periodic grid, second-order central differences give
+\begin{alignat}{2}
+  (\partial_x f)_{j,k}
+    &= \frac{f_{j+1,k} - f_{j-1,k}}{2\Delta x},
+  &\qquad
+  (\partial_{xx} f)_{j,k}
+    &= \frac{f_{j+1,k} - 2f_{j,k} + f_{j-1,k}}{\Delta x^{2}},
+  \\[4pt]
+  (\partial_y f)_{j,k}
+    &= \frac{f_{j,k+1} - f_{j,k-1}}{2\Delta y},
+  &\qquad
+  (\partial_{yy} f)_{j,k}
+    &= \frac{f_{j,k+1} - 2f_{j,k} + f_{j,k-1}}{\Delta y^{2}},
+\end{alignat}
+with periodic index wrapping.  The Laplacian and biharmonic operators
+are $\lap f = \partial_{xx}f + \partial_{yy}f$ and
+$\bilap f = \lap(\lap f)$.
+
+\subsubsection{Spectral (FFT) Backend}
+\label{sec:spectral-derivs}
+
+Define the angular wavenumber arrays
+\begin{equation}
+\label{eq:wavenumbers}
+  (k_x)_j = 2\pi \cdot \fftfreq\!\bigl(N_x,\, \Delta x\bigr)_j, \qquad
+  (k_y)_k = 2\pi \cdot \fftfreq\!\bigl(N_y,\, \Delta y\bigr)_k,
+\end{equation}
+where $\fftfreq(n, d)$ returns frequencies $\{0, 1/(nd), 2/(nd),
+\dots, -1/(nd)\}$.  Derivatives in Fourier space are
+\begin{align}
+  \widehat{\partial_x f} &= i\, k_x \,\hat{f},
+  &\quad
+  \widehat{\partial_y f} &= i\, k_y \,\hat{f},
+  \label{eq:spec-first} \\[4pt]
+  \widehat{\lap f} &= -(k_x^{2} + k_y^{2})\,\hat{f},
+  &\quad
+  \widehat{\bilap f} &= (k_x^{2} + k_y^{2})^{2}\,\hat{f}.
+  \label{eq:spec-second}
+\end{align}
+For first-order derivatives the Nyquist mode is zeroed
+($k_{N/2} \leftarrow 0$ when $N$ is even) to maintain anti-symmetry
+accuracy.
+
+\begin{remark}
+The FD backend is the default during \emph{training} (building the
+weak system).  The spectral backend is used during \emph{forecasting}
+for machine-precision accuracy on the periodic domain.
+\end{remark}
+
+\subsubsection{Field Catalogue}
+\label{sec:field-catalogue}
+
+The \texttt{FieldData} class caches the following derived quantities
+(each of shape $(T, N_y, N_x)$):
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+  \toprule
+  \textbf{Attribute} & \textbf{Formula} & \textbf{Description} \\
+  \midrule
+  \texttt{dx\_rho}         & $\partial_x \rho$                          & density $x$-gradient \\
+  \texttt{dy\_rho}         & $\partial_y \rho$                          & density $y$-gradient \\
+  \texttt{lap\_rho}        & $\lap\rho$                                 & density diffusion \\
+  \texttt{div\_p}          & $\divop\vp = \partial_x p_x + \partial_y p_y$ & flux divergence \\
+  \texttt{lap\_px}         & $\lap p_x$                                 & $x$-polarisation viscosity \\
+  \texttt{lap\_py}         & $\lap p_y$                                 & $y$-polarisation viscosity \\
+  \texttt{bilap\_px}       & $\bilap p_x$                               & $x$-hyper-viscosity \\
+  \texttt{bilap\_py}       & $\bilap p_y$                               & $y$-hyper-viscosity \\
+  \texttt{p\_sq}           & $|\vp|^{2} = p_x^{2} + p_y^{2}$           & alignment intensity \\
+  \texttt{rho2}, \texttt{rho3} & $\rho^{2}$, $\rho^{3}$                & nonlinear density \\
+  \texttt{lap\_rho2}       & $\lap(\rho^{2})$                           & nonlinear diffusion \\
+  \texttt{lap\_rho3}       & $\lap(\rho^{3})$                           & nonlinear diffusion \\
+  \texttt{lap\_p\_sq}      & $\lap(|\vp|^{2})$                          & alignment--density coupling \\
+  \texttt{grad\_Phi\_x}    & $\partial_x\Phi$                           & Morse force ($x$) \\
+  \texttt{grad\_Phi\_y}    & $\partial_y\Phi$                           & Morse force ($y$) \\
+  \texttt{rho\_grad\_Phi\_x} & $\rho\,\partial_x\Phi$                  & weighted Morse force ($x$) \\
+  \texttt{rho\_grad\_Phi\_y} & $\rho\,\partial_y\Phi$                  & weighted Morse force ($y$) \\
+  \texttt{div\_rho\_gradPhi} & $\divop(\rho\grad\Phi)$                  & Morse aggregation \\
+  \texttt{p\_dot\_grad\_px}  & $(\vp \cdot \grad)p_x$                   & self-advection ($x$) \\
+  \texttt{p\_dot\_grad\_py}  & $(\vp \cdot \grad)p_y$                   & self-advection ($y$) \\
+  \texttt{dx\_rho2}        & $\partial_x(\rho^{2})$                     & nonlinear pressure ($x$) \\
+  \texttt{dy\_rho2}        & $\partial_y(\rho^{2})$                     & nonlinear pressure ($y$) \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────────
+\section{The Three-Equation PDE System}
+\label{sec:pde-system}
+% ─────────────────────────────────────────────────────────────────
+
+We seek coupled PDEs of the form
+\begin{equation}
+\label{eq:3field-pde}
+\boxed{
+\begin{aligned}
+  \partial_t \rho   &= \sum_{j=1}^{M_{\rho}} c_j \;\Theta_j(\rho, \vp, \Phi), \\[4pt]
+  \partial_t p_x    &= \sum_{k=1}^{M_{p}} d_k \;\Xi_k(\rho, \vp, \Phi), \\[4pt]
+  \partial_t p_y    &= \sum_{k=1}^{M_{p}} e_k \;\Xi_k'(\rho, \vp, \Phi),
+\end{aligned}}
+\end{equation}
+where $\{c_j\}$, $\{d_k\}$, $\{e_k\}$ are sparse coefficient
+vectors to be discovered.
+
+\subsection{Candidate Library}
+\label{sec:library}
+
+Each equation has its own library of candidate right-hand-side terms.
+The function \texttt{build\_default\_library(morse, rich)} assembles
+these.  With \texttt{morse=True} and \texttt{rich=False} (the
+production setting) the libraries are:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{clll}
+  \toprule
+  \textbf{Eq.} & \textbf{Index} & \textbf{Term Name} & \textbf{Mathematical Expression} \\
+  \midrule
+  \multirow{5}{*}{$\rho_t$}
+    & $\Theta_1$ & \texttt{div\_p}         & $\divop\vp$                     \\
+    & $\Theta_2$ & \texttt{lap\_rho}       & $\lap\rho$                      \\
+    & $\Theta_3$ & \texttt{div\_rho\_gradPhi} & $\divop(\rho\grad\Phi)$      \\
+    & $\Theta_4$ & \texttt{lap\_rho2}      & $\lap(\rho^{2})$                \\
+    & $\Theta_5$ & \texttt{lap\_rho3}      & $\lap(\rho^{3})$                \\
+  \midrule
+  \multirow{5}{*}{$(p_x)_t$}
+    & $\Xi_1$ & \texttt{px}              & $p_x$                            \\
+    & $\Xi_2$ & \texttt{p\_sq\_px}       & $|\vp|^{2}\,p_x$                 \\
+    & $\Xi_3$ & \texttt{dx\_rho}         & $\partial_x\rho$                  \\
+    & $\Xi_4$ & \texttt{lap\_px}         & $\lap p_x$                        \\
+    & $\Xi_5$ & \texttt{rho\_dx\_Phi}    & $\rho\,\partial_x\Phi$            \\
+  \midrule
+  \multirow{5}{*}{$(p_y)_t$}
+    & $\Xi_1'$ & \texttt{py}             & $p_y$                             \\
+    & $\Xi_2'$ & \texttt{p\_sq\_py}      & $|\vp|^{2}\,p_y$                  \\
+    & $\Xi_3'$ & \texttt{dy\_rho}        & $\partial_y\rho$                   \\
+    & $\Xi_4'$ & \texttt{lap\_py}        & $\lap p_y$                         \\
+    & $\Xi_5'$ & \texttt{rho\_dy\_Phi}   & $\rho\,\partial_y\Phi$             \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Total candidate terms: $M_{\rho} = 5$, $M_p = 5$ per momentum
+equation, $M_{\mathrm{total}} = 15$.
+
+\begin{remark}[Rich library]
+When \texttt{rich=True}, additional ``dangerous'' terms are included:
+$\lap(|\vp|^{2})$ for $\rho$;
+$(\vp\cdot\grad)p_\alpha$, $\bilap p_\alpha$, $\partial_\alpha(\rho^{2})$
+for each $p_\alpha$.  These increase expressiveness at the risk of
+overfitting with limited data.
+\end{remark}
+
+% ─────────────────────────────────────────────────────────────────
+\section{Compactly Supported Test Functions}
+\label{sec:test-functions}
+% ─────────────────────────────────────────────────────────────────
+
+WSINDy converts the strong-form PDE~\eqref{eq:3field-pde} into a
+\emph{weak} (integral) formulation by testing against compactly
+supported functions.  This provides noise tolerance and allows
+integration by parts to avoid differentiating the (potentially noisy)
+data.
+
+\subsection{Separable Bump Function}
+\label{sec:bump}
+
+The test function is a separable product of 1-D polynomial bumps:
+\begin{equation}
+\label{eq:psi-sep}
+  \psi(x, y, t)
+  = \phi_x(x) \cdot \phi_y(y) \cdot \phi_t(t),
+\end{equation}
+where each factor has the form
+\begin{equation}
+\label{eq:phi-1d}
+  \phi_i(s)
+  = \begin{cases}
+      \Bigl(1 - \dfrac{s^{2}}{(\ell_i \Delta_i)^{2}}\Bigr)^{p_i}
+      & \text{if } |s| \le \ell_i \Delta_i, \\[6pt]
+      0 & \text{otherwise},
+    \end{cases}
+  \qquad i \in \{x, y, t\}.
+\end{equation}
+
+\begin{definition}[Test-function parameters]
+\label{def:psi-params}
+The test function is specified by:
+\begin{itemize}[nosep]
+  \item \textbf{Half-widths} $\bm{\ell} = (\ell_t, \ell_x, \ell_y) \in \N^{3}$:
+    number of grid cells spanned in each direction.
+  \item \textbf{Polynomial exponents} $\mathbf{p} = (p_t, p_x, p_y) \in \N^{3}$:
+    smoothness of the bump (higher $p$ $\Rightarrow$ more vanishing
+    derivatives at the boundary).
+\end{itemize}
+The physical support radius in direction $i$ is
+$r_i = \ell_i \cdot \Delta_i$.
+\end{definition}
+
+Each 1-D bump $\phi_i$ is sampled on a grid of $2\ell_i + 1$ points:
+\begin{equation}
+  s_m = m \cdot \Delta_i, \qquad m = -\ell_i, \dots, 0, \dots, \ell_i.
+\end{equation}
+
+\subsection{Derivatives of the Test Function}
+\label{sec:psi-derivs}
+
+By the product rule of the separable form~\eqref{eq:psi-sep}:
+\begin{align}
+  \psi_t    &= \phi_t'(t)\,\phi_x(x)\,\phi_y(y),
+  \label{eq:psi-t}\\
+  \psi_x    &= \phi_t(t)\,\phi_x'(x)\,\phi_y(y), \\
+  \psi_y    &= \phi_t(t)\,\phi_x(x)\,\phi_y'(y), \\
+  \psi_{xx} &= \phi_t(t)\,\phi_x''(x)\,\phi_y(y), \\
+  \psi_{yy} &= \phi_t(t)\,\phi_x(x)\,\phi_y''(y).
+\end{align}
+
+The 1-D derivatives $\phi_i'$ and $\phi_i''$ are computed numerically
+by second-order finite differences on the $(2\ell_i+1)$-point
+support lattice:
+\begin{align}
+  (\phi')_m &= \frac{\phi_{m+1} - \phi_{m-1}}{2\Delta_i}
+  \qquad\text{(interior)},
+  \label{eq:fd-first}\\
+  (\phi'')_m &= \frac{\phi_{m+1} - 2\phi_m + \phi_{m-1}}{\Delta_i^{2}}
+  \qquad\text{(interior)},
+  \label{eq:fd-second}
+\end{align}
+with second-order one-sided stencils at the boundaries:
+\begin{align}
+  (\phi')_0    &= \frac{-3\phi_0 + 4\phi_1 - \phi_2}{2\Delta_i},
+  \qquad
+  (\phi')_{n-1} = \frac{3\phi_{n-1} - 4\phi_{n-2} + \phi_{n-3}}{2\Delta_i}.
+\end{align}
+
+Each 3-D test-function array (e.g.\ $\psi$, $\psi_t$, $\psi_{xx}$)
+has shape $(2\ell_t+1,\; 2\ell_y+1,\; 2\ell_x+1)$ and is formed by
+outer products of the 1-D factors.
+
+% ─────────────────────────────────────────────────────────────────
+\section{Weak Formulation: Building $\vb = \vG\vw$}
+\label{sec:weak-system}
+% ─────────────────────────────────────────────────────────────────
+
+\subsection{From Strong Form to Weak Form}
+\label{sec:ibp}
+
+Consider a single equation, say $\partial_t u = \sum_m w_m\,\Theta_m$.
+Multiply both sides by the test function $\psi$ and integrate over
+the full space-time domain:
+\begin{equation}
+\label{eq:weak-integral}
+  \int_{\Omega \times [0,T]}
+    \psi \;\partial_t u \;\dd x\,\dd y\,\dd t
+  =
+  \sum_{m} w_m
+  \int_{\Omega \times [0,T]}
+    \psi \;\Theta_m \;\dd x\,\dd y\,\dd t.
+\end{equation}
+
+In the scalar WSINDy pipeline, integration by parts transfers
+spatial derivatives from $\Theta_m$ onto $\psi$ (since $\psi$ has
+compact support, boundary terms vanish).  In the \textbf{multi-field}
+pipeline used here, derivatives are \emph{already evaluated} in each
+$\Theta_m$ (the term evaluator returns the full field
+$\Theta_m(\rho, \vp, \Phi)$ on the grid), so we convolve
+directly with the identity kernel $\psi$:
+
+\begin{equation}
+\label{eq:multi-field-weak}
+  \underbrace{\ip{\psi_t}{u}_{q}}_{\displaystyle b_q}
+  = \sum_{m=1}^{M}
+    w_m \underbrace{\ip{\psi}{\Theta_m}_{q}}_{\displaystyle G_{q,m}},
+\end{equation}
+where $\ip{\cdot}{\cdot}_q$ denotes the discrete convolution
+evaluated at query point $q = (t_q, x_q, y_q)$.
+
+\begin{remark}
+The LHS uses $\psi_t$ (time derivative of the test function)
+rather than $\partial_t u$, which is the key advantage of the weak
+form: we differentiate the smooth, analytically known test function
+rather than the noisy data.
+\end{remark}
+
+\subsection{FFT-Based Convolution}
+\label{sec:fft-conv}
+
+The discrete convolution of a data array
+$D \in \R^{T \times N_y \times N_x}$ with a compact kernel
+$K \in \R^{k_t \times k_y \times k_x}$ is computed axis-by-axis with
+mixed periodicity:
+
+\begin{definition}[3-D convolution with mixed boundary conditions]
+\label{def:conv3d}
+Let $\text{periodic} = (\text{False}, \text{True}, \text{True})$
+(time is non-periodic, space is periodic).  For each axis $a$:
+\begin{itemize}[nosep]
+  \item \textbf{Periodic} ($a \in \{x, y\}$): FFT length $= D_a$
+    (the data length), giving circular convolution;
+    roll by $-\lfloor k_a/2 \rfloor$ to re-centre.
+  \item \textbf{Non-periodic} ($a = t$): zero-pad to length
+    $D_t + k_t - 1$, compute linear convolution, then crop
+    $[\lfloor k_t/2\rfloor, \lfloor k_t/2\rfloor + D_t)$.
+\end{itemize}
+The computation uses real-input FFTs (\texttt{rfftn}/\texttt{irfftn}):
+\begin{equation}
+\label{eq:fft-conv}
+  (K * D) = \ifftn\!\bigl[\fftn[K,\, s] \cdot \fftn[D,\, s]\bigr],
+\end{equation}
+where $s = (s_t, s_y, s_x)$ is the per-axis FFT length determined by the periodicity rule above.
+\end{definition}
+
+\subsection{Query Points}
+\label{sec:query-points}
+
+Query points are uniformly sub-sampled interior grid nodes:
+\begin{equation}
+\label{eq:query-points}
+  \mathcal{Q} = \bigl\{
+    (t, x, y) :
+    t \in \{m_t, m_t+s_t, m_t+2s_t, \dots\},\;
+    x \in \{0, s_x, 2s_x, \dots\},\;
+    y \in \{0, s_y, 2s_y, \dots\}
+  \bigr\},
+\end{equation}
+where $m_t = \ell_t$ is the \textbf{time margin} (avoiding incomplete
+overlap of $\psi_t$ with the data boundaries), and
+$(s_t, s_x, s_y)$ are the \textbf{strides}.
+
+The number of query points per trajectory is
+\begin{equation}
+\label{eq:K-per-traj}
+  K_{\mathrm{traj}}
+  = \Bigl\lfloor\frac{T - 2\ell_t}{s_t}\Bigr\rfloor
+  \times \Bigl\lfloor\frac{N_x}{s_x}\Bigr\rfloor
+  \times \Bigl\lfloor\frac{N_y}{s_y}\Bigr\rfloor.
+\end{equation}
+
+When $N_{\mathrm{train}}$ trajectories are available, the systems are
+stacked vertically:
+\begin{equation}
+  \vb = \begin{pmatrix} \vb^{(1)} \\ \vdots \\ \vb^{(N_{\mathrm{train}})} \end{pmatrix}
+  \in \R^{K}, \qquad
+  \vG = \begin{pmatrix} \vG^{(1)} \\ \vdots \\ \vG^{(N_{\mathrm{train}})} \end{pmatrix}
+  \in \R^{K \times M},
+  \qquad K = \sum_{i=1}^{N_{\mathrm{train}}} K_{\mathrm{traj}}^{(i)}.
+\end{equation}
+
+% ─────────────────────────────────────────────────────────────────
+\section{MSTLS Sparse Regression}
+\label{sec:mstls}
+% ─────────────────────────────────────────────────────────────────
+
+Given the over-determined system $\vb = \vG\vw$ (with $K \gg M$),
+we seek a \emph{sparse} coefficient vector $\vw \in \R^{M}$ using the
+Modified Sequential Thresholded Least Squares (MSTLS) algorithm of
+Minor et al.\ (2025).
+
+\subsection{Column Preconditioning}
+\label{sec:precondition}
+
+Library columns may span wildly different magnitude scales.  Before
+regression, each column is normalised to unit $\ell_2$ norm:
+\begin{equation}
+\label{eq:precondition}
+  \tilde{G}_{:,m} = \frac{G_{:,m}}{\norm{G_{:,m}}_2}, \qquad
+  \sigma_m = \norm{G_{:,m}}_2, \qquad m = 1, \dots, M.
+\end{equation}
+All thresholding operates on the scaled system
+$\vb = \tilde{\vG}\,\tilde{\vw}$.  After solving, physical
+coefficients are recovered as $w_m = \tilde{w}_m / \sigma_m$.
+
+\subsection{Dominant-Balance Thresholding}
+\label{sec:threshold}
+
+A term $m$ is \textbf{retained} if its relative contribution to the
+balance satisfies a two-sided criterion:
+\begin{equation}
+\label{eq:dom-balance}
+  \boxed{
+  \hat{\lambda}
+  \;\le\;
+  \frac{|\tilde{w}_m| \cdot \norm{\tilde{G}_{:,m}}_2}{\norm{\vb}_2}
+  \;\le\;
+  \frac{1}{\hat{\lambda}},
+  }
+\end{equation}
+where $\hat{\lambda} \in (0, 1]$ is the threshold parameter.  Terms
+below the lower bound are too small; terms above the upper bound are
+suspiciously dominant (possible overfitting to a single mode).
+
+\subsection{The MSTLS Algorithm}
+\label{sec:mstls-algo}
+
+\begin{algorithm}[H]
+\caption{MSTLS: Modified Sequential Thresholded Least Squares}
+\label{alg:mstls}
+\SetKwInOut{Input}{Input}
+\SetKwInOut{Output}{Output}
+\Input{$\tilde{\vG} \in \R^{K\times M}$, $\vb \in \R^{K}$,
+  candidate grid $\Lambda = \{\hat\lambda_1, \dots, \hat\lambda_L\}$,
+  \texttt{max\_iter}}
+\Output{Sparse $\vw^{*}$, active mask $\mathcal{A}^{*}$,
+  best $\hat\lambda^{*}$}
+\BlankLine
+$\vw_{\mathrm{LS}} \gets \argmin_{\vw}\norm{\tilde{\vG}\vw - \vb}_2$ \tcp{full least squares (SVD)}
+$R_{\mathrm{LS}} \gets \norm{\tilde{\vG}\vw_{\mathrm{LS}}}_2$ \tcp{LS prediction norm (for normalisation)}
+$(\vw^{*},\, L^{*}) \gets (\vw_{\mathrm{LS}},\, \infty)$\;
+\BlankLine
+\For{$\hat\lambda \in \Lambda$}{
+  $\mathcal{A} \gets \{1, \dots, M\}$ \tcp{start with all terms active}
+  \For{$\mathrm{iter} = 1$ \KwTo \texttt{max\_iter}}{
+    $\tilde{\vw} \gets \argmin_{\vw}\norm{\tilde{\vG}_{:,\mathcal{A}}\,\vw - \vb}_2$
+      \tcp{LS on active columns}
+    $\mathcal{A}_{\mathrm{new}} \gets
+      \bigl\{m \in \mathcal{A} :
+        \hat\lambda \le
+        \frac{|\tilde{w}_m|\norm{\tilde{G}_{:,m}}_2}{\norm{\vb}_2}
+        \le 1/\hat\lambda
+      \bigr\}$
+      \tcp{dominant-balance test}
+    \lIf{$\mathcal{A}_{\mathrm{new}} = \mathcal{A}$}{\textbf{break} (converged)}
+    $\mathcal{A} \gets \mathcal{A}_{\mathrm{new}}$\;
+  }
+  Final LS: $\tilde{\vw}_{\mathcal{A}} \gets
+    \argmin_{\vw}\norm{\tilde{\vG}_{:,\mathcal{A}}\vw - \vb}_2$\;
+  $L_{\hat\lambda} \gets \norm{\vb - \tilde{\vG}\tilde{\vw}}_2 \;/\; R_{\mathrm{LS}}$
+    \tcp{normalised loss}
+  \If{$L_{\hat\lambda} < L^{*}$
+      \textbf{or} ($L_{\hat\lambda} \approx L^{*}$ and $|\mathcal{A}| < |\mathcal{A}^{*}|$)}{
+    $(\vw^{*}, \mathcal{A}^{*}, \hat\lambda^{*}, L^{*})
+      \gets (\tilde{\vw}, \mathcal{A}, \hat\lambda, L_{\hat\lambda})$\;
+  }
+}
+\Return $\vw^{*}$, $\mathcal{A}^{*}$, $\hat\lambda^{*}$\;
+\end{algorithm}
+
+\subsection{Coefficient Un-Scaling}
+\label{sec:unscale}
+
+The MSTLS output $\tilde{w}_m$ lives in the preconditioned space.
+Physical (unscaled) coefficients are
+\begin{equation}
+\label{eq:unscale}
+  w_m^{\mathrm{phys}} = \frac{\tilde{w}_m}{\sigma_m}, \qquad
+  \sigma_m = \norm{G_{:,m}}_2.
+\end{equation}
+
+\subsection{Fit Diagnostics}
+\label{sec:diagnostics}
+
+After regression the model records:
+\begin{itemize}[nosep]
+  \item $R^{2}_{\mathrm{weak}}
+    = 1 - \frac{\norm{\vb - \vG\vw^{\mathrm{phys}}}_2^{2}}
+               {\norm{\vb - \bar{b}\mathbf{1}}_2^{2}}$
+    \,--- coefficient of determination on the weak system.
+  \item Relative $\ell_2$ error
+    $= \norm{\vb - \vG\vw^{\mathrm{phys}}}_2 / \norm{\vb}_2$.
+  \item Per-$\hat\lambda$ history: $n_{\mathrm{active}}$, normalised
+    loss, condition number $\kappa(\tilde{\vG}_{:,\mathcal{A}})$,
+    convergence flag.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────
+\section{Model Selection Across Test-Function Scale}
+\label{sec:model-selection}
+% ─────────────────────────────────────────────────────────────────
+
+The quality of the discovered PDE depends on the test-function
+half-widths $\bm\ell = (\ell_t, \ell_x, \ell_y)$.  Too narrow
+$\Rightarrow$ noisy convolutions; too wide $\Rightarrow$ spatial
+structure is smeared.
+
+\subsection{Scalar Model Selection}
+\label{sec:scalar-select}
+
+For a single equation (used in the scalar WSINDy pipeline), a
+composite score penalises both poor fit and over-complexity:
+\begin{equation}
+\label{eq:composite-score}
+  S
+  = L_{\mathrm{norm}}
+  + \alpha \,\frac{n_{\mathrm{active}}}{M}
+  + \beta \,\max\!\bigl(0,\;\log_{10}\kappa - \log_{10}\kappa_0\bigr),
+\end{equation}
+with default weights $\alpha = 0.1$, $\beta = 0.01$,
+$\kappa_0 = 10^{8}$.  The Pareto frontier over
+$(\text{loss},\; n_{\mathrm{active}})$ is also computed.
+
+\subsection{Multi-Field Model Selection}
+\label{sec:multifield-select}
+
+For the 3-equation system, test-function scale selection maximises a
+combined score:
+\begin{equation}
+\label{eq:multifield-score}
+  \text{score}(\bm\ell)
+  = \frac{R^{2}_{\rho} + R^{2}_{p_x} + R^{2}_{p_y}}{3}
+  - 0.05 \cdot \frac{n_{\mathrm{active}}}{M_{\mathrm{total}}},
+\end{equation}
+where $R^{2}_{(\cdot)}$ is the weak-form $R^{2}$ for each equation,
+$n_{\mathrm{active}}$ is the total active terms across all three
+equations, and $M_{\mathrm{total}} = M_{\rho} + 2M_p$.
+
+The sweep generates $n_{\ell}$ candidate $\bm\ell$ values
+logarithmically spaced from $\bm\ell_{\min} = (2,2,2)$ up to
+approximately
+$\bm\ell_{\max} = (\lfloor T/4\rfloor, \lfloor N_x/4\rfloor,
+\lfloor N_y/4\rfloor)$.
+
+% ─────────────────────────────────────────────────────────────────
+\section{Bootstrap Uncertainty Quantification}
+\label{sec:bootstrap}
+% ─────────────────────────────────────────────────────────────────
+
+Coefficient uncertainty is estimated by the nonparametric bootstrap:
+
+\begin{enumerate}[nosep]
+  \item Fix $\bm\ell$ at the best selected scale.
+  \item For $b = 1, \dots, B$:
+  \begin{enumerate}[nosep]
+    \item Draw $N_{\mathrm{train}}$ trajectories \emph{with replacement}
+      from the training set.
+    \item Fit all three equations via MSTLS on the resampled set.
+    \item Record $(w_1^{(b)}, \dots, w_M^{(b)})$.
+  \end{enumerate}
+  \item Report per-term statistics:
+  $\bar{w}_m = B^{-1}\sum_b w_m^{(b)}$, \;
+  $\hat\sigma_m = \mathrm{std}(w_m^{(1:B)})$, \;
+  $P_m = B^{-1}\sum_b \mathbf{1}[w_m^{(b)} \ne 0]$ (inclusion probability).
+  \item Confidence intervals:
+  $[Q_{\alpha/2}, Q_{1-\alpha/2}]$ from the empirical distribution
+  of $w_m^{(1:B)}$.
+\end{enumerate}
+
+This is \emph{trajectory}-level resampling (not row-level), capturing
+inter-trajectory variability.
+
+% ─────────────────────────────────────────────────────────────────
+\section{Time Integration for Forecasting}
+\label{sec:integrators}
+% ─────────────────────────────────────────────────────────────────
+
+Having identified the PDE coefficients $\{c_j, d_k, e_k\}$, we
+forecast the evolution by numerically integrating the discovered
+system starting from an initial condition
+$(\rho_0, p_{x,0}, p_{y,0})$.
+
+\subsection{Integrator Selection}
+\label{sec:integrator-select}
+
+Two integrators are available:
+\begin{itemize}[nosep]
+  \item \texttt{rk4} --- classical explicit Runge--Kutta 4th order.
+  \item \texttt{etdrk4} --- Exponential Time Differencing RK4
+    (Cox \& Matthews 2002; Kassam \& Trefethen 2005).
+\end{itemize}
+In \texttt{auto} mode, ETDRK4 is selected whenever any equation has
+an active \emph{linear} term with a Laplacian or bilaplacian
+($\lap p_\alpha$, $\bilap p_\alpha$, $\lap\rho$), because these
+make the system stiff.  Otherwise, RK4 is used.
+
+\subsection{Classical RK4}
+\label{sec:rk4}
+
+Let $\mathbf{U} = (\rho, p_x, p_y)$ and
+$\mathbf{F}(\mathbf{U}) = (F_\rho, F_{p_x}, F_{p_y})$ be the
+discovered RHS.  One RK4 step of size $h = \Delta t$ is:
+\begin{align}
+  \mathbf{k}_1 &= \mathbf{F}(\mathbf{U}^n), \nonumber\\
+  \mathbf{k}_2 &= \mathbf{F}\!\bigl(\mathbf{U}^n + \tfrac{h}{2}\mathbf{k}_1\bigr), \nonumber\\
+  \mathbf{k}_3 &= \mathbf{F}\!\bigl(\mathbf{U}^n + \tfrac{h}{2}\mathbf{k}_2\bigr), \nonumber\\
+  \mathbf{k}_4 &= \mathbf{F}\!\bigl(\mathbf{U}^n + h\,\mathbf{k}_3\bigr), \nonumber\\
+  \mathbf{U}^{n+1}
+    &= \mathbf{U}^n + \frac{h}{6}\bigl(\mathbf{k}_1 + 2\mathbf{k}_2 + 2\mathbf{k}_3 + \mathbf{k}_4\bigr).
+\label{eq:rk4}
+\end{align}
+
+\subsection{ETDRK4}
+\label{sec:etdrk4}
+
+When diffusive terms are present the system takes the form
+$\hat{u}_t = \hat{L}\,\hat{u} + \hat{N}(\hat{u})$ in Fourier space,
+where $\hat{L}$ is a diagonal linear operator and $\hat{N}$ is the
+nonlinear remainder.
+
+\subsubsection{Linear Operator Extraction}
+\label{sec:linear-extract}
+
+For each equation, active linear terms are mapped to Fourier
+multipliers:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lcl}
+  \toprule
+  \textbf{Term} & \textbf{Fourier Symbol} & \textbf{Expression} \\
+  \midrule
+  $c \cdot p_\alpha$ (linear decay/growth) & $c$        & constant \\
+  $c \cdot \lap u$   (diffusion)           & $-c\,K^{2}$ & $K^{2} = k_x^{2} + k_y^{2}$ \\
+  $c \cdot \bilap u$ (hyper-viscosity)     & $c\,K^{4}$  & $K^{4} = (k_x^{2} + k_y^{2})^{2}$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+The total linear operator for one equation is
+\begin{equation}
+\label{eq:L-hat}
+  \hat{L}(k_x, k_y) = \sum_{\substack{m\,\text{active} \\ m\,\text{linear}}} \hat{L}_m(k_x, k_y),
+\end{equation}
+and the nonlinear RHS is
+$\hat{N} = \fftn[F_{\text{full}}(\mathbf{U})] -
+\hat{L} \cdot \hat{u}$, where only non-linear terms contribute.
+
+\subsubsection{$\varphi$-Functions via Contour Integration}
+\label{sec:phi-functions}
+
+The ETDRK4 scheme requires three $\varphi$-functions of $z = \hat{L}\,h$:
+\begin{align}
+  \varphi_1(z) &= \frac{e^{z} - 1}{z}, \label{eq:phi1}\\
+  \varphi_2(z) &= \frac{e^{z} - 1 - z}{z^{2}}, \label{eq:phi2}\\
+  \varphi_3(z) &= \frac{e^{z} - 1 - z - z^{2}/2}{z^{3}}. \label{eq:phi3}
+\end{align}
+Direct evaluation is numerically unstable near $z = 0$.  Following
+Kassam \& Trefethen (2005), we instead use contour integration with
+$M_c = 32$ quadrature points on a circle of radius 1 centred at each
+$z_{j,k} = \hat{L}_{j,k}\,h$:
+\begin{equation}
+\label{eq:contour-quad}
+  \varphi_n(z) \approx \frac{1}{M_c}
+  \sum_{q=1}^{M_c} \varphi_n\!\bigl(z + r_q\bigr),
+  \qquad
+  r_q = e^{2\pi i\,(q - \frac{1}{2})/M_c}.
+\end{equation}
+
+\subsubsection{ETDRK4 Time-Stepping Scheme}
+\label{sec:etdrk4-scheme}
+
+Define shorthand $E = e^{z}$, $E_2 = e^{z/2}$, and ETDRK4 coefficients:
+\begin{align}
+  a_{21} &= h \,\varphi_{1}(z/2), \label{eq:etdrk4-a21}\\
+  b_1 &= h\,(4\varphi_3 - 3\varphi_2 + \varphi_1), \label{eq:etdrk4-b1}\\
+  b_2 = b_3 &= 2h\,(\varphi_2 - 2\varphi_3), \label{eq:etdrk4-b23}\\
+  b_4 &= h\,(-\varphi_2 + 4\varphi_3). \label{eq:etdrk4-b4}
+\end{align}
+
+One ETDRK4 step for a single field $\hat{u}^n$:
+\begin{align}
+  \hat{N}_1 &= \fftn\!\bigl[N(u^n)\bigr], \nonumber\\
+  \hat{a}   &= E_2\,\hat{u}^n + a_{21}\,\hat{N}_1,
+  & a &= \ifftn[\hat{a}], \nonumber\\
+  \hat{N}_2 &= \fftn\!\bigl[N(a)\bigr], \nonumber\\
+  \hat{b}   &= E_2\,\hat{u}^n + a_{21}\,\hat{N}_2,
+  & b &= \ifftn[\hat{b}], \nonumber\\
+  \hat{N}_3 &= \fftn\!\bigl[N(b)\bigr], \nonumber\\
+  \hat{c}   &= E_2\,\hat{a} + a_{21}\,(2\hat{N}_3 - \hat{N}_1),
+  & c &= \ifftn[\hat{c}], \nonumber\\
+  \hat{N}_4 &= \fftn\!\bigl[N(c)\bigr], \nonumber\\
+  \hat{u}^{n+1}
+    &= E\,\hat{u}^n + b_1\,\hat{N}_1 + b_2\,(\hat{N}_2 + \hat{N}_3) + b_4\,\hat{N}_4.
+\label{eq:etdrk4-step}
+\end{align}
+
+This is applied \emph{independently} to each of the three fields
+$(\hat\rho, \hat{p}_x, \hat{p}_y)$ with their respective
+$\hat{L}$ operators, though they share the same nonlinear RHS
+evaluation (since the fields are coupled).
+
+\subsection{Physical Projections}
+\label{sec:projections}
+
+After each time step the following are applied:
+\begin{enumerate}[nosep]
+  \item \textbf{Non-negativity}: $\rho \leftarrow \max(\rho, 0)$.
+  \item \textbf{Mass conservation}: $\rho \leftarrow \rho \cdot
+    M_0 / M(\rho)$, where $M(\rho) = \sum_{j,k} \rho_{j,k}$ and
+    $M_0 = M(\rho_0)$.
+\end{enumerate}
+After projection the Fourier coefficients are recomputed:
+$\hat\rho \leftarrow \fftn[\rho]$.
+
+\subsection{Divergence Detection}
+\label{sec:divergence}
+
+If at any step $\max|\rho| > 10^{10}$ or $\rho$ contains NaN, the
+integrator \emph{freezes} the trajectory at its last valid state and
+reports the divergence step.
+
+% ═════════════════════════════════════════════════════════════════
+\newpage
+% ╔═══════════════════════════════════════════════════════════════╗
+% ║             PART II — CONCRETE NUMERICAL EXAMPLE             ║
+% ╚═══════════════════════════════════════════════════════════════╝
+
+\part{Concrete Example: \texttt{DO\_CS01\_swarm\_C01\_l05}}
+\label{part:concrete}
+
+This part instantiates every formula from Part~I with exact numbers
+from the configuration file
+\texttt{configs/systematic/DO\_CS01\_swarm\_C01\_l05.yaml}.
+
+% ────────────────────────────────────────────────────────────────
+\section{Simulation Parameters}
+\label{sec:sim-params}
+% ────────────────────────────────────────────────────────────────
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lrl}
+  \toprule
+  \textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
+  \midrule
+  $N$            & 300          & number of particles \\
+  $T_{\mathrm{sim}}$ & 20.0\,s & training simulation length \\
+  $\delta t$     & 0.04\,s      & simulation time step \\
+  $T_{\mathrm{full}}$ & 500    & raw frames ($= 20.0 / 0.04$) \\
+  $L_x = L_y$   & 25.0         & domain side length \\
+  BC             & periodic     & boundary conditions \\
+  speed $v_0$    & 3.0          & self-propulsion speed \\
+  speed mode     & \texttt{constant\_with\_forces} & \\
+  $\eta$         & 0.2          & angular noise strength \\
+  $R$            & 4.0          & alignment interaction radius \\
+  \midrule
+  \multicolumn{3}{c}{\textit{Morse potential}} \\
+  $C_r$          & 0.1          & repulsion strength \\
+  $C_a$          & 1.0          & attraction strength \\
+  $\ell_r$       & 0.5          & repulsion length scale \\
+  $\ell_a$       & 1.0          & attraction length scale \\
+  $\mu_t$        & 0.3          & force coupling ($F/v_0$ time scale) \\
+  $r_{\mathrm{cut}}$ & 5.0      & cut-off $= 5 \ell_a$ \\
+  \midrule
+  \multicolumn{3}{c}{\textit{Density field}} \\
+  $N_x = N_y$    & 64           & grid resolution \\
+  $\sigma$        & 5.0          & KDE bandwidth (grid cells) \\
+  \midrule
+  \multicolumn{3}{c}{\textit{Test simulation}} \\
+  $T_{\mathrm{test}}$ & 200.0\,s & test forecast horizon \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ────────────────────────────────────────────────────────────────
+\section{Grid Construction (Concrete)}
+\label{sec:concrete-grid}
+% ────────────────────────────────────────────────────────────────
+
+With temporal sub-sampling factor $s = 3$:
+\begin{align}
+  \Delta x &= \frac{L_x}{N_x} = \frac{25.0}{64} = 0.390625, \\
+  \Delta y &= \frac{L_y}{N_y} = \frac{25.0}{64} = 0.390625, \\
+  \Delta t &= s \cdot \delta t = 3 \times 0.04 = 0.12\,\text{s}, \\
+  T &= \Bigl\lceil\frac{500}{3}\Bigr\rceil = 167 \quad\text{frames}.
+\end{align}
+
+Each field array has shape $(167, 64, 64)$.
+
+% ────────────────────────────────────────────────────────────────
+\section{Field Construction (Concrete)}
+\label{sec:concrete-fields}
+% ────────────────────────────────────────────────────────────────
+
+\subsection{Density $\rho$}
+
+For each of the 167 sub-sampled frames, the $N = 300$ particle
+positions are binned into a $64 \times 64$ histogram.  Each bin has
+area $\Delta x \cdot \Delta y = 0.3906^{2} = 0.1526$.  The histogram
+is then smoothed with a Gaussian kernel of $\sigma = 5.0$ grid cells
+($= 5.0 \times 0.3906 = 1.953$ physical units) using periodic wrapping.
+
+\subsection{Polarisation $p_x, p_y$}
+
+Identical procedure but with velocity weights.  At frame $t_n$, the
+$x$-histogram weights are $v_{i,x}(t_n)$ and similarly for $y$.
+The same $\sigma = 5.0$ smoothing is applied.
+
+\subsection{Morse Potential $\Phi$}
+
+\paragraph{Kernel.}
+Centred offsets: $\xi_j = \fftfreq(64, 1) \times 25.0$ giving 64
+values in $[-12.5, 12.5)$.  Similarly for $\eta_k$.  The distance
+array $R_{j,k} = \sqrt{\xi_j^{2} + \eta_k^{2}}$ is of shape
+$(64, 64)$.  The kernel values are:
+\begin{equation}
+  W_{j,k} = -0.1\, e^{-R_{j,k}/0.5} + 1.0\, e^{-R_{j,k}/1.0},
+  \qquad W_{0,0} = 0.
+\end{equation}
+
+\paragraph{Convolution.}
+For each of the 167 frames:
+\begin{equation}
+  \Phi^{(n)} = \mathcal{F}^{-1}\!\bigl[\hat{W} \cdot \hat{\rho}^{(n)}\bigr]
+  \times 0.390625^{2}
+  = \mathcal{F}^{-1}\!\bigl[\hat{W} \cdot \hat{\rho}^{(n)}\bigr]
+  \times 0.15259.
+\end{equation}
+This produces $\Phi$ of shape $(167, 64, 64)$.
+
+% ────────────────────────────────────────────────────────────────
+\section{Candidate Library (Concrete)}
+\label{sec:concrete-library}
+% ────────────────────────────────────────────────────────────────
+
+Using \texttt{build\_default\_library(morse=True, rich=False)}, the
+15 candidate terms are exactly as in the table of
+Section~\ref{sec:library}.
+
+For each of the 5 $\rho$-equation candidates, the evaluator returns a
+$(167, 64, 64)$ array.  For example:
+\begin{itemize}[nosep]
+  \item $\Theta_1 = \divop\vp$: computed as
+    $(\partial_x p_x + \partial_y p_y)$ via FD central differences,
+    where $\partial_x p_x = (p_{x}^{j+1,k} - p_{x}^{j-1,k})/(2\cdot 0.3906)$.
+  \item $\Theta_3 = \divop(\rho\grad\Phi)$: first compute
+    $\partial_x\Phi$ and $\partial_y\Phi$ via FD, then form
+    $\rho\,\partial_x\Phi$ and $\rho\,\partial_y\Phi$, then take
+    their divergence.
+\end{itemize}
+
+Similarly for the momentum equations; e.g.\
+$\Xi_2 = |\vp|^{2}\,p_x = (p_x^{2} + p_y^{2})\,p_x$ is a pointwise
+product.
+
+% ────────────────────────────────────────────────────────────────
+\section{Test Functions (Concrete)}
+\label{sec:concrete-test}
+% ────────────────────────────────────────────────────────────────
+
+With polynomial exponents $\mathbf{p} = (2, 2, 2)$ the bump functions
+are quartic:
+\begin{equation}
+  \phi_i(s)
+  = \begin{cases}
+      \bigl(1 - s^{2}/(\ell_i\Delta_i)^{2}\bigr)^{2}
+      & \text{if } |s| \le \ell_i \Delta_i, \\
+      0 & \text{otherwise.}
+    \end{cases}
+\end{equation}
+
+\paragraph{Example.}
+For a candidate scale $\bm\ell = (4, 4, 4)$:
+\begin{itemize}[nosep]
+  \item $\phi_t$: support $= 2 \times 4 + 1 = 9$ points at spacing
+    $\Delta t = 0.12$\,s, physical half-width $= 4 \times 0.12 = 0.48$\,s.
+  \item $\phi_x$: support $= 9$ points at spacing $\Delta x = 0.3906$,
+    physical half-width $= 4 \times 0.3906 = 1.5625$.
+  \item $\phi_y$: same as $\phi_x$.
+\end{itemize}
+The full 3-D test-function kernel $\psi$ has shape $(9, 9, 9)$ with
+$9^{3} = 729$ entries.
+
+The time-derivative kernel $\psi_t$ is computed by:
+(i) differentiating $\phi_t$ via FD on its 9-point lattice; (ii)
+forming the outer product $\phi_t' \otimes \phi_x \otimes \phi_y$.
+
+% ────────────────────────────────────────────────────────────────
+\section{Weak System Assembly (Concrete)}
+\label{sec:concrete-weak}
+% ────────────────────────────────────────────────────────────────
+
+\subsection{Query Points}
+With $\bm\ell = (4,4,4)$ and stride $(s_t, s_x, s_y) = (2, 2, 2)$:
+\begin{align}
+  \text{time margin } m_t &= \ell_t = 4, \nonumber\\
+  \text{valid time range} &: t \in \{4, 6, 8, \dots, 162\}
+    \;\Rightarrow\;
+    \bigl\lfloor\tfrac{167 - 2\times 4}{2}\bigr\rfloor = 79 \text{ time points},
+    \nonumber\\
+  \text{spatial points} &: x \in \{0, 2, 4, \dots, 62\} \;\Rightarrow\; 32 \text{ per axis},
+    \nonumber\\
+  K_{\mathrm{traj}} &= 79 \times 32 \times 32 = 80{,}896 \text{ query points per trajectory}.
+\end{align}
+
+With $N_{\mathrm{train}} = 30$ trajectories (randomly selected with
+seed 42 from $\sim$168 total):
+\begin{equation}
+  K = 30 \times 80{,}896 = 2{,}426{,}880 \text{ total rows.}
+\end{equation}
+
+\subsection{System Dimensions}
+For the $\rho$-equation with $M_\rho = 5$ candidates:
+\begin{equation}
+  \underbrace{\vb}_{\R^{2{,}426{,}880}}
+  = \underbrace{\vG}_{\R^{2{,}426{,}880 \times 5}}
+  \;\underbrace{\vw}_{\R^{5}}.
+\end{equation}
+
+Each column of $\vG$ is obtained by:
+\begin{enumerate}[nosep]
+  \item Evaluate term field: e.g.\
+    $\Theta_1 = \divop\vp \in \R^{167 \times 64 \times 64}$.
+  \item Convolve with $\psi$ (identity kernel, shape
+    $(9, 9, 9)$): circular in space, zero-padded in time to
+    $167 + 9 - 1 = 175$, then crop.  Result: $(167, 64, 64)$.
+  \item Extract at query points: $G_{q,1} = (\psi * \Theta_1)[t_q, x_q, y_q]$.
+\end{enumerate}
+
+The LHS $b_q = (\psi_t * \rho)[t_q, x_q, y_q]$.
+
+\subsection{Convolution Details}
+
+For the spatial axes (periodic):
+\begin{itemize}[nosep]
+  \item FFT length $= 64$ (same as data, circular convolution).
+  \item After IFFT, roll by $-4$ to re-centre.
+\end{itemize}
+
+For the time axis (non-periodic):
+\begin{itemize}[nosep]
+  \item FFT length $= 167 + 9 - 1 = 175$.
+  \item After IFFT, crop $[4 : 4 + 167) = [4 : 171)$.
+\end{itemize}
+
+The full convolution uses \texttt{np.fft.rfftn} with
+$s = (175, 64, 64)$ for efficiency.
+
+% ────────────────────────────────────────────────────────────────
+\section{Sparse Regression (Concrete)}
+\label{sec:concrete-regression}
+% ────────────────────────────────────────────────────────────────
+
+\subsection{$\hat\lambda$ Grid}
+\begin{equation}
+  \Lambda = \texttt{np.logspace}(-5, 2, 60)
+  = \{10^{-5}, 10^{-4.881}, \dots, 10^{1.881}, 10^{2}\},
+  \quad |\Lambda| = 60.
+\end{equation}
+
+\subsection{Preconditioning}
+For the $\rho$-equation: $\tilde{G}_{:,m} = G_{:,m} / \norm{G_{:,m}}_2$
+for $m = 1, \dots, 5$.  Since the column $\divop\vp$ may have a very
+different magnitude from $\lap(\rho^3)$, this normalisation is
+essential for fair thresholding.
+
+\subsection{MSTLS Execution}
+For each $\hat\lambda \in \Lambda$:
+\begin{enumerate}[nosep]
+  \item Begin with $\mathcal{A} = \{1,2,3,4,5\}$.
+  \item Solve $\tilde{\vG}_{:,\mathcal{A}}\tilde{\vw} = \vb$ via SVD.
+  \item Apply criterion~\eqref{eq:dom-balance}: e.g.\ with
+    $\hat\lambda = 0.01$, a term with relative contribution $0.002$
+    is pruned ($0.002 < 0.01$).
+  \item Iterate up to 25 times until $\mathcal{A}$ stabilises.
+  \item Record normalised loss
+    $L = \norm{\vb - \tilde{\vG}\tilde{\vw}}_2 / R_{\mathrm{LS}}$.
+\end{enumerate}
+Select $\hat\lambda^{*}$ with smallest $L$; break ties by sparsity.
+
+\subsection{Un-Scaling and Output}
+For each active term $m$:
+$w_m^{\mathrm{phys}} = \tilde{w}_m / \sigma_m$.
+The resulting model for the $\rho$-equation might look like:
+\begin{equation}
+  \partial_t\rho \approx
+  c_1\,\divop\vp + c_2\,\lap\rho + c_3\,\divop(\rho\grad\Phi),
+\end{equation}
+with $c_4 = c_5 = 0$ (pruned by MSTLS).  The exact coefficients
+depend on the data; $R^{2}_{\mathrm{weak}}$ typically exceeds 0.9 for
+well-resolved fields.
+
+% ────────────────────────────────────────────────────────────────
+\section{Model Selection Over $\ell$ (Concrete)}
+\label{sec:concrete-selection}
+% ────────────────────────────────────────────────────────────────
+
+With $n_\ell = 12$ candidate scales logarithmically spaced:
+\begin{align}
+  \ell_t &\in \{2, 3, 4, 5, 7, 9, 12, 15, 20, 26, 33, 41\}, \\
+  \ell_x = \ell_y &\in \{2, 3, 4, 5, 6, 7, 8, 10, 11, 13, 14, 16\}.
+\end{align}
+(Exact values are from \texttt{default\_ell\_grid(167, 64, 64, n\_points=12)},
+which uses $\lfloor T/4 \rfloor = 41$, $\lfloor N_x/4 \rfloor = 16$.)
+
+For each $\bm\ell$, we run \texttt{discover\_multifield} (all 3
+equations) and compute the score~\eqref{eq:multifield-score}.
+The $\bm\ell^{*}$ with the highest score is selected.
+
+% ────────────────────────────────────────────────────────────────
+\section{Bootstrap UQ (Concrete)}
+\label{sec:concrete-bootstrap}
+% ────────────────────────────────────────────────────────────────
+
+At the best $\bm\ell^{*}$, $B = 50$ bootstrap replicates are run with
+\texttt{seed=42}.  Each replicate draws 30 trajectories with
+replacement and fits all 3 equations.  This produces:
+\begin{itemize}[nosep]
+  \item $50 \times 5$ coefficient matrices for each equation.
+  \item Per-term mean, standard deviation, and inclusion probability.
+  \item 95\% confidence intervals ($\alpha = 0.05$).
+\end{itemize}
+
+% ────────────────────────────────────────────────────────────────
+\section{Forecasting (Concrete)}
+\label{sec:concrete-forecast}
+% ────────────────────────────────────────────────────────────────
+
+\subsection{Test Initial Condition}
+The test simulation uses a different initial condition (Gaussian blob
+at $(12.5, 12.5)$ with variance 2.5) and runs for
+$T_{\mathrm{test}} = 200$\,s.  With $\Delta t = 0.12$\,s:
+\begin{equation}
+  n_{\mathrm{steps}} = \frac{T_{\mathrm{test}}}{\Delta t}
+  = \frac{200}{0.12} \approx 1667 \text{ steps}.
+\end{equation}
+The output is $(\rho, p_x, p_y)$ arrays of shape
+$(1668, 64, 64)$ (including the initial condition).
+
+\subsection{Integrator Selection}
+If any equation has an active $\lap\rho$, $\lap p_x$, or $\lap p_y$
+term (very likely for a Vicsek--Morse system), the \texttt{auto}
+method selects ETDRK4.
+
+\subsection{ETDRK4 Setup}
+\label{sec:concrete-etdrk4}
+
+The wavenumber array is
+$K^{2}_{j,k} = (k_x)_j^{2} + (k_y)_k^{2}$ with
+\begin{equation}
+  (k_x)_j = \frac{2\pi}{25.0} \times
+  \fftfreq(64, 1)_j \times 64
+  = \frac{2\pi \cdot j'}{25.0},
+\end{equation}
+where $j' = \fftfreq(64, 0.390625)_j$, giving wavenumbers from
+$0$ to $\pm 2\pi \times 31/25 \approx \pm 7.79\,\text{rad/unit}$.
+
+\paragraph{Coefficient computation.}
+Suppose the $\rho$-equation has $c_2\,\lap\rho$ active with
+coefficient $c_2$.  Then:
+\begin{equation}
+  \hat{L}_{\rho}(j,k) = -c_2 \cdot K^{2}_{j,k}.
+\end{equation}
+The $z$-parameter at step size $h = 0.12$ is
+$z_{j,k} = -c_2 \, K^{2}_{j,k} \times 0.12$.
+
+The contour-integral $\varphi$-functions~\eqref{eq:contour-quad}
+are pre-computed once as $(64, 64)$ complex arrays, giving all ETDRK4
+coefficient arrays $E$, $E_2$, $a_{21}$, $b_1$, $b_2$, $b_3$, $b_4$
+of shape $(64, 64)$ for each equation.
+
+\paragraph{Time-stepping loop.}
+For 1667 steps:
+\begin{enumerate}[nosep]
+  \item Evaluate nonlinear RHS for all 3 fields (excluding terms
+    absorbed into $\hat{L}$).  This involves recomputing the Morse
+    potential $\Phi$ from the current $\rho$ at each step if the
+    Morse term is active.
+  \item Perform 4 stages of~\eqref{eq:etdrk4-step} in Fourier space.
+  \item Apply physical projections: $\rho \ge 0$, mass conservation.
+  \item Update Fourier coefficients.
+  \item Check divergence.
+\end{enumerate}
+
+\subsection{Evaluation}
+
+The forecast is compared against the ground-truth test simulation via:
+\begin{align}
+  R^{2}(t) &= 1 - \frac{\sum_{j,k}(\rho^{\mathrm{true}}_{j,k}(t) - \rho^{\mathrm{pred}}_{j,k}(t))^{2}}
+    {\sum_{j,k}(\rho^{\mathrm{true}}_{j,k}(t) - \bar\rho^{\mathrm{true}}(t))^{2}},
+\end{align}
+aggregated as $\bar{R}^{2} = T^{-1}\sum_t R^{2}(t)$, plus mass drift
+$\delta M(t) = (M_{\mathrm{pred}}(t) - M_0) / M_0$.
+
+% ═════════════════════════════════════════════════════════════════
+\newpage
+\appendix
+
+% ─────────────────────────────────────────────────────────────────
+\section{Pseudocode: FFT Convolution with Mixed Periodicity}
+\label{app:conv3d}
+% ─────────────────────────────────────────────────────────────────
+
+\begin{algorithm}[H]
+\caption{\texttt{fft\_convolve3d\_same} — 3-D convolution with mixed BCs}
+\label{alg:conv3d}
+\SetKwInOut{Input}{Input}
+\SetKwInOut{Output}{Output}
+\Input{$D \in \R^{T \times N_y \times N_x}$,
+  $K \in \R^{k_t \times k_y \times k_x}$,
+  periodic $= (p_t, p_y, p_x)$}
+\Output{$R \in \R^{T \times N_y \times N_x}$}
+\BlankLine
+centre $\gets (k_t // 2,\; k_y // 2,\; k_x // 2)$\;
+\For{axis $a \in \{0, 1, 2\}$}{
+  \eIf{\textnormal{periodic}$[a]$}{
+    $s[a] \gets D.\text{shape}[a]$ \tcp{circular}
+  }{
+    $s[a] \gets D.\text{shape}[a] + K.\text{shape}[a] - 1$ \tcp{linear}
+  }
+}
+$\hat{D} \gets \texttt{rfftn}(D, s)$\;
+$\hat{K} \gets \texttt{rfftn}(K, s)$\;
+$\text{raw} \gets \texttt{irfftn}(\hat{D} \cdot \hat{K}, s)$\;
+\For{axis $a \in \{0, 1, 2\}$}{
+  \eIf{\textnormal{periodic}$[a]$}{
+    $\text{raw} \gets \texttt{roll}(\text{raw}, -\text{centre}[a], \text{axis}=a)$\;
+  }{
+    $\text{raw} \gets \text{raw}[\text{centre}[a] : \text{centre}[a] + D.\text{shape}[a]]$ along axis $a$\;
+  }
+}
+\Return raw\;
+\end{algorithm}
+
+% ─────────────────────────────────────────────────────────────────
+\section{Complete Term Evaluator Reference}
+\label{app:evaluators}
+% ─────────────────────────────────────────────────────────────────
+
+The table below lists each multi-field library term's evaluator in
+terms of \texttt{FieldData} methods.  All evaluators return arrays of
+shape $(T, N_y, N_x)$.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{longtable}{lll}
+  \toprule
+  \textbf{Name} & \textbf{Evaluator Call} & \textbf{Category} \\
+  \midrule
+  \endhead
+  \texttt{div\_p}         & \texttt{fd.div\_p()}           & core continuity \\
+  \texttt{lap\_rho}       & \texttt{fd.lap\_rho()}         & core diffusion \\
+  \texttt{div\_rho\_gradPhi} & \texttt{fd.div\_rho\_gradPhi()} & Morse aggregation \\
+  \texttt{lap\_rho2}      & \texttt{fd.lap\_rho2()}        & nonlinear diffusion \\
+  \texttt{lap\_rho3}      & \texttt{fd.lap\_rho3()}        & nonlinear diffusion \\
+  \texttt{lap\_p\_sq}     & \texttt{fd.lap\_p\_sq()}       & coupling (rich) \\
+  \midrule
+  \texttt{px}             & \texttt{fd.px}                 & linear growth/decay \\
+  \texttt{p\_sq\_px}      & \texttt{fd.p\_sq() * fd.px}    & saturation \\
+  \texttt{dx\_rho}        & \texttt{fd.dx\_rho()}          & pressure gradient \\
+  \texttt{lap\_px}        & \texttt{fd.lap\_px()}          & viscosity \\
+  \texttt{rho\_dx\_Phi}   & \texttt{fd.rho\_grad\_Phi\_x()}& Morse force \\
+  \texttt{p\_dot\_grad\_px} & \texttt{fd.p\_dot\_grad\_px()} & self-advection (rich) \\
+  \texttt{bilap\_px}      & \texttt{fd.bilap\_px()}        & hyper-viscosity (rich) \\
+  \texttt{dx\_rho2}       & \texttt{fd.dx\_rho2()}         & NL pressure (rich) \\
+  \midrule
+  \texttt{py}             & \texttt{fd.py}                 & linear growth/decay \\
+  \texttt{p\_sq\_py}      & \texttt{fd.p\_sq() * fd.py}    & saturation \\
+  \texttt{dy\_rho}        & \texttt{fd.dy\_rho()}          & pressure gradient \\
+  \texttt{lap\_py}        & \texttt{fd.lap\_py()}          & viscosity \\
+  \texttt{rho\_dy\_Phi}   & \texttt{fd.rho\_grad\_Phi\_y()}& Morse force \\
+  \texttt{p\_dot\_grad\_py} & \texttt{fd.p\_dot\_grad\_py()} & self-advection (rich) \\
+  \texttt{bilap\_py}      & \texttt{fd.bilap\_py()}        & hyper-viscosity (rich) \\
+  \texttt{dy\_rho2}       & \texttt{fd.dy\_rho2()}         & NL pressure (rich) \\
+  \bottomrule
+\end{longtable}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────────
+\section{Linear Term Classification for ETDRK4}
+\label{app:linear-terms}
+% ─────────────────────────────────────────────────────────────────
+
+The set of term names treated as linear by the ETDRK4 splitting is:
+\begin{equation}
+  \mathcal{L} = \bigl\{
+    \texttt{px},\;
+    \texttt{py},\;
+    \texttt{lap\_rho},\;
+    \texttt{lap\_px},\;
+    \texttt{lap\_py},\;
+    \texttt{bilap\_px},\;
+    \texttt{bilap\_py}
+  \bigr\}.
+\end{equation}
+During forecasting, contributions from $m \in \mathcal{L}$ are
+removed from the explicit nonlinear evaluation and handled exactly
+in Fourier space via \eqref{eq:etdrk4-step}.
+
+% ─────────────────────────────────────────────────────────────────
+\section{Software Architecture Map}
+\label{app:modules}
+% ─────────────────────────────────────────────────────────────────
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lp{8cm}}
+  \toprule
+  \textbf{Module} & \textbf{Responsibility} \\
+  \midrule
+  \texttt{grid.py}           & \texttt{GridSpec} dataclass ($\Delta t$, $\Delta x$, $\Delta y$, periodicity) \\
+  \texttt{fields.py}         & \texttt{FieldData}, KDE, Morse potential, FD/spectral derivatives \\
+  \texttt{test\_functions.py} & Separable bump $\psi$ and all its derivatives \\
+  \texttt{utils.py}          & 1-D finite-difference stencils \\
+  \texttt{operators.py}      & Spectral derivative utilities (standalone, single-equation) \\
+  \texttt{system.py}         & Weak system builder $\vb = \vG\vw$ (scalar), FFT convolution \\
+  \texttt{library.py}        & Composable (op, feature) library builder (scalar) \\
+  \texttt{regression.py}     & Column preconditioning, MSTLS algorithm \\
+  \texttt{fit.py}            & High-level fit orchestration: precondition $\to$ MSTLS $\to$ un-scale \\
+  \texttt{model.py}          & \texttt{WSINDyModel} container (coefficients, active mask, diagnostics) \\
+  \texttt{metrics.py}        & $R^{2}$, relative $\ell_2$, sparsity metrics \\
+  \texttt{select.py}         & Model selection sweep over $\bm\ell$ (scalar), composite score, Pareto \\
+  \texttt{multifield.py}     & \texttt{LibraryTerm}, 3-equation discovery, model selection, bootstrap, forecast \\
+  \texttt{integrators.py}    & RK4 and ETDRK4 (scalar) \\
+  \texttt{forecast.py}       & High-level scalar forecast with auto-selection \\
+  \texttt{rhs.py}            & Strong-form RHS evaluation (scalar) via spectral derivatives \\
+  \texttt{eval.py}           & Rollout evaluation: per-time $R^{2}$, mass drift \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ═════════════════════════════════════════════════════════════════
+\section*{References}
+\begin{enumerate}[label={[\arabic*]}, nosep]
+  \item D.~A.~Messenger and D.~M.~Bortz.
+    Weak SINDy: Galerkin-based data-driven model selection.
+    \textit{Multiscale Modeling \& Simulation}, 19(3):1474--1497, 2021.
+  \item D.~A.~Messenger and D.~M.~Bortz.
+    Weak SINDy for partial differential equations.
+    \textit{Journal of Computational Physics}, 443:110525, 2021.
+  \item S.~M.~Cox and P.~C.~Matthews.
+    Exponential time differencing for stiff systems.
+    \textit{J.\ Comput.\ Phys.}, 176(2):430--455, 2002.
+  \item A.-K.~Kassam and L.~N.~Trefethen.
+    Fourth-order time-stepping for stiff PDEs.
+    \textit{SIAM J.\ Sci.\ Comput.}, 26(4):1214--1233, 2005.
+  \item D.~B.~Minor, D.~A.~Messenger, and D.~M.~Bortz.
+    Dominant balance in weak SINDy.
+    arXiv:2501.xxxxx, 2025.
+  \item T.~Vicsek, A.~Czir\'{o}k, E.~Ben-Jacob, I.~Cohen, and O.~Shochet.
+    Novel type of phase transition in a system of self-driven particles.
+    \textit{Physical Review Letters}, 75(6):1226, 1995.
+  \item R.~C.~Fetecau, Y.~Huang, and T.~Kolokolnikov.
+    Swarm dynamics and equilibria for a nonlocal aggregation model.
+    \textit{Nonlinearity}, 24(10):2681, 2011.
+\end{enumerate}
+
+\end{document}

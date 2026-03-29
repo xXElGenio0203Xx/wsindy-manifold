@@ -1,0 +1,18 @@
+{
+  "experiment": "NDYN14_varspeed",
+  "M_used_latent": 50,
+  "T_rom": 167,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 18,
+  "n_modes": 19,
+  "all_stationary": false,
+  "w_max": 50,
+  "lag_bic": 1,
+  "lag_aic": 5,
+  "lag_hqic": 4,
+  "lag_fpe": 5,
+  "var_elapsed_s": 6.0132997035980225,
+  "total_elapsed_s": 15.488011598587036
+}

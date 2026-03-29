@@ -1,0 +1,18 @@
+{
+  "experiment": "DO_SM01_mill_C05_l01",
+  "M_used_latent": 50,
+  "T_rom": 167,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 19,
+  "n_modes": 19,
+  "all_stationary": true,
+  "w_max": 50,
+  "lag_bic": 3,
+  "lag_aic": 50,
+  "lag_hqic": 24,
+  "lag_fpe": 50,
+  "var_elapsed_s": 6.052799463272095,
+  "total_elapsed_s": 14.640799522399902
+}
