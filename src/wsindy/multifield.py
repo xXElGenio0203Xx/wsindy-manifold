@@ -39,6 +39,7 @@ from .system import fft_convolve3d_same, make_query_indices, default_t_margin
 from .test_functions import make_separable_psi
 from .fit import wsindy_fit_regression
 from .model import WSINDyModel
+from .integrators import project_density
 
 
 # Term names that are pure-linear in the target field.
@@ -1076,14 +1077,18 @@ def forecast_multifield(
         d_py = _eval_eq(result.py_model, result.py_terms, fd, exclude_linear)
         return d_rho, d_px, d_py
 
-    def _project(rho, px_cur, py_cur):
+    def _project(rho, px_cur, py_cur, step_idx):
         """Nonnegativity + mass conservation."""
-        if clip_negative_rho:
-            rho = np.maximum(rho, 0.0)
-        if mass_conserve and M0 > 0:
-            M = float(np.sum(rho))
-            if M > 0:
-                rho = rho * (M0 / M)
+        rho = project_density(
+            rho,
+            step=step_idx,
+            dt=dt,
+            method=actual_method,
+            clip_negative=clip_negative_rho,
+            mass_conserve=mass_conserve,
+            target_mass=M0,
+            context="WSINDy multifield forecast",
+        )
         return rho, px_cur, py_cur
 
     # ── RK4 loop ────────────────────────────────────────────────
@@ -1117,7 +1122,7 @@ def forecast_multifield(
             px_cur = px_cur + (dt / 6) * (k1x + 2 * k2x + 2 * k3x + k4x)
             py_cur = py_cur + (dt / 6) * (k1y + 2 * k2y + 2 * k3y + k4y)
 
-            rho, px_cur, py_cur = _project(rho, px_cur, py_cur)
+            rho, px_cur, py_cur = _project(rho, px_cur, py_cur, n + 1)
 
             if np.max(np.abs(rho)) > 1e10 or np.any(np.isnan(rho)):
                 print(f"    WARNING: RK4 diverged at step {n+1}/{n_steps}")
@@ -1224,7 +1229,7 @@ def forecast_multifield(
             px_cur = np.real(np.fft.ifft2(px_hat))
             py_cur = np.real(np.fft.ifft2(py_hat))
 
-            rho, px_cur, py_cur = _project(rho, px_cur, py_cur)
+            rho, px_cur, py_cur = _project(rho, px_cur, py_cur, n + 1)
 
             # After projection, update Fourier coefficients
             rho_hat = np.fft.fft2(rho)

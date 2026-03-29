@@ -13,8 +13,9 @@ with *ℓ_i* an integer half-width (in grid cells) and *p_i* the polynomial
 degree controlling smoothness.
 
 We also provide the required partial-derivative arrays (ψ_t, ψ_x, ψ_y,
-ψ_xx, ψ_yy) computed analytically via the product rule + 1-D finite
-differences on the support lattice.
+ψ_xx, ψ_yy). The 1-D bump functions are defined analytically, while the
+sampled derivative arrays are evaluated numerically on the support lattice
+via 1-D finite differences and then assembled by separable outer products.
 
 All returned arrays have axis order **(t, x, y)** — time first — matching
 the ``(T, nx, ny)`` convention assumed by the pipeline.

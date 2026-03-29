@@ -17,6 +17,10 @@ Composite (Part 8) terms use slash-delimited operators, e.g.
 ``"lap/I:u2"`` means :math:`\\Delta(u^2)`, and ``"dx/dx+dy/dy:u2"`` means
 :math:`\\partial_x(u^2_x) + \\partial_y(u^2_y) = \\nabla\\cdot(u^2\\nabla u)`.
 These are parsed recursively.
+
+Multi-field WSINDy also uses opaque symbolic term names such as ``"div_p"``
+or ``"rho_dx_Phi"``. Those are rendered via dedicated lookup tables instead of
+the scalar ``"op:feature"`` parser.
 """
 
 from __future__ import annotations
@@ -69,6 +73,84 @@ _FEAT_TEXT: Dict[str, str] = {
     "u3": "u^3",
 }
 
+# Multi-field WSINDy term names do not follow the scalar "op:feature" schema.
+# Keep these in one place so future multifield exports stay robust even if the
+# symbolic names evolve independently from the scalar library encoder.
+_OPAQUE_TERM_LATEX: Dict[str, str] = {
+    "div_p": r"\nabla\cdot \mathbf{p}",
+    "lap_rho": r"\Delta \rho",
+    "div_rho_gradPhi": r"\nabla\cdot(\rho\nabla\Phi)",
+    "lap_rho2": r"\Delta(\rho^2)",
+    "lap_rho3": r"\Delta(\rho^3)",
+    "lap_p_sq": r"\Delta(|\mathbf{p}|^2)",
+    "px": r"p_x",
+    "py": r"p_y",
+    "p_sq_px": r"|\mathbf{p}|^2 p_x",
+    "p_sq_py": r"|\mathbf{p}|^2 p_y",
+    "dx_rho": r"\partial_x \rho",
+    "dy_rho": r"\partial_y \rho",
+    "dx_rho2": r"\partial_x(\rho^2)",
+    "dy_rho2": r"\partial_y(\rho^2)",
+    "lap_px": r"\Delta p_x",
+    "lap_py": r"\Delta p_y",
+    "bilap_px": r"\Delta^2 p_x",
+    "bilap_py": r"\Delta^2 p_y",
+    "rho_dx_Phi": r"\rho\,\partial_x\Phi",
+    "rho_dy_Phi": r"\rho\,\partial_y\Phi",
+    "p_dot_grad_px": r"(\mathbf{p}\cdot\nabla)p_x",
+    "p_dot_grad_py": r"(\mathbf{p}\cdot\nabla)p_y",
+}
+
+_OPAQUE_TERM_TEXT: Dict[str, str] = {
+    "div_p": "div(p)",
+    "lap_rho": "Lap(rho)",
+    "div_rho_gradPhi": "div(rho grad(Phi))",
+    "lap_rho2": "Lap(rho^2)",
+    "lap_rho3": "Lap(rho^3)",
+    "lap_p_sq": "Lap(|p|^2)",
+    "px": "p_x",
+    "py": "p_y",
+    "p_sq_px": "|p|^2 p_x",
+    "p_sq_py": "|p|^2 p_y",
+    "dx_rho": "d_x(rho)",
+    "dy_rho": "d_y(rho)",
+    "dx_rho2": "d_x(rho^2)",
+    "dy_rho2": "d_y(rho^2)",
+    "lap_px": "Lap(p_x)",
+    "lap_py": "Lap(p_y)",
+    "bilap_px": "Bilap(p_x)",
+    "bilap_py": "Bilap(p_y)",
+    "rho_dx_Phi": "rho d_x(Phi)",
+    "rho_dy_Phi": "rho d_y(Phi)",
+    "p_dot_grad_px": "p_dot_grad(p_x)",
+    "p_dot_grad_py": "p_dot_grad(p_y)",
+}
+
+_OPAQUE_TERM_CATEGORY: Dict[str, str] = {
+    "div_p": "advection",
+    "lap_rho": "diffusion",
+    "div_rho_gradPhi": "other",
+    "lap_rho2": "diffusion",
+    "lap_rho3": "diffusion",
+    "lap_p_sq": "diffusion",
+    "px": "reaction",
+    "py": "reaction",
+    "p_sq_px": "reaction",
+    "p_sq_py": "reaction",
+    "dx_rho": "advection",
+    "dy_rho": "advection",
+    "dx_rho2": "advection",
+    "dy_rho2": "advection",
+    "lap_px": "diffusion",
+    "lap_py": "diffusion",
+    "bilap_px": "diffusion",
+    "bilap_py": "diffusion",
+    "rho_dx_Phi": "other",
+    "rho_dy_Phi": "other",
+    "p_dot_grad_px": "advection",
+    "p_dot_grad_py": "advection",
+}
+
 # ── Physical grouping categories ───────────────────────────────────
 
 _ADVECTION_OPS = {"dx", "dy"}
@@ -93,6 +175,8 @@ def _classify_op(op: str) -> str:
 
 def _render_term_latex(op: str, feat: str) -> str:
     """Render one ``op:feat`` pair as LaTeX math (no sign/coeff)."""
+    if op == "opaque":
+        return _OPAQUE_TERM_LATEX.get(feat, feat)
     feat_str = _FEAT_LATEX.get(feat, feat)
     if "/" in op or "+" in op:
         # composite operator from Part 8 library
@@ -118,6 +202,8 @@ def _render_composite_latex(op_chain: str, feat_str: str) -> str:
 
 def _render_term_text(op: str, feat: str) -> str:
     """Render one ``op:feat`` pair as plain text (no sign/coeff)."""
+    if op == "opaque":
+        return _OPAQUE_TERM_TEXT.get(feat, feat)
     feat_str = _FEAT_TEXT.get(feat, feat)
     if "/" in op or "+" in op:
         return _render_composite_text(op, feat_str)
@@ -140,11 +226,21 @@ def _render_composite_text(op_chain: str, feat_str: str) -> str:
 
 
 def _parse_term(term: str) -> Tuple[str, str]:
-    """Parse ``'op:feature'`` handling composite ops (colon only in last segment)."""
+    """Parse either ``'op:feature'`` or an opaque symbolic term name."""
+    if not term:
+        raise ValueError("Cannot parse empty term")
     idx = term.rfind(":")
     if idx < 0:
-        raise ValueError(f"Cannot parse term '{term}'; expected 'op:feature'")
+        return "opaque", term
     return term[:idx], term[idx + 1:]
+
+
+def _classify_term(op: str, feat: str) -> str:
+    """Classify parsed terms, including multifield opaque symbols."""
+    if op == "opaque":
+        return _OPAQUE_TERM_CATEGORY.get(feat, "other")
+    base_op = op.split("/")[0].split("+")[0]
+    return _classify_op(base_op)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -290,8 +386,7 @@ def group_terms(
         }
 
         # Source is a special case of reaction
-        base_op = op.split("/")[0].split("+")[0]  # first token
-        cat = _classify_op(base_op)
+        cat = _classify_term(op, feat)
         if cat == "reaction" and feat == "1":
             groups["source"].append(entry)
         elif cat == "reaction":

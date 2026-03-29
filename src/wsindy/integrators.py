@@ -25,6 +25,55 @@ from .rhs import (
 )
 
 
+class DensityCollapseError(RuntimeError):
+    """Raised when nonnegativity projection wipes out the density field."""
+
+
+def project_density(
+    rho: np.ndarray,
+    *,
+    step: int,
+    dt: float,
+    method: str,
+    clip_negative: bool,
+    mass_conserve: bool = False,
+    target_mass: float | None = None,
+    context: str = "WSINDy forecast",
+    zero_tol: float = 1e-15,
+) -> np.ndarray:
+    """Apply positivity/mass projection and fail loudly on zero-mass collapse."""
+    rho_projected = rho
+    mass_before = float(np.sum(rho_projected))
+    min_before = float(np.min(rho_projected))
+    max_before = float(np.max(rho_projected))
+    neg_fraction = float(np.mean(rho_projected < 0.0))
+
+    if clip_negative:
+        rho_projected = np.maximum(rho_projected, 0.0)
+
+    mass_after_clip = float(np.sum(rho_projected))
+    if clip_negative and mass_after_clip <= zero_tol:
+        time_now = step * dt
+        raise DensityCollapseError(
+            f"{context} collapsed at step {step} (t={time_now:.6g}) during {method}: "
+            f"pre_clip_mass={mass_before:.6e}, post_clip_mass={mass_after_clip:.6e}, "
+            f"neg_fraction={neg_fraction:.3f}, min_pre_clip={min_before:.6e}, "
+            f"max_pre_clip={max_before:.6e}"
+        )
+
+    if mass_conserve and target_mass is not None and target_mass > 0.0:
+        if mass_after_clip <= zero_tol:
+            time_now = step * dt
+            raise DensityCollapseError(
+                f"{context} lost all positive mass at step {step} (t={time_now:.6g}) during {method}: "
+                f"target_mass={target_mass:.6e}, pre_clip_mass={mass_before:.6e}, "
+                f"post_clip_mass={mass_after_clip:.6e}"
+            )
+        rho_projected = rho_projected * (target_mass / mass_after_clip)
+
+    return rho_projected
+
+
 # ════════════════════════════════════════════════════════════════════
 #  Linear / nonlinear splitting
 # ════════════════════════════════════════════════════════════════════
@@ -223,8 +272,14 @@ def rk4_integrate(
     u = u0.copy()
     for k in range(n_steps):
         u = rk4_step(u, dt, rhs_fn)
-        if clip_negative:
-            u = np.clip(u, 0.0, None)
+        u = project_density(
+            u,
+            step=k + 1,
+            dt=dt,
+            method="rk4",
+            clip_negative=clip_negative,
+            context="WSINDy scalar forecast",
+        )
         traj[k + 1] = u
     return traj
 
@@ -301,8 +356,15 @@ def etdrk4_integrate(
         )
 
         u_new = np.fft.ifft2(u_hat).real
+        u_new = project_density(
+            u_new,
+            step=k + 1,
+            dt=dt,
+            method="etdrk4",
+            clip_negative=clip_negative,
+            context="WSINDy scalar forecast",
+        )
         if clip_negative:
-            u_new = np.clip(u_new, 0.0, None)
             u_hat = np.fft.fft2(u_new)
         traj[k + 1] = u_new
 

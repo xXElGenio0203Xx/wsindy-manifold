@@ -121,10 +121,16 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         rho_pred_flat = rho_pred.reshape(T, ny * nx)
         
         # ---- Compute metrics on FORECAST region only ----
-        # The saved density_pred.npz contains conditioning + forecast.
-        # Metrics must be computed only on the forecast portion to avoid
-        # inflating R² with the near-perfect conditioning window.
-        fsi = forecast_start_idx if forecast_start_idx is not None else 0
+        # Most ROM outputs save conditioning + forecast and store the forecast
+        # boundary relative to the saved array. WSINDy exports are forecast-only
+        # in practice, but some files still carry an absolute forecast_start_idx
+        # from the original simulation. Convert to a relative index after
+        # alignment so videos and forecast-only metrics slice the correct region.
+        if forecast_start_idx is not None:
+            fsi = max(0, int(forecast_start_idx) - int(true_start_idx))
+            fsi = min(fsi, T_pred)
+        else:
+            fsi = 0
         rho_true_fc = rho_true_flat[fsi:]
         rho_pred_fc = rho_pred_flat[fsi:]
         
@@ -187,7 +193,7 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
             "ic_type": meta[ic_key],
             "frame_metrics": frame_metrics,          # Full trajectory (for video)
             "frame_metrics_fc": frame_metrics_fc,     # Forecast-only (for error plots)
-            "forecast_start_idx": forecast_start_idx,
+            "forecast_start_idx": fsi,
         }
         
         all_metrics.append(summary)

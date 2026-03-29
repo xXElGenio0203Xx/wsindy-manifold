@@ -57,9 +57,12 @@ class TestTermParsing:
         assert op == "lap/I"
         assert feat == "u2"
 
-    def test_bad_term_raises(self):
+    def test_opaque_multifield_term(self):
+        assert _parse_term("div_p") == ("opaque", "div_p")
+
+    def test_empty_term_raises(self):
         with pytest.raises(ValueError):
-            _parse_term("nocolon")
+            _parse_term("")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -94,6 +97,13 @@ class TestTermRendering:
     def test_composite_text(self):
         s = _render_term_text("lap/I", "u2")
         assert "Lap" in s
+
+    def test_opaque_text(self):
+        assert _render_term_text("opaque", "div_p") == "div(p)"
+
+    def test_opaque_latex(self):
+        s = _render_term_latex("opaque", "rho_dx_Phi")
+        assert "\\partial_x" in s
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -133,6 +143,13 @@ class TestToText:
         txt = to_text(model)
         assert "Lap(u)" in txt
         assert "2.0000e+00" in txt
+
+    def test_multifield_symbolic_terms(self):
+        model = _make_model(["div_p", "lap_rho"], [-1.0, 0.25])
+        txt = to_text(model, lhs="rho_t")
+        assert "rho_t" in txt
+        assert "div(p)" in txt
+        assert "Lap(rho)" in txt
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -202,6 +219,14 @@ class TestGroupTerms:
         model = _make_model(["lap:u"], [3.14])
         groups = group_terms(model)
         assert abs(groups["diffusion"][0]["coeff"] - 3.14) < 1e-10
+
+    def test_opaque_terms_grouping(self):
+        model = _make_model(["px", "lap_px", "div_p"], [1.0, 2.0, -3.0])
+        groups = group_terms(model)
+        assert "reaction" in groups
+        assert "diffusion" in groups
+        assert "advection" in groups
+        assert groups["reaction"][0]["term"] == "px"
 
     def test_inactive_terms_excluded(self):
         model = _make_model(

@@ -109,6 +109,14 @@ def generate_mvar_lstm_comparison(mvar_metrics, lstm_metrics, mvar_ic_metrics, l
     x_pos = np.arange(len(ic_types))
     width = 0.35
     
+    # Filter to IC types present in both models' metrics
+    ic_types = [ic for ic in ic_types if ic in mvar_ic_metrics and ic in lstm_ic_metrics]
+    if not ic_types:
+        print("   ⚠ No common IC types with metrics — skipping comparison plot")
+        plt.close(fig)
+        return
+    x_pos = np.arange(len(ic_types))
+    
     mvar_r2 = [mvar_ic_metrics[ic]['mean_r2'] for ic in ic_types]
     lstm_r2 = [lstm_ic_metrics[ic]['mean_r2'] for ic in ic_types]
     
@@ -359,6 +367,7 @@ def export_oscar_insight_data(data_dir, output_dir, models_data):
             config_used.yaml          - Exact config that ran on OSCAR
             summary.json              - OSCAR pipeline summary (timing, counts, etc.)
             runtime_comparison.json   - MVAR vs LSTM timing comparison
+            export_manifest.json      - Files produced during export/recovery
             MVAR/
                 test_results.csv      - Per-test R² (lifted, latent, POD)
                 runtime_profile.json  - MVAR training/eval timing breakdown
@@ -367,12 +376,18 @@ def export_oscar_insight_data(data_dir, output_dir, models_data):
                 test_results.csv      - Per-test R² (lifted, latent, POD)
                 runtime_profile.json  - LSTM training/eval timing breakdown
                 training_log.csv      - Epoch-by-epoch loss convergence
+            WSINDy/
+                test_results.csv      - Per-test WSINDy rollout metrics
+                runtime_profile.json  - WSINDy timing/recovery metadata
+                multifield_model.json - Discovered multi-field PDE model
+                summary.json          - WSINDy-specific export summary
             test/
                 metadata.json         - Test run metadata (IC types, params)
                 index_mapping.csv     - Maps test indices to run names
                 test_XXX/
-                    metrics_summary.json - Per-test detailed metrics
-                    r2_vs_time.csv       - Time-resolved R² for this test
+                    metrics_summary*.json - Per-test detailed metrics by model
+                    r2_vs_time*.csv       - Time-resolved R² by model
+                    density_metrics*.csv  - Per-test density diagnostics by model
     """
     data_dir = Path(data_dir)
     output_dir = Path(output_dir)
@@ -387,6 +402,7 @@ def export_oscar_insight_data(data_dir, output_dir, models_data):
         "config_used.yaml",
         "summary.json",
         "runtime_comparison.json",
+        "export_manifest.json",
     ]
     for fname in root_files:
         src = data_dir / fname
@@ -398,7 +414,7 @@ def export_oscar_insight_data(data_dir, output_dir, models_data):
             skipped += 1
     
     # --- Model-level insight files ---
-    for model_name in ['MVAR', 'LSTM']:
+    for model_name in ['MVAR', 'LSTM', 'WSINDy']:
         model_src = data_dir / model_name
         model_dst = oscar_data_dir / model_name
         
@@ -410,6 +426,15 @@ def export_oscar_insight_data(data_dir, output_dir, models_data):
         model_files = {
             'MVAR': ['test_results.csv', 'runtime_profile.json', 'mvar_model.npz'],
             'LSTM': ['test_results.csv', 'runtime_profile.json', 'training_log.csv'],
+            'WSINDy': [
+                'test_results.csv',
+                'runtime_profile.json',
+                'multifield_model.json',
+                'summary.json',
+                'wsindy_model_rho.npz',
+                'wsindy_model_px.npz',
+                'wsindy_model_py.npz',
+            ],
         }
         
         for fname in model_files.get(model_name, []):
@@ -436,7 +461,7 @@ def export_oscar_insight_data(data_dir, output_dir, models_data):
                 shutil.copy2(src, dst)
                 copied += 1
         
-        # Per-test insight files (metrics + r2_vs_time only, NOT density .npz)
+        # Per-test insight files only (NOT density .npz)
         for test_run_dir in sorted(test_src.glob("test_*")):
             if test_run_dir.is_dir():
                 dst_run_dir = test_dst / test_run_dir.name
@@ -446,6 +471,12 @@ def export_oscar_insight_data(data_dir, output_dir, models_data):
                     src = test_run_dir / fname
                     dst = dst_run_dir / fname
                     if src.exists():
+                        shutil.copy2(src, dst)
+                        copied += 1
+
+                for pattern in ['metrics_summary_*.json', 'r2_vs_time_*.csv', 'density_metrics_*.csv']:
+                    for src in sorted(test_run_dir.glob(pattern)):
+                        dst = dst_run_dir / src.name
                         shutil.copy2(src, dst)
                         copied += 1
     
@@ -1330,4 +1361,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

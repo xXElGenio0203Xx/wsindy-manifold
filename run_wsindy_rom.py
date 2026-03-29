@@ -292,26 +292,36 @@ def bootstrap_from_system(
 def forecast_density(model, grid, U0, n_steps, clip_negative=True):
     """Forecast density from IC using discovered PDE. Returns (U_pred, method)."""
     lin, _ = split_linear_nonlinear(model)
-    method = "auto"
+    preferred_method = "etdrk4" if lin else "rk4"
 
     try:
         U_pred = wsindy_forecast(
             U0, model, grid, n_steps=n_steps,
-            method=method, clip_negative=clip_negative,
+            method="auto", clip_negative=clip_negative,
         )
-    except Exception:
-        # Fallback to RK4 if ETDRK4 fails
-        U_pred = wsindy_forecast(
-            U0, model, grid, n_steps=n_steps,
-            method="rk4", clip_negative=clip_negative,
-        )
-        method = "rk4"
+        method_used = preferred_method
+    except Exception as auto_exc:
+        if preferred_method != "etdrk4":
+            raise
+        print(f"  WSINDy auto forecast failed with ETDRK4: {auto_exc}")
+        print("  Retrying with RK4...")
+        try:
+            U_pred = wsindy_forecast(
+                U0, model, grid, n_steps=n_steps,
+                method="rk4", clip_negative=clip_negative,
+            )
+            method_used = "rk4"
+        except Exception as rk4_exc:
+            raise RuntimeError(
+                f"WSINDy forecast failed with both ETDRK4 and RK4. "
+                f"ETDRK4 error: {auto_exc}. RK4 error: {rk4_exc}"
+            ) from rk4_exc
 
     # Safety: check for NaN / blow-up
     if np.any(np.isnan(U_pred)) or np.max(np.abs(U_pred)) > 1e10:
         raise RuntimeError("Forecast diverged (NaN or blow-up)")
 
-    return U_pred, "etdrk4" if lin and method == "auto" else "rk4"
+    return U_pred, method_used
 
 
 def compute_r2_timeseries(rho_true, rho_pred):
@@ -818,7 +828,7 @@ def main():
             xgrid=test_data["xgrid"],
             ygrid=test_data["ygrid"],
             times=np.asarray(times_fc, dtype=np.float32),
-            forecast_start_idx=int(forecast_start * subsample),
+            forecast_start_idx=0,
         )
 
         # ── Save r2_vs_time_wsindy.csv ──

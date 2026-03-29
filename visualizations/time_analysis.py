@@ -68,6 +68,13 @@ def generate_time_resolved_analysis(
         
         if r2_file.exists():
             df = pd.read_csv(r2_file)
+            # WSINDy exports may only save reconstructed-space R². Backfill the
+            # shared columns so the generic analysis pipeline can still run.
+            if 'r2_reconstructed' in df.columns:
+                if 'r2_latent' not in df.columns:
+                    df['r2_latent'] = df['r2_reconstructed']
+                if 'r2_pod' not in df.columns:
+                    df['r2_pod'] = 1.0
             df['test_id'] = run_name
             df['ic_type'] = meta[ic_key]
             all_r2_timeseries.append(df)

@@ -34,6 +34,7 @@ import yaml
 import shutil
 import os
 import sys
+import gc
 
 # Add src to path for all modules
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -132,27 +133,32 @@ def collect_training_densities_from_memory(
     On Oscar, training sims have just been run so density.npz exists
     for ALL runs. We select a diverse subset.
     """
-    rng = np.random.default_rng(seed)
+    total_available = len(metadata)
+    if n_train is None or n_train <= 0 or n_train >= total_available:
+        selected = list(metadata)
+        print(f"    Using all {len(selected)} available training trajectories")
+    else:
+        rng = np.random.default_rng(seed)
 
-    # Group by IC distribution for stratified sampling
-    by_type = {}
-    for m in metadata:
-        ic = m.get("distribution", "unknown")
-        by_type.setdefault(ic, []).append(m)
+        # Group by IC distribution for stratified sampling
+        by_type = {}
+        for m in metadata:
+            ic = m.get("distribution", "unknown")
+            by_type.setdefault(ic, []).append(m)
 
-    types = sorted(by_type.keys())
-    per_type = max(1, n_train // len(types))
-    remainder = n_train - per_type * len(types)
+        types = sorted(by_type.keys())
+        per_type = max(1, n_train // len(types))
+        remainder = n_train - per_type * len(types)
 
-    selected = []
-    for i, ic_type in enumerate(types):
-        runs = by_type[ic_type]
-        n = per_type + (1 if i < remainder else 0)
-        n = min(n, len(runs))
-        idx = rng.choice(len(runs), size=n, replace=False)
-        for j in idx:
-            selected.append(runs[j])
-    selected = selected[:n_train]
+        selected = []
+        for i, ic_type in enumerate(types):
+            runs = by_type[ic_type]
+            n = per_type + (1 if i < remainder else 0)
+            n = min(n, len(runs))
+            idx = rng.choice(len(runs), size=n, replace=False)
+            for j in idx:
+                selected.append(runs[j])
+        selected = selected[:n_train]
 
     densities = []
     for meta in selected:
@@ -164,6 +170,33 @@ def collect_training_densities_from_memory(
         print(f"      {meta['run_name']}: {rho.shape} ({ic})")
 
     return densities, selected
+
+
+def align_eval_forecast_start(eval_config, base_config_test, rom_subsample, enabled_lags):
+    """Align forecast start so every enabled ROM model gets a full window."""
+    eval_cfg = dict(eval_config)
+    dt_rom = base_config_test["sim"]["dt"] * rom_subsample
+    requested_start_s = float(eval_cfg.get("forecast_start", base_config_test["sim"]["T"]))
+    requested_steps = int(round(requested_start_s / dt_rom))
+    max_lag = max((int(lag) for lag in enabled_lags if lag is not None), default=0)
+
+    effective_steps = max(requested_steps, max_lag)
+    effective_start_s = effective_steps * dt_rom
+
+    eval_cfg["forecast_start_requested"] = requested_start_s
+    eval_cfg["forecast_start_effective"] = effective_start_s
+    eval_cfg["forecast_start_conditioning_steps"] = effective_steps
+    eval_cfg["forecast_start_required_lag"] = max_lag
+    eval_cfg["forecast_start"] = effective_start_s
+
+    if max_lag and effective_steps > requested_steps:
+        print(
+            f"  ℹ️  forecast_start={requested_start_s}s → {effective_start_s}s "
+            f"to provide a common {effective_steps}-step conditioning window "
+            f"(max enabled lag={max_lag})"
+        )
+
+    return eval_cfg
 
 
 def build_stacked_weak_system(
@@ -383,8 +416,7 @@ def main():
     LSTM_DIR = OUTPUT_DIR / "LSTM"
     WSINDY_DIR = OUTPUT_DIR / "WSINDy"
 
-    for d in [OUTPUT_DIR, ROM_COMMON_DIR, MVAR_DIR, LSTM_DIR]:
-        d.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     if wsindy_enabled:
         WSINDY_DIR.mkdir(parents=True, exist_ok=True)
         (WSINDY_DIR / "plots").mkdir(exist_ok=True)
@@ -397,6 +429,14 @@ def main():
     models_cfg = rom_config.get("models", {})
     mvar_enabled = models_cfg.get("mvar", {}).get("enabled", True)
     lstm_enabled = models_cfg.get("lstm", {}).get("enabled", False)
+    rom_enabled = mvar_enabled or lstm_enabled
+
+    if rom_enabled:
+        ROM_COMMON_DIR.mkdir(parents=True, exist_ok=True)
+    if mvar_enabled:
+        MVAR_DIR.mkdir(parents=True, exist_ok=True)
+    if lstm_enabled:
+        LSTM_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"\n  Models:")
     print(f"    MVAR:   {'ON' if mvar_enabled else 'OFF'}")
@@ -414,6 +454,14 @@ def main():
     n_train = len(train_configs)
     print(f"  Total runs: {n_train}")
 
+    TRAIN_DIR = OUTPUT_DIR / "train"
+    pod_data = None
+    R_POD = None
+    T_rom = None
+    M = None
+    X_latent = None
+    y_trajs = None
+
     train_metadata, train_time = run_simulations_parallel(
         configs=train_configs,
         base_config=BASE_CONFIG,
@@ -425,68 +473,101 @@ def main():
     )
     print(f"  Done in {train_time/60:.1f}m")
 
-    # ================================================================
-    # STEP 2: Build POD Basis (shared)
-    # ================================================================
-    print(f"\n{sep}")
-    print("  STEP 2: Building Shared POD Basis")
-    print(f"{sep}")
+    if rom_enabled:
+        # ================================================================
+        # STEP 2: Build POD Basis (shared)
+        # ================================================================
+        print(f"\n{sep}")
+        print("  STEP 2: Building Shared POD Basis")
+        print(f"{sep}")
 
-    TRAIN_DIR = OUTPUT_DIR / "train"
-    pod_data = build_pod_basis(TRAIN_DIR, n_train, rom_config)
-    save_pod_basis(pod_data, ROM_COMMON_DIR)
+        pod_data = build_pod_basis(TRAIN_DIR, n_train, rom_config)
+        save_pod_basis(pod_data, ROM_COMMON_DIR)
 
-    R_POD = pod_data["R_POD"]
-    T_rom = pod_data["T_rom"]
-    M = pod_data["M"]
-    print(f"  Latent dim: {R_POD}, T_rom: {T_rom}")
+        R_POD = pod_data["R_POD"]
+        T_rom = pod_data["T_rom"]
+        M = pod_data["M"]
+        print(f"  Latent dim: {R_POD}, T_rom: {T_rom}")
 
-    # ================================================================
-    # STEP 3: Build Shared Latent Dataset
-    # ================================================================
-    print(f"\n{sep}")
-    print("  STEP 3: Building Latent Dataset")
-    print(f"{sep}")
+        # ================================================================
+        # STEP 3: Build Shared Latent Dataset
+        # ================================================================
+        print(f"\n{sep}")
+        print("  STEP 3: Building Latent Dataset")
+        print(f"{sep}")
 
-    X_latent = pod_data["X_latent"]
+        X_latent = pod_data["X_latent"]
 
-    latent_standardize = rom_config.get("latent_standardize", False)
-    if latent_standardize:
-        latent_mean = X_latent.mean(axis=0)
-        latent_std = X_latent.std(axis=0)
-        latent_std[latent_std < 1e-12] = 1.0
-        X_latent = (X_latent - latent_mean) / latent_std
-        pod_data["X_latent"] = X_latent
-        pod_data["latent_mean"] = latent_mean
-        pod_data["latent_std"] = latent_std
+        latent_standardize = rom_config.get("latent_standardize", False)
+        if latent_standardize:
+            latent_mean = X_latent.mean(axis=0)
+            latent_std = X_latent.std(axis=0)
+            latent_std[latent_std < 1e-12] = 1.0
+            X_latent = (X_latent - latent_mean) / latent_std
+            pod_data["X_latent"] = X_latent
+            pod_data["latent_mean"] = latent_mean
+            pod_data["latent_std"] = latent_std
+        else:
+            pod_data["latent_mean"] = None
+            pod_data["latent_std"] = None
+
+        y_trajs = []
+        for m_idx in range(M):
+            y_trajs.append(X_latent[m_idx * T_rom : (m_idx + 1) * T_rom, :])
     else:
-        pod_data["latent_mean"] = None
-        pod_data["latent_std"] = None
+        print(f"\n{sep}")
+        print("  STEP 2-3: Skipping Shared POD/Latent ROM Setup")
+        print(f"{sep}")
+        print("  No MVAR/LSTM models enabled, so WSINDy runs directly on physical fields.")
 
-    y_trajs = []
-    for m_idx in range(M):
-        y_trajs.append(X_latent[m_idx * T_rom : (m_idx + 1) * T_rom, :])
+    # Determine lag for each model independently
+    mvar_lag = models_cfg.get("mvar", {}).get("lag", 5) if mvar_enabled else None
+    lstm_lag = models_cfg.get("lstm", {}).get("lag", 20) if lstm_enabled else None
 
-    if mvar_enabled:
-        lag = models_cfg["mvar"].get("lag", 5)
-    else:
-        lag = models_cfg.get("lstm", {}).get("lag", 20)
+    # Primary lag for shared dataset (MVAR if enabled, else LSTM)
+    lag = mvar_lag if mvar_enabled else lstm_lag
 
-    X_all, Y_all = build_latent_dataset(y_trajs, lag=lag)
-    print(f"  X_all: {X_all.shape}, Y_all: {Y_all.shape}, lag={lag}")
-
+    X_all = None
+    Y_all = None
     Y_multi = None
-    X_lstm = X_all
-    Y_lstm = Y_all
-    if lstm_enabled:
-        lstm_ms_cfg = models_cfg.get("lstm", {})
-        ms_enabled = lstm_ms_cfg.get("multistep_loss", False)
-        ms_k = lstm_ms_cfg.get("multistep_k", 5)
-        if ms_enabled and ms_k > 1:
-            X_lstm, Y_multi = build_multistep_latent_dataset(y_trajs, lag=lag, k_steps=ms_k)
-            Y_lstm = Y_multi[:, 0, :]
+    X_lstm = None
+    Y_lstm = None
+    lstm_effective_lag = None
 
-    np.savez(ROM_COMMON_DIR / "latent_dataset.npz", X_all=X_all, Y_all=Y_all, lag=lag)
+    if mvar_enabled or lstm_enabled:
+        X_all, Y_all = build_latent_dataset(y_trajs, lag=lag)
+        print(f"  X_all: {X_all.shape}, Y_all: {Y_all.shape}, lag={lag}")
+
+        # Build separate LSTM dataset if LSTM lag differs from MVAR lag
+        X_lstm = X_all
+        Y_lstm = Y_all
+        lstm_effective_lag = lag  # track what lag was actually used for LSTM data
+        if lstm_enabled and mvar_enabled and lstm_lag != mvar_lag:
+            print(f"\n  Building SEPARATE LSTM dataset: MVAR lag={mvar_lag}, LSTM lag={lstm_lag}")
+            X_lstm, Y_lstm_sep = build_latent_dataset(y_trajs, lag=lstm_lag)
+            Y_lstm = Y_lstm_sep
+            lstm_effective_lag = lstm_lag
+            print(f"  X_lstm: {X_lstm.shape}, Y_lstm: {Y_lstm.shape}, lag={lstm_lag}")
+
+            # Multi-step targets for LSTM
+            lstm_ms_cfg = models_cfg.get("lstm", {})
+            ms_enabled = lstm_ms_cfg.get("multistep_loss", False)
+            ms_k = lstm_ms_cfg.get("multistep_k", 5)
+            if ms_enabled and ms_k > 1:
+                X_lstm, Y_multi = build_multistep_latent_dataset(y_trajs, lag=lstm_lag, k_steps=ms_k)
+                Y_lstm = Y_multi[:, 0, :]
+        elif lstm_enabled:
+            lstm_effective_lag = lag
+            lstm_ms_cfg = models_cfg.get("lstm", {})
+            ms_enabled = lstm_ms_cfg.get("multistep_loss", False)
+            ms_k = lstm_ms_cfg.get("multistep_k", 5)
+            if ms_enabled and ms_k > 1:
+                X_lstm, Y_multi = build_multistep_latent_dataset(y_trajs, lag=lag, k_steps=ms_k)
+                Y_lstm = Y_multi[:, 0, :]
+
+        np.savez(ROM_COMMON_DIR / "latent_dataset.npz", X_all=X_all, Y_all=Y_all, lag=lag)
+    else:
+        print("  Skipping latent dataset: no MVAR/LSTM models enabled")
 
     # ================================================================
     # STEP 4a: Train MVAR (if enabled)
@@ -529,13 +610,12 @@ def main():
                 Y_multi=Y_multi,
             )
         lstm_training_time = timer.elapsed
-        lstm_cfg_lag = lstm_config.get("lag", lag)
-        if lstm_cfg_lag != lag:
-            print(f"  ⚠️  LSTM config lag={lstm_cfg_lag} differs from training lag={lag}; using training lag={lag}")
+        print(f"  LSTM trained with effective lag={lstm_effective_lag} "
+              f"(config MVAR lag={mvar_lag}, LSTM lag={lstm_lag})")
         lstm_data = {
             "model_path": lstm_model_path,
             "val_loss": lstm_val_loss,
-            "lag": lag,  # must match actual training window, not config
+            "lag": lstm_effective_lag,  # actual lag used for training data
             "hidden_units": lstm_config["hidden_units"],
             "num_layers": lstm_config["num_layers"],
         }
@@ -575,28 +655,15 @@ def main():
 
         TEST_DIR = OUTPUT_DIR / "test"
         ROM_SUBSAMPLE = rom_config.get("subsample", 1)
-
-        # ── Align forecast start across models ──
-        # Both models must begin prediction at the SAME snapshot for fair
-        # comparison.  We compute the minimum conditioning time needed so
-        # every enabled model receives a full ground-truth window.
-        _dt  = BASE_CONFIG_TEST["sim"]["dt"]
-        _raw_forecast_start = eval_config.get("forecast_start", BASE_CONFIG["sim"]["T"])
-        _raw_T_train = int(_raw_forecast_start / _dt / ROM_SUBSAMPLE)
-
-        _max_lag = 0
-        if mvar_enabled:
-            _max_lag = max(_max_lag, mvar_data["P_LAG"])
-        if lstm_enabled:
-            _max_lag = max(_max_lag, lstm_data["lag"])
-
-        if _raw_T_train < _max_lag:
-            _aligned_T_train = _max_lag
-            _aligned_forecast_start = _aligned_T_train * _dt * ROM_SUBSAMPLE
-            print(f"  ℹ️  forecast_start={_raw_forecast_start}s → {_aligned_forecast_start}s "
-                  f"(need {_max_lag} conditioning steps for lag={_max_lag})")
-            eval_config = dict(eval_config)  # shallow copy so we don't mutate original
-            eval_config["forecast_start"] = _aligned_forecast_start
+        eval_config = align_eval_forecast_start(
+            eval_config,
+            BASE_CONFIG_TEST,
+            ROM_SUBSAMPLE,
+            [
+                mvar_data["P_LAG"] if mvar_enabled and mvar_data is not None else None,
+                lstm_data["lag"] if lstm_enabled and lstm_data is not None else None,
+            ],
+        )
 
         # ── 6a: MVAR eval ──
         if mvar_enabled:
@@ -662,6 +729,11 @@ def main():
             test_results_df.to_csv(LSTM_DIR / "test_results.csv", index=False)
             mean_r2_lstm = test_results_df["r2_reconstructed"].mean()
             print(f"  LSTM mean R²: {mean_r2_lstm:.4f}")
+
+    if rom_enabled:
+        # Free latent artifacts before WSINDy discovery to reduce peak memory.
+        del pod_data, X_latent, y_trajs, X_all, Y_all, Y_multi, X_lstm, Y_lstm
+        gc.collect()
 
     # ================================================================
     # STEP 7: WSINDy PDE DISCOVERY  (training densities still on disk!)
@@ -1016,7 +1088,11 @@ def main():
             test_meta_list = json.load(f)
 
         w_subsample = wsindy_config.get("subsample", rom_config.get("subsample", 3))
-        mvar_lag_val = rom_config.get("models", {}).get("mvar", {}).get("lag", 5)
+        forecast_start_s = eval_config.get(
+            "forecast_start_effective",
+            eval_config.get("forecast_start", BASE_CONFIG["sim"]["T"]),
+        )
+        forecast_start = int(round(forecast_start_s / (BASE_CONFIG_TEST["sim"]["dt"] * w_subsample)))
         fc_cfg = wsindy_config.get("forecast", {})
         clip_neg = fc_cfg.get("clip_negative", True)
 
@@ -1032,7 +1108,6 @@ def main():
             times_sub = d["times"][::w_subsample]
             T_test_sub = rho_true.shape[0]
 
-            forecast_start = mvar_lag_val
             n_fc = T_test_sub - forecast_start - 1
             if n_fc <= 0:
                 continue
@@ -1079,21 +1154,44 @@ def main():
 
                     fc_method = fc_cfg.get("method", "auto")
                     mass_conserve = fc_cfg.get("mass_conserve", True)
-
-                    rho_pred, px_pred, py_pred = forecast_multifield(
-                        rho0, px0, py0,
-                        wsindy_mf_result, grid,
-                        Lx=Lx, Ly=Ly,
-                        n_steps=n_fc,
-                        clip_negative_rho=clip_neg,
-                        mass_conserve=mass_conserve,
-                        method=fc_method,
-                        morse_params=morse_params,
-                        xgrid=xgrid, ygrid=ygrid,
-                    )
+                    try:
+                        rho_pred, px_pred, py_pred = forecast_multifield(
+                            rho0, px0, py0,
+                            wsindy_mf_result, grid,
+                            Lx=Lx, Ly=Ly,
+                            n_steps=n_fc,
+                            clip_negative_rho=clip_neg,
+                            mass_conserve=mass_conserve,
+                            method=fc_method,
+                            morse_params=morse_params,
+                            xgrid=xgrid, ygrid=ygrid,
+                        )
+                        method = f"{fc_method}_multifield"
+                    except Exception as auto_exc:
+                        if fc_method != "auto":
+                            raise
+                        print(f"    [{ti+1}/{n_test}] {run_name}: auto multifield forecast failed - {auto_exc}")
+                        print("    Retrying multifield forecast with RK4...")
+                        try:
+                            rho_pred, px_pred, py_pred = forecast_multifield(
+                                rho0, px0, py0,
+                                wsindy_mf_result, grid,
+                                Lx=Lx, Ly=Ly,
+                                n_steps=n_fc,
+                                clip_negative_rho=clip_neg,
+                                mass_conserve=mass_conserve,
+                                method="rk4",
+                                morse_params=morse_params,
+                                xgrid=xgrid, ygrid=ygrid,
+                            )
+                            method = "rk4_multifield"
+                        except Exception as rk4_exc:
+                            raise RuntimeError(
+                                f"WSINDy multifield forecast failed with auto and RK4. "
+                                f"Auto error: {auto_exc}. RK4 error: {rk4_exc}"
+                            ) from rk4_exc
                     # Stack with IC → same shape as scalar path
                     U_pred = rho_pred  # already includes IC at index 0
-                    method = f"{fc_method}_multifield"
 
                 # ==================================================
                 #  SCALAR forecast (fallback)
@@ -1124,7 +1222,7 @@ def main():
                 rho=U_pred.astype(np.float32),
                 xgrid=d["xgrid"], ygrid=d["ygrid"],
                 times=np.asarray(times_fc, dtype=np.float32),
-                forecast_start_idx=int(forecast_start * w_subsample),
+                forecast_start_idx=0,
             )
             if wsindy_mf_result is not None:
                 # Also save predicted flux fields (already include IC at index 0)
@@ -1136,6 +1234,8 @@ def main():
             pd.DataFrame({
                 "time": times_fc[:n_save],
                 "r2_reconstructed": r2_ts[:n_save],
+                "r2_latent": r2_ts[:n_save],
+                "r2_pod": np.ones(n_save, dtype=np.float64),
             }).to_csv(run_dir / "r2_vs_time_wsindy.csv", index=False)
 
             # Save density_metrics_wsindy.csv (analogous to MVAR/LSTM)
@@ -1238,12 +1338,26 @@ def main():
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "n_train": n_train,
         "n_test": n_test,
-        "r_pod": int(R_POD),
+        "r_pod": int(R_POD) if R_POD is not None else None,
         "total_time_minutes": total_time / 60,
         "models_enabled": {
             "mvar": mvar_enabled,
             "lstm": lstm_enabled,
             "wsindy": wsindy_enabled,
+        },
+        "evaluation": {
+            "forecast_start_requested_s": float(
+                eval_config.get("forecast_start_requested", eval_config.get("forecast_start", BASE_CONFIG["sim"]["T"]))
+            ),
+            "forecast_start_effective_s": float(
+                eval_config.get("forecast_start_effective", eval_config.get("forecast_start", BASE_CONFIG["sim"]["T"]))
+            ),
+            "forecast_start_conditioning_steps": int(
+                eval_config.get("forecast_start_conditioning_steps", 0)
+            ),
+            "forecast_start_required_lag": int(
+                eval_config.get("forecast_start_required_lag", 0)
+            ),
         },
     }
     if mvar_enabled and mean_r2_mvar is not None:
@@ -1268,9 +1382,14 @@ def main():
     # Light-weight export list (for download script)
     export_files = [
         "summary.json", "config_used.yaml",
-        "rom_common/pod_basis.npz", "rom_common/latent_dataset.npz",
-        "rom_common/X_train_mean.npy", "rom_common/shift_align.npz",
     ]
+    if rom_enabled:
+        export_files += [
+            "rom_common/pod_basis.npz",
+            "rom_common/X_train_mean.npy",
+            "rom_common/shift_align.npz",
+        ]
+        export_files.append("rom_common/latent_dataset.npz")
     if mvar_enabled:
         export_files += ["MVAR/mvar_model.npz", "MVAR/test_results.csv",
                          "MVAR/runtime_profile.json"]

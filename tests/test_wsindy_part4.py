@@ -14,6 +14,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
+import pytest
 
 from src.wsindy.grid import GridSpec
 from src.wsindy.model import WSINDyModel
@@ -32,8 +33,10 @@ from src.wsindy.rhs import (
     wsindy_rhs,
 )
 from src.wsindy.integrators import (
+    DensityCollapseError,
     build_L_hat,
     etdrk4_integrate,
+    project_density,
     rk4_integrate,
     rk4_step,
     split_linear_nonlinear,
@@ -317,6 +320,31 @@ def test_forecast_rk4_fallback():
     traj = wsindy_forecast(u0, model, grid, n_steps=3, method="auto")
     assert traj.shape == (4, nx, ny)
     assert np.all(np.isfinite(traj))
+
+
+def test_rk4_reports_density_collapse():
+    """Clipping an all-negative step should fail with a useful diagnostic."""
+    grid = _grid(dt=0.1)
+    model = _make_model(["I:1"], [-10.0])
+    u0 = np.ones((nx, ny)) * 0.5
+
+    with pytest.raises(DensityCollapseError, match=r"step 1 .* rk4"):
+        rk4_integrate(u0, n_steps=1, dt=grid.dt, grid=grid, model=model, clip_negative=True)
+
+
+def test_project_density_reports_zero_mass_after_clipping():
+    rho = -np.ones((4, 4))
+    with pytest.raises(DensityCollapseError, match=r"step 3 .* post_clip_mass=0.000000e\+00"):
+        project_density(
+            rho,
+            step=3,
+            dt=0.2,
+            method="etdrk4",
+            clip_negative=True,
+            mass_conserve=True,
+            target_mass=1.0,
+            context="WSINDy multifield forecast",
+        )
 
 
 # ════════════════════════════════════════════════════════════════════
