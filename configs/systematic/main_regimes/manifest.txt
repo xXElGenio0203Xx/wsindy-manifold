@@ -1,0 +1,7 @@
+configs/systematic/main_regimes/NDYN04_gas.yaml
+configs/systematic/main_regimes/NDYN04_gas_VS.yaml
+configs/systematic/main_regimes/NDYN05_blackhole.yaml
+configs/systematic/main_regimes/NDYN05_blackhole_VS.yaml
+configs/systematic/main_regimes/NDYN06_supernova.yaml
+configs/systematic/main_regimes/NDYN06_supernova_VS.yaml
+configs/systematic/main_regimes/NDYN08_pure_vicsek.yaml

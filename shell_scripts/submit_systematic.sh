@@ -64,7 +64,7 @@ echo -e "${BLUE}Step 2: Syncing code & configs to Oscar...${NC}"
 rsync -avz --relative \
     configs/systematic/ \
     slurm_scripts/run_systematic.slurm \
-    ROM_pipeline.py \
+    ROM_WSINDY_pipeline.py \
     src/ \
     requirements.txt \
     "$OSCAR_HOST:$OSCAR_DIR/" 2>&1 | tail -3

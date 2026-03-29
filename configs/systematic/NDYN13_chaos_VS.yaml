@@ -59,32 +59,38 @@ train_ic:
     - 1.5
     - 3.0
     - 5.0
-    n_samples_per_config: 1
+    n_samples_per_config: 2
   uniform:
     enabled: true
-    n_runs: 40
-    n_samples: 40
+    n_runs: 80
+    n_samples: 80
   two_clusters:
     enabled: true
-    n_runs: 24
+    n_runs: 80
     separations:
-    - 4.0
+    - 3.0
+    - 5.0
     - 7.0
     - 10.0
     sigmas:
-    - 1.5
+    - 1.0
+    - 2.0
     - 3.0
-    n_samples_per_config: 4
+    n_samples_per_config: 7
   ring:
     enabled: true
-    n_runs: 24
+    n_runs: 80
     radii:
-    - 3.0
+    - 2.0
+    - 3.5
     - 5.0
+    - 6.5
     - 8.0
     widths:
-    - 0.5
-    - 1.0
+    - 0.4
+    - 0.8
+    - 1.2
+    - 1.8
     n_samples_per_config: 4
 test_ic:
   type: mixed_test_comprehensive
@@ -120,12 +126,12 @@ test_ic:
 rom:
   subsample: 3
   fixed_modes: 19
-  density_transform: raw
+  density_transform: sqrt
   density_transform_eps: 1.0e-10
   shift_align: true
   shift_align_ref: mean
   save_unaligned_pod: true
-  mass_postprocess: none
+  mass_postprocess: simplex
   models:
     mvar:
       enabled: true
@@ -134,16 +140,18 @@ rom:
     lstm:
       enabled: true
       lag: 5
-      hidden_units: 128
+      hidden_units: 64
       num_layers: 2
       dropout: 0.1
       residual: true
       use_layer_norm: true
+      normalize_input: true
       max_epochs: 300
-      patience: 30
-      lr: 0.001
-      batch_size: 256
-      grad_clip: 1.0
+      patience: 40
+      learning_rate: 0.0007
+      batch_size: 512
+      gradient_clip: 5.0
+      weight_decay: 1.0e-05
 eval:
   metrics:
   - r2
