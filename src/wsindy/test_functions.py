@@ -13,9 +13,9 @@ with *ℓ_i* an integer half-width (in grid cells) and *p_i* the polynomial
 degree controlling smoothness.
 
 We also provide the required partial-derivative arrays (ψ_t, ψ_x, ψ_y,
-ψ_xx, ψ_yy). The 1-D bump functions are defined analytically, while the
-sampled derivative arrays are evaluated numerically on the support lattice
-via 1-D finite differences and then assembled by separable outer products.
+ψ_xx, ψ_yy).  Derivatives are computed from closed-form expressions
+(chain-rule on the polynomial bump) and assembled by separable outer
+products — no finite-difference approximation is involved.
 
 All returned arrays have axis order **(t, x, y)** — time first — matching
 the ``(T, nx, ny)`` convention assumed by the pipeline.
@@ -29,7 +29,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .grid import GridSpec
-from .utils import finite_diff_1d
 
 
 # ── 1-D bump on discrete support ────────────────────────────────────────────
@@ -70,6 +69,73 @@ def make_1d_phi(
     phi = (1.0 - u) ** p
 
     return coords, phi
+
+
+# ── 1-D bump with analytical derivatives ────────────────────────────────────
+
+def _analytical_derivatives_1d(
+    grid_step: float,
+    ell: int,
+    p: int,
+) -> Tuple[
+    NDArray[np.floating],
+    NDArray[np.floating],
+    NDArray[np.floating],
+    NDArray[np.floating],
+]:
+    r"""Compute a 1-D bump and its first two derivatives analytically.
+
+    Given :math:`\varphi(s) = (1 - s^2/r^2)^p` with :math:`r = \ell\,\Delta`:
+
+    .. math::
+        \varphi'(s)  &= \frac{-2p\,s}{r^2}\,(1 - s^2/r^2)^{p-1}  \\
+        \varphi''(s) &= \frac{2p}{r^2}\,(1 - s^2/r^2)^{p-2}
+                        \bigl[(2p-1)\,s^2/r^2 - 1\bigr]
+
+    For :math:`p \ge k+1` the :math:`k`-th derivative vanishes at the
+    support boundary :math:`s = \pm r`, giving :math:`C^p` global
+    smoothness (the key property exploited by the convergence theory).
+
+    Parameters
+    ----------
+    grid_step : float
+        Uniform grid spacing Δ.
+    ell : int
+        Half-width in grid cells (≥ 1).
+    p : int
+        Polynomial exponent (≥ 1).
+
+    Returns
+    -------
+    coords : 1-D ndarray, ``(2*ell + 1,)``
+    phi    : 1-D ndarray — bump values.
+    dphi   : 1-D ndarray — first derivative.
+    d2phi  : 1-D ndarray — second derivative.
+    """
+    if ell < 1:
+        raise ValueError(f"ell must be >= 1, got {ell}")
+    if p < 1:
+        raise ValueError(f"p must be >= 1, got {p}")
+
+    r = ell * grid_step
+    r2 = r * r
+    coords = np.linspace(-r, r, 2 * ell + 1)
+    u = (coords / r) ** 2                       # s²/r² ∈ [0, 1]
+    base = np.maximum(1.0 - u, 0.0)             # (1 − u), clamped
+
+    phi = base ** p
+
+    # φ'(s) = −2p s / r² · (1 − u)^{p−1}
+    dphi = (-2.0 * p / r2) * coords * base ** max(p - 1, 0)
+
+    # φ''(s) = (2p / r²) · (1 − u)^{p−2} · [(2p−1) u − 1]
+    if p >= 2:
+        d2phi = (2.0 * p / r2) * base ** (p - 2) * ((2 * p - 1) * u - 1.0)
+    else:
+        # p = 1: φ = 1 − u → φ'' = −2/r² inside support, 0 at boundary
+        d2phi = np.where(base > 0, -2.0 / r2, 0.0)
+
+    return coords, phi, dphi, d2phi
 
 
 # ── full separable ψ bundle ─────────────────────────────────────────────────
@@ -135,18 +201,10 @@ def make_separable_psi(
         ``"p"``
             Tuple ``(pt, px, py)``.
     """
-    # 1-D components and their coordinates
-    sx, phi_x = make_1d_phi(grid.dx, ellx, px)
-    sy, phi_y = make_1d_phi(grid.dy, elly, py)
-    st, phi_t = make_1d_phi(grid.dt, ellt, pt)
-
-    # 1-D derivatives (on the support grid)
-    dphi_x = finite_diff_1d(phi_x, grid.dx, order=1)
-    dphi_y = finite_diff_1d(phi_y, grid.dy, order=1)
-    dphi_t = finite_diff_1d(phi_t, grid.dt, order=1)
-
-    d2phi_x = finite_diff_1d(phi_x, grid.dx, order=2)
-    d2phi_y = finite_diff_1d(phi_y, grid.dy, order=2)
+    # 1-D components with closed-form derivatives (no finite differences)
+    sx, phi_x, dphi_x, d2phi_x = _analytical_derivatives_1d(grid.dx, ellx, px)
+    sy, phi_y, dphi_y, d2phi_y = _analytical_derivatives_1d(grid.dy, elly, py)
+    st, phi_t, dphi_t, _       = _analytical_derivatives_1d(grid.dt, ellt, pt)
 
     # ── outer products (t, x, y) ────────────────────────────────────────
     # Shapes: phi_t → (nt,), phi_x → (nx,), phi_y → (ny,)

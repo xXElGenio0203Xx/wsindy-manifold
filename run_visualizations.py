@@ -430,6 +430,7 @@ def export_oscar_insight_data(data_dir, output_dir, models_data):
                 'test_results.csv',
                 'runtime_profile.json',
                 'multifield_model.json',
+                'multifield_diagnostics.json',
                 'summary.json',
                 'wsindy_model_rho.npz',
                 'wsindy_model_px.npz',
@@ -764,6 +765,8 @@ def main():
     parser = argparse.ArgumentParser(description="Visualization Pipeline (Light Computation)")
     parser.add_argument("--experiment_name", type=str, default="test_sim",
                        help="Name of experiment to visualize (must match data generation experiment_name)")
+    parser.add_argument("--data_dir", type=str, default=None,
+                       help="Override base data directory (default: oscar_output/<experiment_name>)")
     parser.add_argument("--skip_videos", action="store_true",
                        help="Skip best-run video generation (slow step, ~1hr per IC type)")
     parser.add_argument("--skip_time_analysis", action="store_true",
@@ -772,7 +775,10 @@ def main():
     args = parser.parse_args()
     
     # Setup directories with experiment subfolders
-    DATA_DIR = Path("oscar_output") / args.experiment_name  # Input: oscar_output/experiment_name
+    if args.data_dir:
+        DATA_DIR = Path(args.data_dir)
+    else:
+        DATA_DIR = Path("oscar_output") / args.experiment_name
     OUTPUT_DIR = Path("predictions") / args.experiment_name  # Output: predictions/experiment_name
     
     TRAIN_DIR = DATA_DIR / "train"
@@ -1110,7 +1116,11 @@ def main():
     else:
         for model_name in all_metrics.keys():
             print(f"\n   Generating best runs for {model_name.upper()}...")
-            
+            if not all_test_predictions.get(model_name) or not all_ic_metrics.get(model_name):
+                print(f"   ⚠ No successful {model_name.upper()} forecasts — skipping best-run videos")
+                all_top_runs[model_name] = []
+                continue
+
             model_best_runs_dir = BEST_RUNS_DIR / model_name.upper()
             model_best_runs_dir.mkdir(exist_ok=True, parents=True)
             

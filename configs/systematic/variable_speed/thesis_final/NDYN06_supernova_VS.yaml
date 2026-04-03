@@ -1,0 +1,194 @@
+---
+# NDYN06_supernova_VS -- Phase A: sim + POD + MVAR (LSTM/WSINDy disabled)
+# Thesis-final submission
+
+sim:
+  N: 100
+  T: 20.0
+  dt: 0.04
+  Lx: 25.0
+  Ly: 25.0
+  bc: periodic
+test_sim:
+  T: 200.0
+model:
+  type: discrete
+  speed: 3.0
+  speed_mode: variable
+params:
+  R: 4.0
+noise:
+  kind: gaussian
+  eta: 0.15
+  match_variance: true
+forces:
+  enabled: true
+  type: morse
+  params:
+    Ca: 0.05
+    Cr: 15.0
+    la: 1.5
+    lr: 0.5
+    mu_t: 0.3
+    rcut_factor: 5.0
+alignment:
+  enabled: true
+density:
+  nx: 64
+  ny: 64
+  bandwidth: 5.0
+outputs:
+  density_resolution: 64
+  density_bandwidth: 5.0
+train_ic:
+  type: mixed_comprehensive
+  gaussian:
+    enabled: true
+    n_runs: 80
+    positions_x:
+    - 5.0
+    - 10.0
+    - 15.0
+    - 20.0
+    positions_y:
+    - 5.0
+    - 10.0
+    - 15.0
+    - 20.0
+    variances:
+    - 1.5
+    - 3.0
+    - 5.0
+    n_samples_per_config: 2
+  uniform:
+    enabled: true
+    n_runs: 80
+    n_samples: 80
+  two_clusters:
+    enabled: true
+    n_runs: 80
+    separations:
+    - 3.0
+    - 5.0
+    - 7.0
+    - 10.0
+    sigmas:
+    - 1.0
+    - 2.0
+    - 3.0
+    n_samples_per_config: 7
+  ring:
+    enabled: true
+    n_runs: 80
+    radii:
+    - 2.0
+    - 3.5
+    - 5.0
+    - 6.5
+    - 8.0
+    widths:
+    - 0.4
+    - 0.8
+    - 1.2
+    - 1.8
+    n_samples_per_config: 4
+test_ic:
+  type: mixed_test_comprehensive
+  gaussian:
+    enabled: true
+    n_runs: 1
+    test_positions_x:
+    - 12.5
+    test_positions_y:
+    - 12.5
+    test_variances:
+    - 2.5
+    n_samples_per_config: 1
+  uniform:
+    enabled: true
+    n_runs: 1
+  two_clusters:
+    enabled: true
+    n_runs: 1
+    test_separations:
+    - 7.0
+    test_sigmas:
+    - 2.0
+    n_samples_per_config: 1
+  ring:
+    enabled: true
+    n_runs: 1
+    test_radii:
+    - 5.0
+    test_widths:
+    - 0.8
+    n_samples_per_config: 1
+rom:
+  subsample: 3
+  fixed_modes: 19
+  density_transform: sqrt
+  density_transform_eps: 1.0e-10
+  shift_align: true
+  shift_align_ref: mean
+  save_unaligned_pod: false
+  mass_postprocess: scale
+  models:
+    mvar:
+      enabled: true
+      lag: 5
+      ridge_alpha: 0.0001
+    lstm:
+      enabled: false
+      lag: 5
+      hidden_units: 64
+      num_layers: 2
+      dropout: 0.1
+      residual: true
+      use_layer_norm: true
+      normalize_input: true
+      max_epochs: 300
+      patience: 40
+      learning_rate: 0.0007
+      batch_size: 512
+      gradient_clip: 5.0
+      weight_decay: 1.0e-05
+eval:
+  metrics:
+  - r2
+  - rmse
+  save_forecasts: true
+  save_time_resolved: true
+  forecast_start: 0.6
+  clamp_mode: C0
+experiment_name: NDYN06_supernova_VS_thesis_final
+wsindy:
+  enabled: false
+  mode: multifield
+  subsample: 3
+  seed: 42
+  multifield_library:
+    morse: true
+    rich: true
+  model_selection:
+    n_ell: 12
+    p:
+    - 3
+    - 5
+    - 5
+    stride:
+    - 2
+    - 2
+    - 2
+  lambdas:
+    log_min: -5
+    log_max: 2
+    n_points: 60
+  bootstrap:
+    enabled: false
+    B: 0
+    ci_alpha: 0.05
+  forecast:
+    clip_negative: true
+    mass_conserve: true
+    method: auto
+  n_train: 340

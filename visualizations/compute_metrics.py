@@ -47,6 +47,20 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
     
     all_metrics = []
     test_predictions = {}
+
+    status_lookup = {}
+    if model_name == 'wsindy':
+        status_csv = test_dir.parent / "WSINDy" / "test_results.csv"
+        if status_csv.exists():
+            try:
+                status_df = pd.read_csv(status_csv)
+                if "run_name" in status_df.columns:
+                    status_lookup = {
+                        str(row["run_name"]): row.to_dict()
+                        for _, row in status_df.iterrows()
+                    }
+            except Exception:
+                status_lookup = {}
     
     # Determine IC key name from metadata
     ic_key = 'ic_type' if 'ic_type' in test_metadata[0] else 'distribution'
@@ -66,6 +80,20 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
             pred_file = run_dir / "density_pred.npz"
         
         if not true_file.exists() or not pred_file.exists():
+            status_row = status_lookup.get(run_name)
+            if status_row is not None and str(status_row.get("forecast_status", "")) == "failed":
+                all_metrics.append({
+                    "run_name": run_name,
+                    "ic_type": meta[ic_key],
+                    "r2": np.nan,
+                    "rmse": np.nan,
+                    "forecast_status": "failed",
+                    "failure_reason": status_row.get("failure_reason"),
+                    "failure_step": status_row.get("failure_step"),
+                    "forecast_method_attempted": status_row.get("forecast_method_attempted"),
+                    "forecast_method_used": status_row.get("forecast_method_used"),
+                })
+                continue
             skipped_runs.append(run_name)
             continue
         
@@ -156,7 +184,16 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
         summary["forecast_start_idx"] = fsi
         summary["T_conditioning"] = fsi
         summary["T_forecast"] = T - fsi
-        
+        if run_name in status_lookup:
+            status_row = status_lookup[run_name]
+            summary["forecast_status"] = status_row.get("forecast_status", "ok")
+            summary["failure_reason"] = status_row.get("failure_reason")
+            summary["failure_step"] = status_row.get("failure_step")
+            summary["forecast_method_attempted"] = status_row.get("forecast_method_attempted")
+            summary["forecast_method_used"] = status_row.get("forecast_method_used")
+        else:
+            summary["forecast_status"] = "ok"
+
         # Load trajectory for later use
         traj_data = np.load(run_dir / "trajectory.npz")
         traj = traj_data["traj"]
@@ -213,9 +250,16 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
     metrics_df.to_csv(metrics_csv, index=False)
     
     # Overall metrics
+    successful_df = metrics_df
+    if "forecast_status" in metrics_df.columns:
+        successful_df = metrics_df[metrics_df["forecast_status"] != "failed"]
+
     print(f"\n📊 Overall Metrics ({model_name.upper()}):")
-    print(f"   R²:              {metrics_df['r2'].mean():.4f} ± {metrics_df['r2'].std():.4f}")
-    print(f"   Median L² error: {metrics_df['median_e2'].mean():.4f} ± {metrics_df['median_e2'].std():.4f}")
+    if len(successful_df) == 0:
+        print("   No successful forecasts available")
+    else:
+        print(f"   R²:              {successful_df['r2'].mean():.4f} ± {successful_df['r2'].std():.4f}")
+        print(f"   Median L² error: {successful_df['median_e2'].mean():.4f} ± {successful_df['median_e2'].std():.4f}")
     
     # Metrics by IC type
     print(f"\n📊 Metrics by IC Type ({model_name.upper()}):")
@@ -224,27 +268,36 @@ def compute_test_metrics(test_metadata, test_dir, x_train_mean, ic_types, output
     for ic_type in ic_types:
         ic_mask = metrics_df["ic_type"] == ic_type
         ic_data = metrics_df[ic_mask]
-        
+        ic_success = ic_data
+        if "forecast_status" in ic_data.columns:
+            ic_success = ic_data[ic_data["forecast_status"] != "failed"]
+
         if len(ic_data) == 0:
             continue
-        
+
         ic_stats = {
             "ic_type": ic_type,
             "n_runs": len(ic_data),
-            "mean_r2": ic_data["r2"].mean(),
-            "std_r2": ic_data["r2"].std(),
-            "median_r2": ic_data["r2"].median(),
-            "mean_rmse": ic_data["rmse"].mean(),
-            "best_run": ic_data.loc[ic_data["r2"].idxmax(), "run_name"],
-            "best_r2": ic_data["r2"].max(),
+            "n_success": len(ic_success),
+            "n_failed": len(ic_data) - len(ic_success),
+            "mean_r2": ic_success["r2"].mean() if len(ic_success) else np.nan,
+            "std_r2": ic_success["r2"].std() if len(ic_success) else np.nan,
+            "median_r2": ic_success["r2"].median() if len(ic_success) else np.nan,
+            "mean_rmse": ic_success["rmse"].mean() if len(ic_success) else np.nan,
+            "best_run": ic_success.loc[ic_success["r2"].idxmax(), "run_name"] if len(ic_success) else None,
+            "best_r2": ic_success["r2"].max() if len(ic_success) else np.nan,
         }
         
         ic_metrics[ic_type] = ic_stats
         
         print(f"\n   {ic_type}:")
         print(f"      Runs: {ic_stats['n_runs']}")
-        print(f"      R²: {ic_stats['mean_r2']:.4f} ± {ic_stats['std_r2']:.4f}")
-        print(f"      Best run: {ic_stats['best_run']} (R² = {ic_stats['best_r2']:.4f})")
+        print(f"      Success: {ic_stats['n_success']}  Failed: {ic_stats['n_failed']}")
+        if ic_stats["n_success"] > 0:
+            print(f"      R²: {ic_stats['mean_r2']:.4f} ± {ic_stats['std_r2']:.4f}")
+            print(f"      Best run: {ic_stats['best_run']} (R² = {ic_stats['best_r2']:.4f})")
+        else:
+            print("      No successful forecasts")
     
     # Save IC metrics with model-specific name
     ic_csv = output_dir / f"metrics_by_ic_type_{model_name}.csv"

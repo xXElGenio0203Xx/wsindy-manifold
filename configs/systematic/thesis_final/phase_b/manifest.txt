@@ -1,0 +1,7 @@
+configs/systematic/thesis_final/phase_b/NDYN04_gas.yaml
+configs/systematic/thesis_final/phase_b/NDYN04_gas_VS.yaml
+configs/systematic/thesis_final/phase_b/NDYN05_blackhole.yaml
+configs/systematic/thesis_final/phase_b/NDYN05_blackhole_VS.yaml
+configs/systematic/thesis_final/phase_b/NDYN06_supernova.yaml
+configs/systematic/thesis_final/phase_b/NDYN06_supernova_VS.yaml
+configs/systematic/thesis_final/phase_b/NDYN08_pure_vicsek.yaml

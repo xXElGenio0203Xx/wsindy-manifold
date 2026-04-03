@@ -160,6 +160,7 @@ experiment_name: WSYR_DO_SM02_mill_C3_l01
 wsindy:
   enabled: true
   mode: multifield
+  identification_only: true
   subsample: 3
   seed: 42
   multifield_library:

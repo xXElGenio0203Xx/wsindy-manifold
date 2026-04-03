@@ -20,6 +20,7 @@ def test_export_oscar_insight_data_copies_wsindy_files(tmp_path):
     (wsindy_dir / "test_results.csv").write_text("run_name,r2_reconstructed\n")
     (wsindy_dir / "runtime_profile.json").write_text("{}\n")
     (wsindy_dir / "multifield_model.json").write_text("{}\n")
+    (wsindy_dir / "multifield_diagnostics.json").write_text("{}\n")
     (wsindy_dir / "summary.json").write_text("{}\n")
 
     test_dir = data_dir / "test"
@@ -39,6 +40,7 @@ def test_export_oscar_insight_data_copies_wsindy_files(tmp_path):
     assert (oscar_data / "WSINDy" / "test_results.csv").exists()
     assert (oscar_data / "WSINDy" / "runtime_profile.json").exists()
     assert (oscar_data / "WSINDy" / "multifield_model.json").exists()
+    assert (oscar_data / "WSINDy" / "multifield_diagnostics.json").exists()
     assert (oscar_data / "WSINDy" / "summary.json").exists()
     assert (oscar_data / "export_manifest.json").exists()
     assert (oscar_data / "test" / "test_000" / "r2_vs_time_wsindy.csv").exists()
@@ -113,3 +115,48 @@ def test_compute_metrics_treats_wsindy_forecast_start_as_relative_after_alignmen
     assert metrics_df.loc[0, "forecast_start_idx"] == 0
     assert metrics_df.loc[0, "T_conditioning"] == 0
     assert test_predictions["test_000"]["forecast_start_idx"] == 0
+
+
+def test_compute_metrics_records_failed_wsindy_runs_without_predictions(tmp_path):
+    data_dir = tmp_path / "exp"
+    test_dir = data_dir / "test"
+    wsindy_dir = data_dir / "WSINDy"
+    run_dir = test_dir / "test_000"
+    run_dir.mkdir(parents=True)
+    wsindy_dir.mkdir(parents=True)
+
+    np.savez_compressed(
+        run_dir / "density_true.npz",
+        rho=np.array([[[1.0]], [[1.1]]], dtype=np.float32),
+        times=np.array([0.0, 1.0], dtype=np.float32),
+        xgrid=np.array([0.0], dtype=np.float32),
+        ygrid=np.array([0.0], dtype=np.float32),
+    )
+    pd.DataFrame(
+        [
+            {
+                "run_name": "test_000",
+                "forecast_status": "failed",
+                "failure_reason": "divergence",
+                "failure_step": 1,
+                "forecast_method_attempted": "auto",
+                "forecast_method_used": "etdrk4",
+            }
+        ]
+    ).to_csv(wsindy_dir / "test_results.csv", index=False)
+
+    metrics_df, test_predictions, ic_metrics = compute_test_metrics(
+        test_metadata=[{"run_name": "test_000", "distribution": "uniform"}],
+        test_dir=test_dir,
+        x_train_mean=np.zeros(1, dtype=np.float32),
+        ic_types=["uniform"],
+        output_dir=tmp_path / "out",
+        model_name="wsindy",
+    )
+
+    assert len(metrics_df) == 1
+    assert metrics_df.loc[0, "forecast_status"] == "failed"
+    assert metrics_df.loc[0, "failure_reason"] == "divergence"
+    assert test_predictions == {}
+    assert ic_metrics["uniform"]["n_failed"] == 1
+    assert ic_metrics["uniform"]["n_success"] == 0

@@ -153,8 +153,8 @@ echo "============================================"
 echo ""
 echo "  Downloaded: ${#DOWNLOADED[@]}"
 echo "  Skipped:    $SKIPPED (not ready on Oscar)"
-echo "  Total size:"
-du -sh "$LOCAL"
+# 'du -sh' on a large oscar_output/ can saturate login-node memory — omitted.
+# If you need the size, run: interact -n 1 -m 8g -t 0:10:00  then  du -sh "$LOCAL"
 echo ""
 
 if [ $SKIPPED -gt 0 ]; then

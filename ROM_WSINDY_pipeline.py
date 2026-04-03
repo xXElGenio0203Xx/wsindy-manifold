@@ -54,7 +54,13 @@ import pandas as pd
 
 # ── WSINDy imports ─────────────────────────────────────────────────
 from wsindy.grid import GridSpec
-from wsindy.system import build_weak_system, default_t_margin, make_query_indices
+from wsindy.system import (
+    build_weak_system,
+    default_t_margin,
+    make_query_indices,
+    nondimensionalize_field,
+    rescale_coefficients,
+)
 from wsindy.test_functions import make_separable_psi
 from wsindy.model import WSINDyModel
 from wsindy.fit import wsindy_fit_regression
@@ -74,6 +80,13 @@ from wsindy.select import (
     _composite_score,
     default_ell_grid,
 )
+from wsindy.diagnostics import (
+    ols_comparison,
+    residual_analysis,
+    dominant_balance_report,
+    print_dominant_balance,
+    model_aic,
+)
 
 # ── Multi-field WSINDy imports ─────────────────────────────────────
 from wsindy.fields import (
@@ -86,17 +99,34 @@ from wsindy.fields import (
 from wsindy.multifield import (
     build_default_library as build_mf_library,
     library_from_config_multifield,
+    resolve_regime_aware_library_settings,
     discover_multifield,
     model_selection_multifield,
     forecast_multifield,
     bootstrap_multifield,
     MultiFieldResult,
+    MultiFieldForecastError,
+    fit_equation_multifield,
 )
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  WSINDy helper functions
 # ═══════════════════════════════════════════════════════════════════
+
+
+def resolve_multifield_regime_settings(raw_config, wsindy_config):
+    """Resolve regime-aware multifield WSINDy settings from the config."""
+    mf_cfg = (wsindy_config or {}).get("multifield_library", {}) or {}
+    forces_cfg = (raw_config or {}).get("forces", {}) or {}
+    forces_params = forces_cfg.get("params", {}) or {}
+    return resolve_regime_aware_library_settings(
+        forces_enabled=bool(forces_cfg.get("enabled", False)),
+        Ca=float(forces_params.get("Ca", 0.0) or 0.0),
+        Cr=float(forces_params.get("Cr", 0.0) or 0.0),
+        morse_requested=bool(mf_cfg.get("morse", True)),
+        regime_class=mf_cfg.get("regime_class", "auto"),
+    )
 
 def load_training_densities_from_disk(train_dir, n_train, subsample=3, seed=42):
     """Load density trajectories from disk (when run locally with limited data).
@@ -199,10 +229,109 @@ def align_eval_forecast_start(eval_config, base_config_test, rom_subsample, enab
     return eval_cfg
 
 
+def _run_post_regression_diagnostics(b, G, model, label, wsindy_dir):
+    """Run all post-regression diagnostics on a fitted WSINDy model.
+
+    Each diagnostic is independently wrapped in try/except so that a
+    failure in one never blocks the others or the rest of the pipeline.
+
+    Returns a JSON-serializable dict of numeric results.
+    """
+    diag_out = {}
+
+    # 1. OLS comparison
+    try:
+        ols_res = ols_comparison(b, G, model)
+        diag_out["ols_comparison"] = {
+            "r2_ols": ols_res["r2_ols"],
+            "r2_mstls": ols_res["r2_mstls"],
+            "max_rel_diff": ols_res["max_rel_diff"],
+            "per_term": ols_res["per_term"],
+        }
+        print(f"    OLS vs MSTLS — max relative diff: {ols_res['max_rel_diff']:.4f}")
+        print(f"      R²(OLS)={ols_res['r2_ols']:.6f}  R²(MSTLS)={ols_res['r2_mstls']:.6f}")
+    except Exception as exc:
+        print(f"    [WARN] OLS comparison failed: {exc}")
+
+    # 2. Residual analysis (with histogram + Q-Q plot)
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+        resid_res = residual_analysis(b, G, model, plot=True, ax=ax)
+        fig.suptitle(f"Residual diagnostics — {label}", y=1.02)
+        fig.tight_layout()
+        save_path = Path(wsindy_dir) / f"residual_histogram_{label}.png"
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        diag_out["residual_analysis"] = {
+            "mean": resid_res["mean"],
+            "std": resid_res["std"],
+            "skewness": resid_res["skewness"],
+            "kurtosis": resid_res["kurtosis"],
+            "shapiro_p": resid_res["shapiro_p"],
+            "max_abs": resid_res["max_abs"],
+        }
+        print(f"    Residuals: μ={resid_res['mean']:.3e}, σ={resid_res['std']:.3e}, "
+              f"kurtosis={resid_res['kurtosis']:.2f}, Shapiro p={resid_res['shapiro_p']:.3e}")
+        print(f"      Saved: {save_path.name}")
+    except Exception as exc:
+        print(f"    [WARN] Residual analysis failed: {exc}")
+
+    # 3. Dominant balance report
+    try:
+        balance = dominant_balance_report(b, G, model)
+        # Normalized balance ratios (sum to 1 across active terms)
+        Pi_sum = balance["Pi_sum"]
+        Pi_normalized = {
+            g["term"]: g["Pi"] / Pi_sum if Pi_sum > 1e-30 else 0.0
+            for g in balance["groups"]
+        }
+        diag_out["dominant_balance"] = {
+            "groups": [
+                {"term": g["term"], "Pi": g["Pi"], "w": g["w"]}
+                for g in balance["groups"]
+            ],
+            "Pi_sum": balance["Pi_sum"],
+        }
+        diag_out["dominant_balance_ratios"] = {
+            g["term"]: g["Pi"] for g in balance["groups"]
+        }
+        diag_out["dominant_balance_normalized"] = Pi_normalized
+        print(print_dominant_balance(balance))
+    except Exception as exc:
+        print(f"    [WARN] Dominant balance report failed: {exc})")
+
+    # 4. AIC
+    try:
+        aic_val = model_aic(b, G, model)
+        diag_out["aic"] = aic_val
+        print(f"    AIC = {aic_val:.2f} (k={model.n_active} active terms)")
+    except Exception as exc:
+        print(f"    [WARN] AIC computation failed: {exc}")
+
+    return diag_out
+
+
 def build_stacked_weak_system(
     train_densities, grid, psi_bundle, library_terms, stride=(2, 2, 2),
 ):
-    """Build stacked weak system (b, G) from multiple trajectories."""
+    """Build stacked weak system (b, G) from multiple trajectories.
+
+    Nondimensionalizes all trajectories by a shared U_c before assembly
+    so that polynomial features are O(1), improving numerical stability.
+    Returns (b, G, col_names, U_c).
+    """
+    # Compute shared characteristic scale from all trajectories
+    all_stds = [float(np.std(U_k)) for U_k in train_densities]
+    U_c = float(np.median(all_stds)) if all_stds else 1.0
+    if U_c < 1e-30:
+        U_c = float(max(np.max(np.abs(U_k)) for U_k in train_densities))
+    if U_c < 1e-30:
+        U_c = 1.0
+
     all_b, all_G = [], []
     t_margin = default_t_margin(psi_bundle)
 
@@ -218,7 +347,7 @@ def build_stacked_weak_system(
         if qi.shape[0] < len(library_terms) + 1:
             continue
         b_k, G_k, col_names = build_weak_system(
-            U_k, grid, psi_bundle, library_terms, qi,
+            U_k / U_c, grid, psi_bundle, library_terms, qi,
         )
         all_b.append(b_k)
         all_G.append(G_k)
@@ -226,7 +355,7 @@ def build_stacked_weak_system(
     if not all_b:
         raise ValueError("No valid query points from any training trajectory")
 
-    return np.concatenate(all_b), np.vstack(all_G), col_names
+    return np.concatenate(all_b), np.vstack(all_G), col_names, U_c
 
 
 def fit_stacked(
@@ -239,10 +368,12 @@ def fit_stacked(
         ellt=ell[0], ellx=ell[1], elly=ell[2],
         pt=p[0], px=p[1], py=p[2],
     )
-    b, G, col_names = build_stacked_weak_system(
+    b, G, col_names, U_c = build_stacked_weak_system(
         train_densities, grid, psi_bundle, library_terms, stride,
     )
     model = wsindy_fit_regression(b, G, col_names, lambdas=lambdas, max_iter=max_iter)
+    # Rescale coefficients back to physical units
+    model.w = rescale_coefficients(model.w, col_names, U_c)
     return model, b, G, col_names
 
 
@@ -386,6 +517,8 @@ def main():
         description="ROM + WSINDy Pipeline (for Oscar cluster)")
     parser.add_argument("--config", type=str, required=True)
     parser.add_argument("--experiment_name", type=str, required=True)
+    parser.add_argument("--output-dir", type=str, default=None)
+    parser.add_argument("--wsindy-only", action="store_true")
     args = parser.parse_args()
 
     start_time = time.time()
@@ -408,9 +541,10 @@ def main():
         raw_config = yaml.safe_load(f)
     wsindy_config = raw_config.get("wsindy", {})
     wsindy_enabled = wsindy_config.get("enabled", False)
+    wsindy_identification_only = wsindy_config.get("identification_only", False)
 
     # Setup directories
-    OUTPUT_DIR = Path(f"oscar_output/{args.experiment_name}")
+    OUTPUT_DIR = Path(args.output_dir) if args.output_dir else Path(f"oscar_output/{args.experiment_name}")
     ROM_COMMON_DIR = OUTPUT_DIR / "rom_common"
     MVAR_DIR = OUTPUT_DIR / "MVAR"
     LSTM_DIR = OUTPUT_DIR / "LSTM"
@@ -429,6 +563,9 @@ def main():
     models_cfg = rom_config.get("models", {})
     mvar_enabled = models_cfg.get("mvar", {}).get("enabled", True)
     lstm_enabled = models_cfg.get("lstm", {}).get("enabled", False)
+    if args.wsindy_only:
+        mvar_enabled = False
+        lstm_enabled = False
     rom_enabled = mvar_enabled or lstm_enabled
 
     if rom_enabled:
@@ -442,6 +579,8 @@ def main():
     print(f"    MVAR:   {'ON' if mvar_enabled else 'OFF'}")
     print(f"    LSTM:   {'ON' if lstm_enabled else 'OFF'}")
     print(f"    WSINDy: {'ON' if wsindy_enabled else 'OFF'}")
+    if args.wsindy_only:
+        print(f"    CLI override: wsindy-only")
 
     # ================================================================
     # STEP 1: Generate Training Data
@@ -790,7 +929,7 @@ def main():
 
         # ── Common model-selection parameters ───────────────────────
         n_ell = ms_cfg.get("n_ell", 12)
-        p = tuple(ms_cfg.get("p", [2, 2, 2]))
+        p = tuple(ms_cfg.get("p", [3, 5, 5]))
         stride = tuple(ms_cfg.get("stride", [2, 2, 2]))
         alpha = ms_cfg.get("alpha", 0.1)
         beta = ms_cfg.get("beta", 0.01)
@@ -808,11 +947,16 @@ def main():
         # ==============================================================
         if wsindy_mode == "multifield":
             mf_cfg = w_cfg.get("multifield_library", {})
-            morse_enabled = mf_cfg.get("morse", True)
             rich = mf_cfg.get("rich", False)
+            rho_strategy = mf_cfg.get("rho_strategy", "legacy")
             kde_bw = mf_cfg.get("kde_bandwidth", 5.0)
+            regime_settings = resolve_multifield_regime_settings(raw_config, w_cfg)
+            regime_class = regime_settings["regime_class"]
+            effective_morse = regime_settings["effective_morse"]
+            morse_requested = regime_settings["morse_requested"]
 
             # Morse parameters from forces config
+            forces_enabled = bool(raw_config.get("forces", {}).get("enabled", False))
             forces_params = raw_config.get("forces", {}).get("params", {})
             Ca = forces_params.get("Ca", 0.8)
             Cr = forces_params.get("Cr", 0.3)
@@ -820,9 +964,21 @@ def main():
             lr = forces_params.get("lr", 0.5)
 
             # ── Build 3-equation library ────────────────────────────
-            mf_library = build_mf_library(morse=morse_enabled, rich=rich)
+            mf_library = build_mf_library(
+                morse=effective_morse,
+                rich=rich,
+                rho_strategy=rho_strategy,
+                regime_class=regime_class,
+            )
             n_lib_total = sum(len(v) for v in mf_library.values())
             print(f"\n  Multi-field library: {n_lib_total} terms ({len(mf_library)} equations)")
+            print(
+                "  Regime class:"
+                f" {regime_class} ({regime_settings['regime_class_source']}),"
+                f" forces_enabled={forces_enabled},"
+                f" Ca/Cr={regime_settings['ca_cr_ratio']:.4g},"
+                f" morse={effective_morse}"
+            )
             for eq_name, terms in mf_library.items():
                 print(f"    {eq_name}: {len(terms)} terms")
                 for t in terms:
@@ -846,13 +1002,14 @@ def main():
                         rho_i, traj_i, vel_i,
                         xgrid, ygrid, Lx, Ly, dt,
                         bandwidth=kde_bw,
-                        morse_params=dict(Cr=Cr, Ca=Ca, lr=lr, la=la) if morse_enabled else None,
+                        morse_params=dict(Cr=Cr, Ca=Ca, lr=lr, la=la) if effective_morse else None,
+                        center_flux=True,
                     )
                 else:
                     print(f"    WARNING: {meta['run_name']} has no trajectory.npz, using rho-only")
                     fd = build_field_data_rho_only(
                         rho_i, xgrid, ygrid, Lx, Ly, dt,
-                        morse_params=dict(Cr=Cr, Ca=Ca, lr=lr, la=la) if morse_enabled else None,
+                        morse_params=dict(Cr=Cr, Ca=Ca, lr=lr, la=la) if effective_morse else None,
                     )
 
                 field_data_list.append(fd)
@@ -867,8 +1024,11 @@ def main():
             wsindy_mf_result, best_ell = model_selection_multifield(
                 field_data_list, mf_library, ell_grid,
                 p=p, stride=stride, lambdas=lambdas,
+                rho_strategy=rho_strategy,
+                morse_params=dict(Cr=Cr, Ca=Ca, lr=lr, la=la) if effective_morse else None,
             )
             ms_time = time.perf_counter() - t_ms
+            wsindy_mf_result.metadata.update(regime_settings)
 
             print(f"\n  Model selection done in {ms_time:.1f}s")
             print(f"  Best ℓ = {best_ell}")
@@ -904,6 +1064,8 @@ def main():
             mf_dict = wsindy_mf_result.to_dict()
             with open(WSINDY_DIR / "multifield_model.json", "w") as f:
                 json.dump(mf_dict, f, indent=2, default=str)
+            with open(WSINDY_DIR / "multifield_diagnostics.json", "w") as f:
+                json.dump(wsindy_mf_result.metadata, f, indent=2, default=str)
 
             # Also save per-equation npz for lightweight loading
             for eq_name in ["rho", "px", "py"]:
@@ -948,14 +1110,19 @@ def main():
                 },
                 "library": {
                     "n_terms_total": n_lib_total,
-                    "morse": morse_enabled,
+                    "morse": effective_morse,
+                    "morse_requested": morse_requested,
                     "rich": rich,
+                    "rho_strategy": rho_strategy,
+                    "regime_class": regime_class,
                     "per_equation": {
                         eq: [t.name for t in terms]
                         for eq, terms in mf_library.items()
                     },
                 },
+                "regime_classification": dict(regime_settings),
                 "n_train_trajectories": len(train_densities),
+                "diagnostics": wsindy_mf_result.metadata,
             }
             for eq_name in ["rho", "px", "py"]:
                 mdl = getattr(wsindy_mf_result, f"{eq_name}_model")
@@ -970,6 +1137,31 @@ def main():
                     "lambda_star": float(mdl.best_lambda),
                     "r2_weak": float(mdl.diagnostics.get("r2", 0)),
                 }
+
+            # ── Post-regression diagnostics (multifield) ───────────
+            print(f"\n  Post-regression diagnostics (multifield)...")
+            _target_fns = {
+                "rho": lambda fd: fd.rho,
+                "px":  lambda fd: fd.px,
+                "py":  lambda fd: fd.py,
+            }
+            mf_diag = {}
+            for eq_name in ["rho", "px", "py"]:
+                mdl = getattr(wsindy_mf_result, f"{eq_name}_model")
+                print(f"\n    ── {eq_name} equation ──")
+                try:
+                    _, eq_b, eq_G, _ = fit_equation_multifield(
+                        field_data_list, mf_library[eq_name],
+                        _target_fns[eq_name],
+                        ell=best_ell, p=p, stride=stride, lambdas=lambdas,
+                    )
+                    mf_diag[eq_name] = _run_post_regression_diagnostics(
+                        eq_b, eq_G, mdl, eq_name, WSINDY_DIR,
+                    )
+                except Exception as exc:
+                    print(f"    [WARN] Diagnostics for {eq_name} failed: {exc}")
+            if mf_diag:
+                wsindy_summary["post_regression_diagnostics"] = mf_diag
 
         # ==============================================================
         #  SCALAR MODE: Single ρ equation (original fallback)
@@ -1071,6 +1263,14 @@ def main():
                 "n_train_trajectories": len(train_densities),
             }
 
+            # ── Post-regression diagnostics (scalar) ───────────────
+            print(f"\n  Post-regression diagnostics (scalar)...")
+            scalar_diag = _run_post_regression_diagnostics(
+                best_b, best_G, wsindy_model, "scalar", WSINDY_DIR,
+            )
+            if scalar_diag:
+                wsindy_summary["post_regression_diagnostics"] = scalar_diag
+
     # ================================================================
     # STEP 8: WSINDy Test Evaluation
     # ================================================================
@@ -1099,79 +1299,130 @@ def main():
         test_results = []
         all_r2 = []
 
-        for ti in range(n_test):
-            run_name = test_meta_list[ti]["run_name"]
-            run_dir = TEST_DIR / run_name
+        def _motion_energy(field_hist):
+            if field_hist.shape[0] <= 1:
+                return 0.0
+            diffs = np.diff(field_hist, axis=0)
+            return float(np.mean(np.linalg.norm(diffs.reshape(diffs.shape[0], -1), axis=1)))
 
-            d = np.load(run_dir / "density_true.npz")
-            rho_true = d["rho"][::w_subsample]
-            times_sub = d["times"][::w_subsample]
-            T_test_sub = rho_true.shape[0]
+        def _coeff_for_model(model, name):
+            if model is None or name not in model.col_names:
+                return None
+            idx = model.col_names.index(name)
+            if not model.active[idx]:
+                return None
+            return float(model.w[idx])
 
-            n_fc = T_test_sub - forecast_start - 1
-            if n_fc <= 0:
-                continue
+        def _sign_label(value, near=1e-6):
+            if value is None or (isinstance(value, float) and np.isnan(value)):
+                return "inactive"
+            if abs(value) < near:
+                return "near_zero"
+            return "positive" if value > 0 else "negative"
 
-            try:
-                # ==================================================
-                #  MULTIFIELD forecast
-                # ==================================================
-                if wsindy_mf_result is not None:
-                    rho0 = rho_true[forecast_start]
+        selected_ell_vals = [None, None, None]
+        selected_ell_json = None
+        weak_r2_rho = float("nan")
+        weak_r2_px = float("nan")
+        weak_r2_py = float("nan")
+        div_p_coeff = float("nan")
+        lap_rho_coeff = float("nan")
+        lap_rho_sign = "inactive"
+        px_linear_coeff = float("nan")
+        py_linear_coeff = float("nan")
+        cond_G_rho = float("nan")
+        cond_G_px = float("nan")
+        cond_G_py = float("nan")
+        regime_class_result = None
+        regime_class_source = None
+        forces_enabled_result = None
+        ca_cr_ratio_result = float("nan")
+        effective_morse_result = None
+        if wsindy_mf_result is not None:
+            best_ell_meta = wsindy_summary.get("model_selection", {}).get("best_ell")
+            if best_ell_meta is not None and len(best_ell_meta) == 3:
+                selected_ell_vals = [int(v) for v in best_ell_meta]
+                selected_ell_json = json.dumps(selected_ell_vals)
+            weak_r2_rho = float(wsindy_mf_result.rho_model.diagnostics.get("r2", float("nan")))
+            weak_r2_px = float(wsindy_mf_result.px_model.diagnostics.get("r2", float("nan")))
+            weak_r2_py = float(wsindy_mf_result.py_model.diagnostics.get("r2", float("nan")))
+            div_p_coeff = _coeff_for_model(wsindy_mf_result.rho_model, "div_p")
+            lap_rho_coeff = _coeff_for_model(wsindy_mf_result.rho_model, "lap_rho")
+            lap_rho_sign = _sign_label(lap_rho_coeff)
+            px_linear_coeff = _coeff_for_model(wsindy_mf_result.px_model, "px")
+            py_linear_coeff = _coeff_for_model(wsindy_mf_result.py_model, "py")
+            fit_diagnostics = wsindy_mf_result.metadata.get("fit_diagnostics", {})
+            cond_G_rho = float(fit_diagnostics.get("rho", {}).get("condition_number", float("nan")))
+            cond_G_px = float(fit_diagnostics.get("px", {}).get("condition_number", float("nan")))
+            cond_G_py = float(fit_diagnostics.get("py", {}).get("condition_number", float("nan")))
+            regime_class_result = wsindy_mf_result.metadata.get("regime_class")
+            regime_class_source = wsindy_mf_result.metadata.get("regime_class_source")
+            forces_enabled_result = wsindy_mf_result.metadata.get("forces_enabled")
+            ca_cr_ratio_result = float(wsindy_mf_result.metadata.get("ca_cr_ratio", float("nan")))
+            effective_morse_result = wsindy_mf_result.metadata.get("effective_morse")
 
-                    # Build initial flux fields from test trajectory
-                    traj_path = run_dir / "trajectory.npz"
-                    if traj_path.exists():
-                        td = np.load(traj_path)
-                        traj_test = td["traj"][::w_subsample]
-                        vel_test = td["vel"][::w_subsample]
-                        mf_cfg = wsindy_config.get("multifield_library", {})
-                        kde_bw = mf_cfg.get("kde_bandwidth", 5.0)
-                        # compute_flux_kde expects (T, N, 2) — wrap single frame
-                        px0_arr, py0_arr = compute_flux_kde(
-                            traj_test[forecast_start:forecast_start+1],
-                            vel_test[forecast_start:forecast_start+1],
-                            xgrid, ygrid, Lx, Ly, bandwidth=kde_bw,
-                        )
-                        px0, py0 = px0_arr[0], py0_arr[0]
-                    else:
-                        # No trajectory → zero flux ICs (degraded mode)
-                        print(f"    WARNING: {run_name} has no trajectory.npz, using zero-flux ICs")
-                        px0 = np.zeros_like(rho0)
-                        py0 = np.zeros_like(rho0)
+        # ── Identification-only vs forecast evaluation ──────────────
+        if not wsindy_identification_only:
+            # ============================================================
+            #  FORECAST PATH (original behavior)
+            # ============================================================
+            for ti in range(n_test):
+                run_name = test_meta_list[ti]["run_name"]
+                run_dir = TEST_DIR / run_name
 
-                    # Morse params
-                    forces_params_fc = raw_config.get("forces", {}).get("params", {})
-                    morse_params = None
-                    mf_cfg_lib = wsindy_config.get("multifield_library", {})
-                    if mf_cfg_lib.get("morse", True):
-                        morse_params = dict(
-                            Cr=forces_params_fc.get("Cr", 0.3),
-                            Ca=forces_params_fc.get("Ca", 0.8),
-                            lr=forces_params_fc.get("lr", 0.5),
-                            la=forces_params_fc.get("la", 1.5),
-                        )
+                d = np.load(run_dir / "density_true.npz")
+                rho_true = d["rho"][::w_subsample]
+                times_sub = d["times"][::w_subsample]
+                T_test_sub = rho_true.shape[0]
 
-                    fc_method = fc_cfg.get("method", "auto")
-                    mass_conserve = fc_cfg.get("mass_conserve", True)
-                    try:
-                        rho_pred, px_pred, py_pred = forecast_multifield(
-                            rho0, px0, py0,
-                            wsindy_mf_result, grid,
-                            Lx=Lx, Ly=Ly,
-                            n_steps=n_fc,
-                            clip_negative_rho=clip_neg,
-                            mass_conserve=mass_conserve,
-                            method=fc_method,
-                            morse_params=morse_params,
-                            xgrid=xgrid, ygrid=ygrid,
-                        )
-                        method = f"{fc_method}_multifield"
-                    except Exception as auto_exc:
-                        if fc_method != "auto":
-                            raise
-                        print(f"    [{ti+1}/{n_test}] {run_name}: auto multifield forecast failed - {auto_exc}")
-                        print("    Retrying multifield forecast with RK4...")
+                n_fc = T_test_sub - forecast_start - 1
+                if n_fc <= 0:
+                    continue
+
+                try:
+                    # ==================================================
+                    #  MULTIFIELD forecast
+                    # ==================================================
+                    failure_reason = None
+                    failure_step = None
+                    method_used = None
+                    if wsindy_mf_result is not None:
+                        rho0 = rho_true[forecast_start]
+
+                        # Build initial flux fields from test trajectory
+                        traj_path = run_dir / "trajectory.npz"
+                        if traj_path.exists():
+                            td = np.load(traj_path)
+                            traj_test = td["traj"][::w_subsample]
+                            vel_test = td["vel"][::w_subsample]
+                            mf_cfg = wsindy_config.get("multifield_library", {})
+                            kde_bw = mf_cfg.get("kde_bandwidth", 5.0)
+                            # compute_flux_kde expects (T, N, 2) — wrap single frame
+                            px0_arr, py0_arr = compute_flux_kde(
+                                traj_test[forecast_start:forecast_start+1],
+                                vel_test[forecast_start:forecast_start+1],
+                                xgrid, ygrid, Lx, Ly, bandwidth=kde_bw,
+                            )
+                            px0, py0 = px0_arr[0], py0_arr[0]
+                        else:
+                            # No trajectory → zero flux ICs (degraded mode)
+                            print(f"    WARNING: {run_name} has no trajectory.npz, using zero-flux ICs")
+                            px0 = np.zeros_like(rho0)
+                            py0 = np.zeros_like(rho0)
+
+                        # Morse params
+                        morse_params = None
+                        forces_params_fc = raw_config.get("forces", {}).get("params", {})
+                        if effective_morse_result:
+                            morse_params = dict(
+                                Cr=forces_params_fc.get("Cr", 0.3),
+                                Ca=forces_params_fc.get("Ca", 0.8),
+                                lr=forces_params_fc.get("lr", 0.5),
+                                la=forces_params_fc.get("la", 1.5),
+                            )
+
+                        fc_method = fc_cfg.get("method", "auto")
+                        mass_conserve = fc_cfg.get("mass_conserve", True)
                         try:
                             rho_pred, px_pred, py_pred = forecast_multifield(
                                 rho0, px0, py0,
@@ -1180,132 +1431,396 @@ def main():
                                 n_steps=n_fc,
                                 clip_negative_rho=clip_neg,
                                 mass_conserve=mass_conserve,
-                                method="rk4",
+                                method=fc_method,
                                 morse_params=morse_params,
                                 xgrid=xgrid, ygrid=ygrid,
                             )
-                            method = "rk4_multifield"
-                        except Exception as rk4_exc:
-                            raise RuntimeError(
-                                f"WSINDy multifield forecast failed with auto and RK4. "
-                                f"Auto error: {auto_exc}. RK4 error: {rk4_exc}"
-                            ) from rk4_exc
-                    # Stack with IC → same shape as scalar path
-                    U_pred = rho_pred  # already includes IC at index 0
+                            method_used = wsindy_mf_result.metadata.get("last_forecast_method_used", fc_method)
+                        except Exception as auto_exc:
+                            if fc_method != "auto":
+                                raise
+                            print(f"    [{ti+1}/{n_test}] {run_name}: auto multifield forecast failed - {auto_exc}")
+                            print("    Retrying multifield forecast with RK4...")
+                            try:
+                                rho_pred, px_pred, py_pred = forecast_multifield(
+                                    rho0, px0, py0,
+                                    wsindy_mf_result, grid,
+                                    Lx=Lx, Ly=Ly,
+                                    n_steps=n_fc,
+                                    clip_negative_rho=clip_neg,
+                                    mass_conserve=mass_conserve,
+                                    method="rk4",
+                                    morse_params=morse_params,
+                                    xgrid=xgrid, ygrid=ygrid,
+                                )
+                                method_used = wsindy_mf_result.metadata.get("last_forecast_method_used", "rk4")
+                            except Exception as rk4_exc:
+                                raise MultiFieldForecastError(
+                                    f"WSINDy multifield forecast failed with auto and RK4. "
+                                    f"Auto error: {auto_exc}. RK4 error: {rk4_exc}"
+                                    ,
+                                    reason="fallback_failed",
+                                    step=getattr(rk4_exc, "step", getattr(auto_exc, "step", None)),
+                                    method=getattr(rk4_exc, "method", "rk4"),
+                                ) from rk4_exc
+                        method = f"{method_used}_multifield"
+                        # Stack with IC → same shape as scalar path
+                        U_pred = rho_pred  # already includes IC at index 0
 
-                # ==================================================
-                #  SCALAR forecast (fallback)
-                # ==================================================
-                else:
-                    U0 = rho_true[forecast_start]
-                    U_pred, method = forecast_density(
-                        wsindy_model, grid, U0, n_fc, clip_negative=clip_neg,
+                    # ==================================================
+                    #  SCALAR forecast (fallback)
+                    # ==================================================
+                    else:
+                        U0 = rho_true[forecast_start]
+                        U_pred, method = forecast_density(
+                            wsindy_model, grid, U0, n_fc, clip_negative=clip_neg,
+                        )
+
+                except Exception as e:
+                    print(f"    [{ti+1}/{n_test}] {run_name}: FAILED - {e}")
+                    import traceback; traceback.print_exc()
+                    test_results.append({
+                        "test_id": ti, "run_name": run_name,
+                        "r2_reconstructed": float("nan"),
+                        "forecast_status": "failed",
+                        "failure_reason": getattr(e, "reason", type(e).__name__),
+                        "failure_step": getattr(e, "step", None),
+                        "forecast_method_attempted": fc_cfg.get("method", "auto") if wsindy_mf_result is not None else "scalar",
+                        "forecast_method_used": getattr(e, "method", None),
+                        "motion_energy_true": float("nan"),
+                        "motion_energy_pred": float("nan"),
+                        "motion_ratio": float("nan"),
+                        "mass_drift_mean": float("nan"),
+                        "frame_50_rho_rmse": float("nan"),
+                        "mass_drift_frame_50": float("nan"),
+                        "selected_ell": selected_ell_json,
+                        "selected_ell_t": selected_ell_vals[0],
+                        "selected_ell_x": selected_ell_vals[1],
+                        "selected_ell_y": selected_ell_vals[2],
+                        "weak_r2_rho": weak_r2_rho,
+                        "weak_r2_px": weak_r2_px,
+                        "weak_r2_py": weak_r2_py,
+                        "div_p_coeff": div_p_coeff,
+                        "lap_rho_sign": lap_rho_sign,
+                        "lap_rho_coeff": lap_rho_coeff,
+                        "px_linear_coeff": px_linear_coeff,
+                        "py_linear_coeff": py_linear_coeff,
+                        "cond_G_rho": cond_G_rho,
+                        "cond_G_px": cond_G_px,
+                        "cond_G_py": cond_G_py,
+                        "regime_class": regime_class_result,
+                        "regime_class_source": regime_class_source,
+                        "forces_enabled": forces_enabled_result,
+                        "ca_cr_ratio": ca_cr_ratio_result,
+                        "effective_morse": effective_morse_result,
+                    })
+                    continue
+
+                rho_true_fc = rho_true[forecast_start : forecast_start + n_fc + 1]
+                times_fc = times_sub[forecast_start : forecast_start + n_fc + 1]
+
+                r2_ts = compute_r2_timeseries(rho_true_fc, U_pred)
+                mean_r2 = float(np.nanmean(r2_ts[1:]))
+
+                # Save per-test artifacts
+                save_dict = dict(
+                    rho=U_pred.astype(np.float32),
+                    xgrid=d["xgrid"], ygrid=d["ygrid"],
+                    times=np.asarray(times_fc, dtype=np.float32),
+                    forecast_start_idx=0,
+                )
+                if wsindy_mf_result is not None:
+                    # Also save predicted flux fields (already include IC at index 0)
+                    save_dict["px"] = px_pred.astype(np.float32)
+                    save_dict["py"] = py_pred.astype(np.float32)
+                np.savez_compressed(run_dir / "density_pred_wsindy.npz", **save_dict)
+
+                n_save = min(len(times_fc), len(r2_ts))
+                pd.DataFrame({
+                    "time": times_fc[:n_save],
+                    "r2_reconstructed": r2_ts[:n_save],
+                    "r2_latent": r2_ts[:n_save],
+                    "r2_pod": np.ones(n_save, dtype=np.float64),
+                }).to_csv(run_dir / "r2_vs_time_wsindy.csv", index=False)
+
+                # Save density_metrics_wsindy.csv (analogous to MVAR/LSTM)
+                try:
+                    T_pred = U_pred.shape[0]
+                    density_var_pred = np.std(U_pred, axis=(1, 2))
+                    mass_pred = np.sum(U_pred, axis=(1, 2))
+                    density_var_true = np.std(rho_true_fc[:T_pred], axis=(1, 2))
+                    mass_true_fc = np.sum(rho_true_fc[:T_pred], axis=(1, 2))
+                    motion_energy_true = _motion_energy(rho_true_fc[:T_pred])
+                    motion_energy_pred = _motion_energy(U_pred[:T_pred])
+                    motion_ratio = (
+                        float(motion_energy_pred / motion_energy_true)
+                        if motion_energy_true > 1e-12 else 1.0
                     )
+                    mass_drift_mean = float(np.mean(np.abs(mass_pred - mass_true_fc) / np.maximum(np.abs(mass_true_fc), 1e-12)))
+                    if T_pred > 50:
+                        frame_50_rho_rmse = float(np.sqrt(np.mean((rho_true_fc[50] - U_pred[50]) ** 2)))
+                        mass_drift_frame_50 = float(
+                            abs(np.sum(U_pred[50]) - np.sum(U_pred[0])) / max(abs(np.sum(U_pred[0])), 1e-12)
+                        )
+                    else:
+                        frame_50_rho_rmse = float("nan")
+                        mass_drift_frame_50 = float("nan")
+                    dm_df = pd.DataFrame({
+                        't': times_fc[:T_pred],
+                        'density_variance_true': density_var_true,
+                        'density_variance_pred': density_var_pred,
+                        'mass_true': mass_true_fc,
+                        'mass_pred': mass_pred,
+                    })
+                    dm_df.to_csv(run_dir / "density_metrics_wsindy.csv", index=False)
+                except Exception:
+                    motion_energy_true = float("nan")
+                    motion_energy_pred = float("nan")
+                    motion_ratio = float("nan")
+                    mass_drift_mean = float("nan")
+                    frame_50_rho_rmse = float("nan")
+                    mass_drift_frame_50 = float("nan")
 
-            except Exception as e:
-                print(f"    [{ti+1}/{n_test}] {run_name}: FAILED - {e}")
-                import traceback; traceback.print_exc()
                 test_results.append({
                     "test_id": ti, "run_name": run_name,
-                    "r2_reconstructed": float("nan"),
+                    "r2_reconstructed": mean_r2,
+                    "forecast_method": method,
+                    "forecast_status": "ok",
+                    "failure_reason": None,
+                    "failure_step": None,
+                    "forecast_method_attempted": fc_cfg.get("method", "auto") if wsindy_mf_result is not None else method,
+                    "forecast_method_used": method_used if wsindy_mf_result is not None else method,
+                    "motion_energy_true": motion_energy_true,
+                    "motion_energy_pred": motion_energy_pred,
+                    "motion_ratio": motion_ratio,
+                    "mass_drift_mean": mass_drift_mean,
+                    "frame_50_rho_rmse": frame_50_rho_rmse,
+                    "mass_drift_frame_50": mass_drift_frame_50,
+                    "selected_ell": selected_ell_json,
+                    "selected_ell_t": selected_ell_vals[0],
+                    "selected_ell_x": selected_ell_vals[1],
+                    "selected_ell_y": selected_ell_vals[2],
+                    "weak_r2_rho": weak_r2_rho,
+                    "weak_r2_px": weak_r2_px,
+                    "weak_r2_py": weak_r2_py,
+                    "div_p_coeff": div_p_coeff,
+                    "lap_rho_sign": lap_rho_sign,
+                    "lap_rho_coeff": lap_rho_coeff,
+                    "px_linear_coeff": px_linear_coeff,
+                    "py_linear_coeff": py_linear_coeff,
+                    "cond_G_rho": cond_G_rho,
+                    "cond_G_px": cond_G_px,
+                    "cond_G_py": cond_G_py,
+                    "regime_class": regime_class_result,
+                    "regime_class_source": regime_class_source,
+                    "forces_enabled": forces_enabled_result,
+                    "ca_cr_ratio": ca_cr_ratio_result,
+                    "effective_morse": effective_morse_result,
                 })
-                continue
+                all_r2.append(r2_ts[1:])
 
-            rho_true_fc = rho_true[forecast_start : forecast_start + n_fc + 1]
-            times_fc = times_sub[forecast_start : forecast_start + n_fc + 1]
+                ic = test_meta_list[ti].get("distribution", "?")
+                print(f"    [{ti+1}/{n_test}] {run_name} ({ic}): R²={mean_r2:.4f} ({method})")
 
-            r2_ts = compute_r2_timeseries(rho_true_fc, U_pred)
-            mean_r2 = float(np.nanmean(r2_ts[1:]))
+            # Save aggregate results
+            results_df = pd.DataFrame(test_results)
+            results_df.to_csv(WSINDY_DIR / "test_results.csv", index=False)
 
-            # Save per-test artifacts
-            save_dict = dict(
-                rho=U_pred.astype(np.float32),
-                xgrid=d["xgrid"], ygrid=d["ygrid"],
-                times=np.asarray(times_fc, dtype=np.float32),
-                forecast_start_idx=0,
-            )
-            if wsindy_mf_result is not None:
-                # Also save predicted flux fields (already include IC at index 0)
-                save_dict["px"] = px_pred.astype(np.float32)
-                save_dict["py"] = py_pred.astype(np.float32)
-            np.savez_compressed(run_dir / "density_pred_wsindy.npz", **save_dict)
+            mean_r2_wsindy = results_df["r2_reconstructed"].mean()
+            std_r2_wsindy = results_df["r2_reconstructed"].std()
+            n_success_wsindy = int((results_df.get("forecast_status") == "ok").sum()) if "forecast_status" in results_df.columns else int(results_df["r2_reconstructed"].notna().sum())
+            n_failed_wsindy = int(len(results_df) - n_success_wsindy)
+            print(f"\n  WSINDy mean R²: {mean_r2_wsindy:.4f} +/- {std_r2_wsindy:.4f}")
 
-            n_save = min(len(times_fc), len(r2_ts))
-            pd.DataFrame({
-                "time": times_fc[:n_save],
-                "r2_reconstructed": r2_ts[:n_save],
-                "r2_latent": r2_ts[:n_save],
-                "r2_pod": np.ones(n_save, dtype=np.float64),
-            }).to_csv(run_dir / "r2_vs_time_wsindy.csv", index=False)
-
-            # Save density_metrics_wsindy.csv (analogous to MVAR/LSTM)
-            try:
-                T_pred = U_pred.shape[0]
-                density_var_pred = np.std(U_pred, axis=(1, 2))
-                mass_pred = np.sum(U_pred, axis=(1, 2))
-                density_var_true = np.std(rho_true_fc[:T_pred], axis=(1, 2))
-                mass_true_fc = np.sum(rho_true_fc[:T_pred], axis=(1, 2))
-                dm_df = pd.DataFrame({
-                    't': times_fc[:T_pred],
-                    'density_variance_true': density_var_true,
-                    'density_variance_pred': density_var_pred,
-                    'mass_true': mass_true_fc,
-                    'mass_pred': mass_pred,
-                })
-                dm_df.to_csv(run_dir / "density_metrics_wsindy.csv", index=False)
-            except Exception:
-                pass  # Non-critical
-
-            test_results.append({
-                "test_id": ti, "run_name": run_name,
-                "r2_reconstructed": mean_r2,
-                "forecast_method": method,
-            })
-            all_r2.append(r2_ts[1:])
-
-            ic = test_meta_list[ti].get("distribution", "?")
-            print(f"    [{ti+1}/{n_test}] {run_name} ({ic}): R²={mean_r2:.4f} ({method})")
-
-        # Save aggregate results
-        results_df = pd.DataFrame(test_results)
-        results_df.to_csv(WSINDY_DIR / "test_results.csv", index=False)
-
-        mean_r2_wsindy = results_df["r2_reconstructed"].mean()
-        std_r2_wsindy = results_df["r2_reconstructed"].std()
-        print(f"\n  WSINDy mean R²: {mean_r2_wsindy:.4f} +/- {std_r2_wsindy:.4f}")
-
-        wsindy_summary["test_evaluation"] = {
-            "mean_r2": float(mean_r2_wsindy) if not np.isnan(mean_r2_wsindy) else None,
-            "std_r2": float(std_r2_wsindy) if not np.isnan(std_r2_wsindy) else None,
-            "n_test": n_test,
-        }
-
-        # Save WSINDy runtime profile (analogous to MVAR/LSTM)
-        wsindy_discovery_time = wsindy_summary.get("model_selection", {}).get("time_s", 0)
-        wsindy_runtime_profile = {
-            "model_name": "WSINDy",
-            "training_time_seconds": wsindy_discovery_time,
-            "model_params": int(wsindy_summary.get("discovered_pde", {}).get("n_active", 0)
-                                if isinstance(wsindy_summary.get("discovered_pde"), dict)
-                                else sum(v.get("n_active", 0)
-                                         for v in wsindy_summary.get("discovered_pde", {}).values()
-                                         if isinstance(v, dict))),
-            "inference": {
-                "single_step": {
-                    "mean_seconds": 0.0,  # PDE integrator, not profiled per-step
-                },
-            },
-            "notes": "WSINDy is a PDE discovery method; training = model selection + bootstrap",
-        }
-        with open(WSINDY_DIR / "runtime_profile.json", "w") as f:
-            json.dump(wsindy_runtime_profile, f, indent=2)
-
-        if mean_r2_mvar is not None:
-            wsindy_summary["comparison_with_mvar"] = {
-                "mvar_mean_r2": float(mean_r2_mvar),
-                "wsindy_mean_r2": float(mean_r2_wsindy) if not np.isnan(mean_r2_wsindy) else None,
-                "difference": float(mean_r2_wsindy - mean_r2_mvar) if not np.isnan(mean_r2_wsindy) else None,
+            wsindy_summary["test_evaluation"] = {
+                "mean_r2": float(mean_r2_wsindy) if not np.isnan(mean_r2_wsindy) else None,
+                "std_r2": float(std_r2_wsindy) if not np.isnan(std_r2_wsindy) else None,
+                "n_test": n_test,
+                "n_success": n_success_wsindy,
+                "n_failed": n_failed_wsindy,
             }
+
+            # Save WSINDy runtime profile (analogous to MVAR/LSTM)
+            wsindy_discovery_time = wsindy_summary.get("model_selection", {}).get("time_s", 0)
+            wsindy_runtime_profile = {
+                "model_name": "WSINDy",
+                "training_time_seconds": wsindy_discovery_time,
+                "model_params": int(wsindy_summary.get("discovered_pde", {}).get("n_active", 0)
+                                    if isinstance(wsindy_summary.get("discovered_pde"), dict)
+                                    else sum(v.get("n_active", 0)
+                                             for v in wsindy_summary.get("discovered_pde", {}).values()
+                                             if isinstance(v, dict))),
+                "inference": {
+                    "single_step": {
+                        "mean_seconds": 0.0,  # PDE integrator, not profiled per-step
+                    },
+                },
+                "notes": "WSINDy is a PDE discovery method; training = model selection + bootstrap",
+            }
+            with open(WSINDY_DIR / "runtime_profile.json", "w") as f:
+                json.dump(wsindy_runtime_profile, f, indent=2)
+
+            if mean_r2_mvar is not None:
+                wsindy_summary["comparison_with_mvar"] = {
+                    "mvar_mean_r2": float(mean_r2_mvar),
+                    "wsindy_mean_r2": float(mean_r2_wsindy) if not np.isnan(mean_r2_wsindy) else None,
+                    "difference": float(mean_r2_wsindy - mean_r2_mvar) if not np.isnan(mean_r2_wsindy) else None,
+                }
+
+        else:
+            # ============================================================
+            #  IDENTIFICATION-ONLY PATH
+            #  No forecast. Evaluate identification quality per test traj.
+            # ============================================================
+            print("  Mode: identification_only (no forecast)")
+            identification_rows = []
+
+            # Helper: compute px/py coefficient asymmetry
+            def _px_py_asymmetry(mf_result):
+                if mf_result is None:
+                    return float("nan")
+                px_mdl = mf_result.px_model
+                py_mdl = mf_result.py_model
+                # Map px term names to py equivalents
+                _xy_map = {
+                    "px": "py", "dx_rho": "dy_rho", "lap_px": "lap_py",
+                    "rho_dx_Phi": "rho_dy_Phi", "div_px_p": "div_py_p",
+                    "dx_rho2": "dy_rho2", "p_sq_px": "p_sq_py",
+                    "bilap_px": "bilap_py", "p_dot_grad_px": "p_dot_grad_py",
+                }
+                max_diff = 0.0
+                for px_name, py_name in _xy_map.items():
+                    px_c = _coeff_for_model(px_mdl, px_name)
+                    py_c = _coeff_for_model(py_mdl, py_name)
+                    if px_c is not None and py_c is not None:
+                        max_diff = max(max_diff, abs(px_c - py_c))
+                    elif px_c is not None or py_c is not None:
+                        max_diff = max(max_diff, abs(px_c or 0.0) + abs(py_c or 0.0))
+                return float(max_diff)
+
+            # Retrieve dominant balance from post-regression diagnostics
+            post_diag = wsindy_summary.get("post_regression_diagnostics", {})
+
+            for ti in range(n_test):
+                run_name = test_meta_list[ti]["run_name"]
+                ic = test_meta_list[ti].get("distribution", "?")
+
+                # Per-equation dominant balance dicts
+                rho_db = {}
+                px_db = {}
+                py_db = {}
+                for eq_name, db_target in [("rho", rho_db), ("px", px_db), ("py", py_db)]:
+                    eq_diag = post_diag.get(eq_name, {})
+                    db_norm = eq_diag.get("dominant_balance_normalized", {})
+                    db_target.update(db_norm)
+
+                row = {
+                    "trajectory_id": run_name,
+                    "regime_class": regime_class_result,
+                    "effective_morse": effective_morse_result,
+                    "selected_ell": selected_ell_json,
+                    # rho_t
+                    "rho_weak_r2": weak_r2_rho,
+                    "rho_div_p_coeff": div_p_coeff,
+                    "rho_active_terms": ",".join(
+                        wsindy_mf_result.rho_model.active_terms
+                    ) if wsindy_mf_result else "",
+                    "rho_dominant_balance": json.dumps(rho_db),
+                    "cond_G_rho": cond_G_rho,
+                    # px_t
+                    "px_weak_r2": weak_r2_px,
+                    "px_active_terms": ",".join(
+                        wsindy_mf_result.px_model.active_terms
+                    ) if wsindy_mf_result else "",
+                    "px_dominant_balance": json.dumps(px_db),
+                    "cond_G_px": cond_G_px,
+                    # py_t
+                    "py_weak_r2": weak_r2_py,
+                    "py_active_terms": ",".join(
+                        wsindy_mf_result.py_model.active_terms
+                    ) if wsindy_mf_result else "",
+                    "py_dominant_balance": json.dumps(py_db),
+                    "cond_G_py": cond_G_py,
+                    # cross-equation
+                    "px_py_coeff_asymmetry": _px_py_asymmetry(wsindy_mf_result),
+                }
+                identification_rows.append(row)
+                print(f"    [{ti+1}/{n_test}] {run_name} ({ic}): identification_only")
+
+            # ── Write identification_results.csv ────────────────────
+            id_df = pd.DataFrame(identification_rows)
+            id_df.to_csv(WSINDY_DIR / "identification_results.csv", index=False)
+            print(f"\n  Saved: identification_results.csv ({len(id_df)} rows)")
+
+            # ── Write identification_summary.json ───────────────────
+            n_traj = len(identification_rows)
+            id_summary = {
+                "regime": args.experiment_name,
+                "regime_class": regime_class_result,
+                "effective_morse": effective_morse_result,
+                "n_test_trajectories": n_traj,
+                "selected_ell": selected_ell_vals,
+                "equations": {},
+            }
+            for eq_name in ["rho_t", "px_t", "py_t"]:
+                eq_key = eq_name.replace("_t", "")  # rho, px, py
+                mdl = getattr(wsindy_mf_result, f"{eq_key}_model", None) if wsindy_mf_result else None
+                eq_diag = post_diag.get(eq_key, {})
+
+                if mdl is not None:
+                    # Coefficient dict for all active terms
+                    coeff_dict = {
+                        n: float(mdl.w[mdl.col_names.index(n)])
+                        for n in mdl.active_terms
+                    }
+                    # Stability selection: count appearances across test trajectories
+                    # (In identification-only mode, the model is fitted once on training
+                    #  data, so all test trajectories see the same active set. The stable/
+                    #  fragile classification becomes meaningful when bootstrap is enabled.)
+                    all_active = mdl.active_terms
+                    stable_terms = list(all_active)  # 100% retention = stable
+                    fragile_terms = []
+
+                    eq_r2_key = f"weak_r2_{eq_key}"
+                    eq_cond_key = f"cond_G_{eq_key}"
+                    r2_vals = [r.get(eq_r2_key, float("nan")) for r in identification_rows]
+                    cond_vals = [r.get(eq_cond_key, float("nan")) for r in identification_rows]
+
+                    id_summary["equations"][eq_name] = {
+                        "mean_weak_r2": float(np.nanmean(r2_vals)),
+                        "mean_cond_G": float(np.nanmean(cond_vals)),
+                        "stable_terms": stable_terms,
+                        "fragile_terms": fragile_terms,
+                        "mean_coefficients": coeff_dict,
+                        "std_coefficients": {n: 0.0 for n in coeff_dict},
+                        "mean_dominant_balance": eq_diag.get("dominant_balance_normalized", {}),
+                    }
+
+            with open(WSINDY_DIR / "identification_summary.json", "w") as f:
+                json.dump(id_summary, f, indent=2, default=str)
+            print(f"  Saved: identification_summary.json")
+
+            # ── Summary entries ─────────────────────────────────────
+            wsindy_summary["test_evaluation"] = {
+                "mode": "identification_only",
+                "n_test": n_test,
+            }
+
+            # Save WSINDy runtime profile
+            wsindy_discovery_time = wsindy_summary.get("model_selection", {}).get("time_s", 0)
+            wsindy_runtime_profile = {
+                "model_name": "WSINDy",
+                "mode": "identification_only",
+                "training_time_seconds": wsindy_discovery_time,
+                "model_params": int(sum(
+                    v.get("n_active", 0)
+                    for v in wsindy_summary.get("discovered_pde", {}).values()
+                    if isinstance(v, dict)
+                )),
+                "notes": "WSINDy identification-only mode; no forecast evaluation",
+            }
+            with open(WSINDY_DIR / "runtime_profile.json", "w") as f:
+                json.dump(wsindy_runtime_profile, f, indent=2)
 
     # ================================================================
     # FINAL SUMMARY
@@ -1344,6 +1859,7 @@ def main():
             "mvar": mvar_enabled,
             "lstm": lstm_enabled,
             "wsindy": wsindy_enabled,
+            "wsindy_only_cli": bool(args.wsindy_only),
         },
         "evaluation": {
             "forecast_start_requested_s": float(
@@ -1401,6 +1917,7 @@ def main():
         if wsindy_mode_used == "multifield":
             export_files += [
                 "WSINDy/multifield_model.json",
+                "WSINDy/multifield_diagnostics.json",
                 "WSINDy/wsindy_model_rho.npz",
                 "WSINDy/wsindy_model_px.npz",
                 "WSINDy/wsindy_model_py.npz",

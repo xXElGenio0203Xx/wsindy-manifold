@@ -103,7 +103,7 @@ def stability_selection(
     library_terms: List[Tuple[str, str]],
     *,
     ell_grid: Optional[Sequence[Tuple[int, int, int]]] = None,
-    p: Tuple[int, int, int] = (2, 2, 2),
+    p: Tuple[int, int, int] = (3, 5, 5),
     stride: Tuple[int, int, int] = (1, 1, 1),
     n_bootstrap: int = 0,
     subsample_frac: float = 0.5,

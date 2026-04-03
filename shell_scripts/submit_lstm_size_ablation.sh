@@ -79,6 +79,8 @@ fi
 
 ssh "${OSCAR_HOST}" << ENDSSH
 cd ~/wsindy-manifold || exit 1
+# LOGIN NODE GUARD — do not add 'du', 'find -exec', or python training here
+du() { echo "ERROR: 'du' is blocked on login nodes. Use 'myquota' or 'interact' first." >&2; return 1; }; export -f du
 mkdir -p slurm_logs oscar_output
 
 N=\$(wc -l < configs/LSTM_size_ablation/manifest.txt | tr -d ' ')

@@ -42,6 +42,8 @@ from wsindy.system import (
     build_weak_system,
     default_t_margin,
     make_query_indices,
+    nondimensionalize_field,
+    rescale_coefficients,
 )
 from wsindy.test_functions import make_separable_psi
 from wsindy.model import WSINDyModel
@@ -124,17 +126,26 @@ def select_training_runs(train_dir, metadata, n_runs=10, seed=42):
 def build_stacked_weak_system(
     train_densities, grid, psi_bundle, library_terms, stride=(2, 2, 2),
 ):
-    """Build stacked weak system (b, G) from multiple training trajectories.
+    """Build stacked weak system (b, G) from multiple trajectories.
 
-    For each trajectory U_k, builds (b_k, G_k) at query points with the
-    given test functions, then stacks them vertically.
+    Nondimensionalizes all trajectories by a shared U_c before assembly
+    so that polynomial features are O(1), improving numerical stability.
 
     Returns
     -------
     b : (N_total,) stacked LHS
     G : (N_total, M) stacked RHS
     col_names : list[str]
+    U_c : float  — characteristic scale used for nondimensionalization
     """
+    # Compute shared characteristic scale from all trajectories
+    all_stds = [float(np.std(U_k)) for U_k in train_densities]
+    U_c = float(np.median(all_stds)) if all_stds else 1.0
+    if U_c < 1e-30:
+        U_c = float(max(np.max(np.abs(U_k)) for U_k in train_densities))
+    if U_c < 1e-30:
+        U_c = 1.0
+
     all_b, all_G = [], []
     t_margin = default_t_margin(psi_bundle)
 
@@ -150,7 +161,7 @@ def build_stacked_weak_system(
         if qi.shape[0] < len(library_terms) + 1:
             continue
         b_k, G_k, col_names = build_weak_system(
-            U_k, grid, psi_bundle, library_terms, qi,
+            U_k / U_c, grid, psi_bundle, library_terms, qi,
         )
         all_b.append(b_k)
         all_G.append(G_k)
@@ -158,26 +169,28 @@ def build_stacked_weak_system(
     if not all_b:
         raise ValueError("No valid query points from any training trajectory")
 
-    return np.concatenate(all_b), np.vstack(all_G), col_names
+    return np.concatenate(all_b), np.vstack(all_G), col_names, U_c
 
 
 def fit_stacked(
     train_densities, grid, library_terms, ell, p,
-    stride=(2, 2, 2), lambdas=None,
+    stride=(2, 2, 2), lambdas=None, max_iter=25,
 ):
-    """Fit WSINDy from multiple trajectories at a given ℓ.
+    """Fit WSINDy from stacked trajectories at a given ℓ.
 
-    Returns (model, b, G) so the system can be reused for bootstrap.
+    Returns (model, b, G, col_names) so the system can be reused for bootstrap.
     """
     psi_bundle = make_separable_psi(
         grid,
         ellt=ell[0], ellx=ell[1], elly=ell[2],
         pt=p[0], px=p[1], py=p[2],
     )
-    b, G, col_names = build_stacked_weak_system(
+    b, G, col_names, U_c = build_stacked_weak_system(
         train_densities, grid, psi_bundle, library_terms, stride,
     )
-    model = wsindy_fit_regression(b, G, col_names, lambdas=lambdas)
+    model = wsindy_fit_regression(b, G, col_names, lambdas=lambdas, max_iter=max_iter)
+    # Rescale coefficients back to physical units
+    model.w = rescale_coefficients(model.w, col_names, U_c)
     return model, b, G, col_names
 
 
@@ -700,7 +713,7 @@ def main():
     print(f"{thin}")
 
     ell_grid = default_ell_grid(T_sub, nx, ny, n_points=args.n_ell)
-    p = (2, 2, 2)
+    p = (3, 5, 5)
 
     print(f"  ell grid   : {len(ell_grid)} configs")
     print(f"  p          : {p}")

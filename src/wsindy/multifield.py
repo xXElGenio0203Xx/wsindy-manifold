@@ -28,7 +28,7 @@ direction-sensitive terms (e.g., ∇ρ splits into ∂_x ρ vs ∂_y ρ).
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -44,11 +44,45 @@ from .integrators import project_density
 
 # Term names that are pure-linear in the target field.
 # ETDRK4 treats these exactly in Fourier space.
+# Keep this list in sync with any future library additions: if a new
+# target-linear term is introduced and not added here, it will be treated as
+# nonlinear during ETDRK4. That is acceptable only for genuinely nonlinear or
+# cross-field couplings, not for stiff self-linear terms that should live in L.
 _LINEAR_TERM_NAMES = frozenset({
     "px", "py",                  # linear decay / growth
     "lap_rho", "lap_px", "lap_py",  # diffusion
     "bilap_px", "bilap_py",      # hyper-viscosity
 })
+
+_RHO_STRATEGIES = frozenset({"legacy", "continuity_first"})
+_REGIME_CLASSES = frozenset({"attractive", "repulsive"})
+_CONTINUITY_REQUIRED_RHO_TERMS = ("div_p",)
+_CONTINUITY_ALLOWED_RHO_TERMS = frozenset({
+    "div_p",
+    "div_rho_gradPhi",
+})
+_NONPOSITIVE_POSTFIT_TERMS = {
+    "px": frozenset({"px", "lap_px", "dx_rho2"}),
+    "py": frozenset({"py", "lap_py", "dy_rho2"}),
+}
+_MAX_ABS_POSTFIT_COEFF = 5.0
+
+
+class MultiFieldForecastError(RuntimeError):
+    """Raised when a multifield WSINDy rollout becomes invalid."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str,
+        step: Optional[int] = None,
+        method: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.step = step
+        self.method = method
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -112,6 +146,11 @@ def rho_terms_core() -> List[LibraryTerm]:
             "lap_rho", lambda fd: fd.lap_rho(),
             latex=r"\Delta\rho", equation="rho"),
     ]
+
+
+def rho_terms_continuity_first() -> List[LibraryTerm]:
+    """Restricted rho library for continuity-first models."""
+    return [term for term in rho_terms_core() if term.name == "div_p"]
 
 
 def rho_terms_morse() -> List[LibraryTerm]:
@@ -206,12 +245,12 @@ def px_terms_morse() -> List[LibraryTerm]:
     ]
 
 
-def px_terms_selfadvect() -> List[LibraryTerm]:
-    """D4: Self-advection (risky but sometimes key)."""
+def px_terms_momentum_flux() -> List[LibraryTerm]:
+    """D4: Combined momentum-flux divergence."""
     return [
         LibraryTerm(
-            "p_dot_grad_px", lambda fd: fd.p_dot_grad_px(),
-            latex=r"(\mathbf{p}\cdot\nabla)p_x", equation="px",
+            "div_px_p", lambda fd: fd.div_px_p(),
+            latex=r"\nabla\cdot(p_x\mathbf{p})", equation="px",
             dangerous=True),
     ]
 
@@ -271,11 +310,11 @@ def py_terms_morse() -> List[LibraryTerm]:
     ]
 
 
-def py_terms_selfadvect() -> List[LibraryTerm]:
+def py_terms_momentum_flux() -> List[LibraryTerm]:
     return [
         LibraryTerm(
-            "p_dot_grad_py", lambda fd: fd.p_dot_grad_py(),
-            latex=r"(\mathbf{p}\cdot\nabla)p_y", equation="py",
+            "div_py_p", lambda fd: fd.div_py_p(),
+            latex=r"\nabla\cdot(p_y\mathbf{p})", equation="py",
             dangerous=True),
     ]
 
@@ -284,10 +323,74 @@ def py_terms_selfadvect() -> List[LibraryTerm]:
 #  Recommended library builder
 # ═══════════════════════════════════════════════════════════════════
 
+def _normalize_regime_class(regime_class: Optional[str]) -> str:
+    """Normalise optional regime class strings for library assembly.
+
+    ``library_from_config_multifield`` may be used without access to the full
+    physics config, so ``None`` / ``"auto"`` fall back to ``"repulsive"``.
+    The main pipeline performs the actual Ca/Cr-based auto-resolution before
+    calling :func:`build_default_library`.
+    """
+    if regime_class in (None, "", "auto"):
+        regime_class = "repulsive"
+    regime_class = str(regime_class)
+    if regime_class not in _REGIME_CLASSES:
+        raise ValueError(
+            f"Unsupported regime_class={regime_class!r}. "
+            f"Expected one of {sorted(_REGIME_CLASSES)}."
+        )
+    return regime_class
+
+
+def resolve_regime_aware_library_settings(
+    *,
+    forces_enabled: bool,
+    Ca: float,
+    Cr: float,
+    morse_requested: bool = True,
+    regime_class: Optional[str] = "auto",
+) -> Dict[str, Any]:
+    """Resolve the regime-aware multifield library settings.
+
+    This is the light-weight classification logic used by the main pipeline.
+    ``forces_enabled=False`` always maps to ``repulsive`` and disables Morse
+    terms, even if dormant Morse parameters are present in the config.
+    """
+    Ca = float(Ca)
+    Cr = float(Cr)
+    if Cr > 0.0:
+        ca_cr_ratio = float(Ca / Cr)
+    elif Ca > 0.0:
+        ca_cr_ratio = float("inf")
+    else:
+        ca_cr_ratio = 0.0
+
+    if regime_class in (None, "", "auto"):
+        regime_class_source = "auto"
+        if not forces_enabled:
+            resolved_regime_class = "repulsive"
+        else:
+            resolved_regime_class = "attractive" if ca_cr_ratio >= 1.0 else "repulsive"
+    else:
+        resolved_regime_class = _normalize_regime_class(regime_class)
+        regime_class_source = "override"
+
+    effective_morse = bool(forces_enabled and morse_requested)
+    return {
+        "regime_class": resolved_regime_class,
+        "regime_class_source": regime_class_source,
+        "forces_enabled": bool(forces_enabled),
+        "ca_cr_ratio": float(ca_cr_ratio),
+        "effective_morse": effective_morse,
+        "morse_requested": bool(morse_requested),
+    }
+
 def build_default_library(
     *,
     morse: bool = True,
     rich: bool = False,
+    rho_strategy: str = "legacy",
+    regime_class: str = "repulsive",
 ) -> Dict[str, List[LibraryTerm]]:
     """Build the recommended thesis-grade library.
 
@@ -296,35 +399,57 @@ def build_default_library(
     morse : bool
         Include Morse-derived terms (requires Φ field).
     rich : bool
-        Include "richer" optional terms (Δ(|p|²), (p·∇)p, Δ²p, ∇(ρ²)).
+        Include "richer" optional terms. This now excludes the biharmonic
+        momentum terms ``bilap_px`` and ``bilap_py`` because they produced
+        unstable anti-diffusive rollouts in the current multifield setting.
+    regime_class : {"attractive", "repulsive"}
+        Regime-aware specialization for the multifield candidate library.
+        Attractive regimes keep Morse aggregation in ``rho_t`` and the higher-
+        order density-pressure terms in the momentum equations. Repulsive
+        regimes keep only the common base plus momentum-force Morse terms.
 
     Returns
     -------
     dict mapping ``"rho"``, ``"px"``, ``"py"`` to their term lists.
     """
+    if rho_strategy not in _RHO_STRATEGIES:
+        raise ValueError(
+            f"Unsupported rho_strategy={rho_strategy!r}. "
+            f"Expected one of {sorted(_RHO_STRATEGIES)}."
+        )
+    regime_class = _normalize_regime_class(regime_class)
+    attractive = regime_class == "attractive"
+
     # ── ρ equation ──
-    rho_lib = rho_terms_core()
-    if morse:
-        rho_lib += rho_terms_morse()
-    rho_lib += rho_terms_nonlinear_diff()
-    if rich:
-        rho_lib += rho_terms_coupling()
+    if rho_strategy == "continuity_first":
+        rho_lib = rho_terms_continuity_first()
+        if morse and attractive:
+            rho_lib += rho_terms_morse()
+    else:
+        rho_lib = rho_terms_core()
+        if morse and attractive:
+            rho_lib += rho_terms_morse()
+        rho_lib += rho_terms_nonlinear_diff()
+        if rich:
+            rho_lib += rho_terms_coupling()
 
     # ── p_x equation ──
     px_lib = px_terms_linear() + px_terms_pressure() + px_terms_viscosity()
     if morse:
         px_lib += px_terms_morse()
     if rich:
-        px_lib += px_terms_selfadvect() + px_terms_hyperviscosity()
-        px_lib += px_terms_pressure_extended()
+        px_lib += px_terms_momentum_flux()
+        if attractive:
+            px_lib += px_terms_pressure_extended()
 
     # ── p_y equation ──
     py_lib = py_terms_linear() + py_terms_pressure() + py_terms_viscosity()
     if morse:
         py_lib += py_terms_morse()
     if rich:
-        py_lib += py_terms_selfadvect() + py_terms_hyperviscosity()
-        py_lib += py_terms_pressure_extended()
+        py_lib += py_terms_momentum_flux()
+        if attractive:
+            py_lib += py_terms_pressure_extended()
 
     return {"rho": rho_lib, "px": px_lib, "py": py_lib}
 
@@ -345,7 +470,14 @@ def library_from_config_multifield(cfg: dict) -> Dict[str, List[LibraryTerm]]:
     """
     morse = cfg.get("morse", True)
     rich = cfg.get("rich", False)
-    lib = build_default_library(morse=morse, rich=rich)
+    rho_strategy = cfg.get("rho_strategy", "legacy")
+    regime_class = cfg.get("regime_class", "repulsive")
+    lib = build_default_library(
+        morse=morse,
+        rich=rich,
+        rho_strategy=rho_strategy,
+        regime_class=regime_class,
+    )
 
     # Could add custom extras here in later expansion
     return lib
@@ -483,15 +615,213 @@ def build_stacked_multifield(
 #  Model selection for one equation (multi-field)
 # ═══════════════════════════════════════════════════════════════════
 
+def _required_terms_for_equation(
+    eq_name: str,
+    *,
+    rho_strategy: str,
+) -> Tuple[str, ...]:
+    if eq_name == "rho" and rho_strategy == "continuity_first":
+        return _CONTINUITY_REQUIRED_RHO_TERMS
+    return ()
+
+
+def _fit_diagnostics_summary(
+    b: np.ndarray,
+    G: np.ndarray,
+    model: WSINDyModel,
+    col_names: Sequence[str],
+) -> Dict[str, Any]:
+    """Structured diagnostics for one equation fit."""
+    residual = b - G @ model.w
+    col_norms = np.linalg.norm(G, axis=0)
+
+    if G.shape[0] > 1 and G.shape[1] > 1:
+        G_centered = G - np.mean(G, axis=0, keepdims=True)
+        denom = np.linalg.norm(G_centered, axis=0)
+        valid = denom > 1e-12
+        corr = np.zeros((G.shape[1], G.shape[1]), dtype=np.float64)
+        if np.any(valid):
+            G_std = np.zeros_like(G_centered)
+            G_std[:, valid] = G_centered[:, valid] / denom[valid]
+            corr = np.abs((G_std.T @ G_std) / max(G.shape[0] - 1, 1))
+        np.fill_diagonal(corr, 0.0)
+        pair_scores = []
+        for i in range(len(col_names)):
+            for j in range(i + 1, len(col_names)):
+                pair_scores.append((float(corr[i, j]), col_names[i], col_names[j]))
+        pair_scores.sort(reverse=True, key=lambda item: item[0])
+        top_corr = [
+            {"corr_abs": score, "term_a": a, "term_b": b_name}
+            for score, a, b_name in pair_scores[:5]
+        ]
+    else:
+        top_corr = []
+
+    lambda_history = model.diagnostics.get("lambda_history", [])
+    support_changes = []
+    previous_terms: Optional[set[str]] = None
+    for entry in lambda_history:
+        current_terms = set(entry.get("active_terms", []))
+        if previous_terms is not None:
+            union = previous_terms | current_terms
+            jaccard = 1.0 if not union else len(previous_terms & current_terms) / len(union)
+            support_changes.append(
+                {
+                    "lambda": float(entry.get("lambda", 0.0)),
+                    "jaccard_to_previous": float(jaccard),
+                    "n_active": int(entry.get("n_active", 0)),
+                }
+            )
+        previous_terms = current_terms
+
+    res_mean = float(np.mean(residual))
+    res_std = float(np.std(residual))
+    centred = (residual - res_mean) / (res_std + 1e-12)
+
+    return {
+        "column_norms": {
+            name: float(norm) for name, norm in zip(col_names, col_norms)
+        },
+        "top_correlated_pairs": top_corr,
+        "condition_number": float(np.linalg.cond(G)) if G.size else float("nan"),
+        "support_stability": support_changes,
+        "residual_summary": {
+            "mean": res_mean,
+            "std": res_std,
+            "max_abs": float(np.max(np.abs(residual))),
+            "skew_like": float(np.mean(centred ** 3)),
+        },
+    }
+
+
+def _enforce_required_terms(
+    model: WSINDyModel,
+    b: np.ndarray,
+    G: np.ndarray,
+    required_terms: Sequence[str],
+) -> WSINDyModel:
+    """Force required terms into the final least-squares support."""
+    if not required_terms:
+        return model
+
+    required_idx = [model.col_names.index(name) for name in required_terms if name in model.col_names]
+    if not required_idx:
+        return model
+
+    active = model.active.copy()
+    if all(active[idx] for idx in required_idx):
+        return model
+
+    active[required_idx] = True
+    w = np.zeros_like(model.w)
+    w[active] = np.linalg.lstsq(G[:, active], b, rcond=1e-12)[0]
+    fit_pred = G @ w
+    residual = b - fit_pred
+    ss_res = float(np.sum(residual ** 2))
+    ss_tot = float(np.sum((b - np.mean(b)) ** 2))
+    b_norm = float(np.linalg.norm(b))
+
+    diagnostics = dict(model.diagnostics)
+    diagnostics.update(
+        {
+            "r2": 0.0 if ss_tot < 1e-30 else 1.0 - ss_res / ss_tot,
+            "residual_norm": float(np.linalg.norm(residual)),
+            "relative_l2": float(np.linalg.norm(residual) / b_norm) if b_norm > 1e-30 else float("inf"),
+            "n_active": int(np.sum(active)),
+            "required_terms_forced": [
+                model.col_names[idx] for idx in required_idx if not model.active[idx]
+            ],
+        }
+    )
+
+    return WSINDyModel(
+        col_names=model.col_names,
+        w=w,
+        active=active,
+        best_lambda=model.best_lambda,
+        col_scale=model.col_scale,
+        diagnostics=diagnostics,
+    )
+
+
+def _enforce_nonpositive_terms(
+    model: WSINDyModel,
+    b: np.ndarray,
+    G: np.ndarray,
+    eq_name: Optional[str],
+) -> WSINDyModel:
+    constrained_terms = _NONPOSITIVE_POSTFIT_TERMS.get(eq_name or "", frozenset())
+    enforce_sign = bool(constrained_terms)
+    enforce_magnitude = eq_name in {"rho", "px", "py"}
+    if not enforce_sign and not enforce_magnitude:
+        return model
+
+    active = model.active.copy()
+    dropped_terms: List[str] = []
+    w = model.w.copy()
+
+    while True:
+        violating = [
+            idx
+            for idx, name in enumerate(model.col_names)
+            if active[idx] and name in constrained_terms and w[idx] > 0
+        ]
+        oversized = [
+            idx
+            for idx, coeff in enumerate(w)
+            if active[idx] and enforce_magnitude and abs(float(coeff)) > _MAX_ABS_POSTFIT_COEFF
+        ]
+        violating += [idx for idx in oversized if idx not in violating]
+        if not violating:
+            break
+        for idx in violating:
+            active[idx] = False
+            dropped_terms.append(model.col_names[idx])
+
+        w = np.zeros_like(model.w)
+        if np.any(active):
+            w[active] = np.linalg.lstsq(G[:, active], b, rcond=1e-12)[0]
+
+    if not dropped_terms:
+        return model
+
+    fit_pred = G @ w
+    residual = b - fit_pred
+    ss_res = float(np.sum(residual ** 2))
+    ss_tot = float(np.sum((b - np.mean(b)) ** 2))
+    b_norm = float(np.linalg.norm(b))
+
+    diagnostics = dict(model.diagnostics)
+    diagnostics.update(
+        {
+            "r2": 0.0 if ss_tot < 1e-30 else 1.0 - ss_res / ss_tot,
+            "residual_norm": float(np.linalg.norm(residual)),
+            "relative_l2": float(np.linalg.norm(residual) / b_norm) if b_norm > 1e-30 else float("inf"),
+            "n_active": int(np.sum(active)),
+            "sign_constraints_dropped": dropped_terms,
+        }
+    )
+
+    return WSINDyModel(
+        col_names=model.col_names,
+        w=w,
+        active=active,
+        best_lambda=model.best_lambda,
+        col_scale=model.col_scale,
+        diagnostics=diagnostics,
+    )
+
 def fit_equation_multifield(
     field_list: List[FieldData],
     library: List[LibraryTerm],
     target_accessor: Callable[[FieldData], np.ndarray],
     ell: Tuple[int, int, int],
-    p: Tuple[int, int, int] = (2, 2, 2),
+    p: Tuple[int, int, int] = (3, 5, 5),
     stride: Tuple[int, int, int] = (2, 2, 2),
     lambdas: Optional[np.ndarray] = None,
     max_iter: int = 25,
+    required_terms: Sequence[str] = (),
+    eq_name: Optional[str] = None,
 ) -> Tuple[WSINDyModel, np.ndarray, np.ndarray, List[str]]:
     """Fit one equation of the multi-field system at given ℓ.
 
@@ -511,6 +841,11 @@ def fit_equation_multifield(
     model = wsindy_fit_regression(
         b, G, col_names, lambdas=lambdas, max_iter=max_iter,
     )
+    model = _enforce_required_terms(model, b, G, required_terms)
+    if eq_name is None and library:
+        eq_name = library[0].equation
+    model = _enforce_nonpositive_terms(model, b, G, eq_name)
+    model.diagnostics["fit_diagnostics"] = _fit_diagnostics_summary(b, G, model, col_names)
     return model, b, G, col_names
 
 
@@ -529,6 +864,7 @@ class MultiFieldResult:
         rho_terms: List[LibraryTerm],
         px_terms: List[LibraryTerm],
         py_terms: List[LibraryTerm],
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         self.rho_model = rho_model
         self.px_model = px_model
@@ -536,6 +872,7 @@ class MultiFieldResult:
         self.rho_terms = rho_terms
         self.px_terms = px_terms
         self.py_terms = py_terms
+        self.metadata = metadata or {}
 
     def summary(self) -> str:
         lines = ["=" * 60, "  Multi-field WSINDy Discovery Results", "=" * 60]
@@ -557,7 +894,7 @@ class MultiFieldResult:
 
     def to_dict(self) -> dict:
         """Serialisable summary for JSON export."""
-        out = {}
+        out: Dict[str, Any] = {"metadata": self.metadata}
         for eq_name, model, terms in [
             ("rho", self.rho_model, self.rho_terms),
             ("px", self.px_model, self.px_terms),
@@ -575,6 +912,7 @@ class MultiFieldResult:
                 "r2_weak": float(model.diagnostics.get("r2", 0)),
                 "n_active": model.n_active,
                 "best_lambda": float(model.best_lambda),
+                "fit_diagnostics": model.diagnostics.get("fit_diagnostics", {}),
             }
         return out
 
@@ -583,10 +921,11 @@ def discover_multifield(
     field_list: List[FieldData],
     library: Dict[str, List[LibraryTerm]],
     ell: Tuple[int, int, int],
-    p: Tuple[int, int, int] = (2, 2, 2),
+    p: Tuple[int, int, int] = (3, 5, 5),
     stride: Tuple[int, int, int] = (2, 2, 2),
     lambdas: Optional[np.ndarray] = None,
     max_iter: int = 25,
+    rho_strategy: str = "legacy",
     verbose: bool = True,
 ) -> MultiFieldResult:
     """Discover all 3 equations at a given test-function scale ℓ.
@@ -611,12 +950,14 @@ def discover_multifield(
         lambdas = np.logspace(-4, 1, 40)
 
     results = {}
+    training_use_spectral = bool(field_list[0].use_spectral) if field_list else False
     for eq_name, target_fn in [
         ("rho", lambda fd: fd.rho),
         ("px",  lambda fd: fd.px),
         ("py",  lambda fd: fd.py),
     ]:
         lib_eq = library[eq_name]
+        required_terms = _required_terms_for_equation(eq_name, rho_strategy=rho_strategy)
         if verbose:
             print(f"    Fitting {eq_name}_t  ({len(lib_eq)} candidates)...")
 
@@ -624,6 +965,7 @@ def discover_multifield(
             field_list, lib_eq, target_fn,
             ell=ell, p=p, stride=stride,
             lambdas=lambdas, max_iter=max_iter,
+            required_terms=required_terms,
         )
 
         r2 = model.diagnostics.get("r2", 0)
@@ -642,6 +984,14 @@ def discover_multifield(
         rho_terms=library["rho"],
         px_terms=library["px"],
         py_terms=library["py"],
+        metadata={
+            "rho_strategy": rho_strategy,
+            "use_spectral": training_use_spectral,
+            "fit_diagnostics": {
+                eq_name: results[eq_name][0].diagnostics.get("fit_diagnostics", {})
+                for eq_name in ["rho", "px", "py"]
+            },
+        },
     )
 
 
@@ -649,13 +999,103 @@ def discover_multifield(
 #  Model selection over ℓ for full 3-equation system
 # ═══════════════════════════════════════════════════════════════════
 
+def _snapshot_r2(pred: np.ndarray, truth: np.ndarray) -> float:
+    truth_flat = truth.ravel()
+    pred_flat = pred.ravel()
+    ss_res = float(np.sum((truth_flat - pred_flat) ** 2))
+    ss_tot = float(np.sum((truth_flat - np.mean(truth_flat)) ** 2))
+    if ss_tot < 1e-30:
+        return 0.0
+    return 1.0 - ss_res / ss_tot
+
+
+def _motion_energy(field_hist: np.ndarray) -> float:
+    if field_hist.shape[0] <= 1:
+        return 0.0
+    diffs = np.diff(field_hist, axis=0)
+    return float(np.mean(np.linalg.norm(diffs.reshape(diffs.shape[0], -1), axis=1)))
+
+
+def _validation_grids(fd: FieldData) -> Tuple[np.ndarray, np.ndarray]:
+    _, ny, nx = fd.shape
+    return (
+        np.linspace(0.0, fd.Lx, nx, endpoint=False, dtype=np.float64),
+        np.linspace(0.0, fd.Ly, ny, endpoint=False, dtype=np.float64),
+    )
+
+
+def _short_rollout_diagnostics(
+    fd: FieldData,
+    result: MultiFieldResult,
+    *,
+    n_steps: int,
+    morse_params: Optional[Dict[str, float]],
+) -> Dict[str, Any]:
+    if n_steps <= 0:
+        return {
+            "status": "ok",
+            "r2_rho": 0.0,
+            "r2_px": 0.0,
+            "r2_py": 0.0,
+            "mass_drift": 0.0,
+            "motion_ratio": 1.0,
+        }
+
+    xgrid, ygrid = _validation_grids(fd)
+    rho_pred, px_pred, py_pred = forecast_multifield(
+        fd.rho[0],
+        fd.px[0],
+        fd.py[0],
+        result,
+        fd.grid,
+        Lx=fd.Lx,
+        Ly=fd.Ly,
+        n_steps=n_steps,
+        morse_params=morse_params,
+        xgrid=xgrid,
+        ygrid=ygrid,
+        method="auto",
+    )
+    rho_true = fd.rho[: n_steps + 1]
+    px_true = fd.px[: n_steps + 1]
+    py_true = fd.py[: n_steps + 1]
+
+    r2_rho = float(np.mean([_snapshot_r2(rho_pred[t], rho_true[t]) for t in range(1, n_steps + 1)]))
+    r2_px = float(np.mean([_snapshot_r2(px_pred[t], px_true[t]) for t in range(1, n_steps + 1)]))
+    r2_py = float(np.mean([_snapshot_r2(py_pred[t], py_true[t]) for t in range(1, n_steps + 1)]))
+
+    mass_true = np.sum(rho_true, axis=(1, 2))
+    mass_pred = np.sum(rho_pred, axis=(1, 2))
+    mass_scale = np.maximum(np.abs(mass_true), 1e-12)
+    mass_drift = float(np.mean(np.abs(mass_pred - mass_true) / mass_scale))
+
+    true_motion = _motion_energy(rho_true)
+    pred_motion = _motion_energy(rho_pred)
+    if true_motion <= 1e-12:
+        motion_ratio = 1.0 if pred_motion <= 1e-12 else 0.0
+    else:
+        motion_ratio = float(np.clip(pred_motion / true_motion, 0.0, 1.5))
+
+    return {
+        "status": "ok",
+        "r2_rho": r2_rho,
+        "r2_px": r2_px,
+        "r2_py": r2_py,
+        "mass_drift": mass_drift,
+        "motion_ratio": motion_ratio,
+    }
+
 def model_selection_multifield(
     field_list: List[FieldData],
     library: Dict[str, List[LibraryTerm]],
     ell_grid: List[Tuple[int, int, int]],
-    p: Tuple[int, int, int] = (2, 2, 2),
+    p: Tuple[int, int, int] = (3, 5, 5),
     stride: Tuple[int, int, int] = (2, 2, 2),
     lambdas: Optional[np.ndarray] = None,
+    rho_strategy: str = "legacy",
+    validation_trajectories: int = 2,
+    validation_steps: int = 10,
+    morse_params: Optional[Dict[str, float]] = None,
     verbose: bool = True,
 ) -> Tuple[MultiFieldResult, Tuple[int, int, int]]:
     """Model selection: try each ℓ and pick the best overall.
@@ -673,12 +1113,22 @@ def model_selection_multifield(
     best_score = -np.inf
     best_result = None
     best_ell = None
+    trial_records: List[Dict[str, Any]] = []
+    min_temporal_ell = 7
 
     for idx, ell in enumerate(ell_grid):
+        if ell[0] < min_temporal_ell:
+            if verbose:
+                print(
+                    f"  [{idx+1}/{len(ell_grid)}] ℓ={ell} SKIPPED: "
+                    f"ell_t < {min_temporal_ell}"
+                )
+            continue
         t0 = _time.perf_counter()
         try:
             result = discover_multifield(
                 field_list, library, ell, p, stride, lambdas,
+                rho_strategy=rho_strategy,
                 verbose=False,
             )
         except Exception as exc:
@@ -696,15 +1146,88 @@ def model_selection_multifield(
                  + result.py_model.n_active)
         n_lib = (len(library["rho"]) + len(library["px"]) + len(library["py"]))
 
-        # Score: average R² minus complexity penalty
         avg_r2 = (r2_rho + r2_px + r2_py) / 3
         complexity_penalty = 0.05 * n_act / max(n_lib, 1)
-        score = avg_r2 - complexity_penalty
+        short_rollouts = []
+        max_val = min(int(validation_trajectories), len(field_list))
+        for fd in field_list[:max_val]:
+            n_short = min(int(validation_steps), fd.shape[0] - 1)
+            if n_short <= 0:
+                continue
+            try:
+                short_rollouts.append(
+                    _short_rollout_diagnostics(
+                        fd,
+                        result,
+                        n_steps=n_short,
+                        morse_params=morse_params,
+                    )
+                )
+            except Exception as exc:
+                short_rollouts.append(
+                    {
+                        "status": "failed",
+                        "error": str(exc),
+                        "r2_rho": float("nan"),
+                        "r2_px": float("nan"),
+                        "r2_py": float("nan"),
+                        "mass_drift": float("inf"),
+                        "motion_ratio": 0.0,
+                    }
+                )
+
+        if short_rollouts:
+            rollout_ok = [d for d in short_rollouts if d["status"] == "ok"]
+            if rollout_ok:
+                rollout_r2 = float(np.mean([
+                    np.mean([d["r2_rho"], d["r2_px"], d["r2_py"]]) for d in rollout_ok
+                ]))
+                motion_score = float(np.mean([min(d["motion_ratio"], 1.0) for d in rollout_ok]))
+                mass_penalty = float(np.mean([d["mass_drift"] for d in rollout_ok]))
+            else:
+                rollout_r2 = -1.0
+                motion_score = 0.0
+                mass_penalty = 1.0
+            failure_penalty = 0.25 * (len(short_rollouts) - len(rollout_ok))
+        else:
+            rollout_r2 = 0.0
+            motion_score = 0.0
+            mass_penalty = 0.0
+            failure_penalty = 0.0
+
+        continuity_active = "div_p" in result.rho_model.active_terms
+        continuity_bonus = 0.1 if rho_strategy == "continuity_first" and continuity_active else 0.0
+        continuity_penalty = 0.5 if rho_strategy == "continuity_first" and not continuity_active else 0.0
+
+        score = (
+            0.55 * avg_r2
+            + 0.35 * rollout_r2
+            + 0.10 * motion_score
+            + continuity_bonus
+            - continuity_penalty
+            - complexity_penalty
+            - 0.25 * mass_penalty
+            - failure_penalty
+        )
+        trial_diag = {
+            "avg_r2_weak": float(avg_r2),
+            "complexity_penalty": float(complexity_penalty),
+            "rollout_r2_short": float(rollout_r2),
+            "motion_score": float(motion_score),
+            "mass_penalty": float(mass_penalty),
+            "failure_penalty": float(failure_penalty),
+            "continuity_active": continuity_active,
+            "short_rollouts": short_rollouts,
+            "score": float(score),
+        }
+        trial_records.append({"ell": list(ell), **trial_diag})
+        result.metadata.setdefault("selection_diagnostics", {})["trial"] = trial_diag
 
         if verbose:
             print(
                 f"  [{idx+1}/{len(ell_grid)}] ℓ={ell}  "
                 f"R²(ρ)={r2_rho:.3f}  R²(px)={r2_px:.3f}  R²(py)={r2_py:.3f}  "
+                f"rollout={rollout_r2:.3f}  motion={motion_score:.3f}  "
                 f"active={n_act}  score={score:.4f}  ({elapsed:.1f}s)"
             )
 
@@ -715,6 +1238,10 @@ def model_selection_multifield(
 
     if best_result is None:
         raise RuntimeError("All model selection trials failed")
+
+    best_result.metadata.setdefault("selection_diagnostics", {})["best_ell"] = list(best_ell)
+    best_result.metadata["selection_diagnostics"]["best_score"] = float(best_score)
+    best_result.metadata["selection_diagnostics"]["trials"] = trial_records
 
     if verbose:
         print(f"\n  Best ℓ = {best_ell}  (score = {best_score:.4f})")
@@ -731,7 +1258,7 @@ def bootstrap_multifield(
     field_list: List[FieldData],
     library: Dict[str, List[LibraryTerm]],
     ell: Tuple[int, int, int],
-    p: Tuple[int, int, int] = (2, 2, 2),
+    p: Tuple[int, int, int] = (3, 5, 5),
     stride: Tuple[int, int, int] = (2, 2, 2),
     lambdas: Optional[np.ndarray] = None,
     B: int = 50,
@@ -894,7 +1421,7 @@ def _extract_linear_spectral(
             continue
         name = t.name
         c = model.w[i]
-        if name.startswith("lap_") and "rho" not in name:
+        if name.startswith("lap_"):
             # Δu_i  →  -K² in Fourier space
             L_hat += c * (-K2)
             has_linear = True
@@ -973,6 +1500,7 @@ def forecast_multifield(
     clip_negative_rho: bool = True,
     mass_conserve: bool = True,
     method: str = "auto",
+    use_spectral: Optional[bool] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Forecast the 3-field PDE system discovered by WSINDy.
 
@@ -1040,6 +1568,9 @@ def forecast_multifield(
             L_py_hat = L_py_hat if L_py_hat is not None else zero_L
 
     actual_method = "etdrk4" if use_etdrk4 else "rk4"
+    training_use_spectral = bool(result.metadata.get("use_spectral", False))
+    forecast_use_spectral = training_use_spectral if use_spectral is None else bool(use_spectral)
+    result.metadata["last_forecast_method_used"] = actual_method
 
     # ── Build nonlinear RHS (excludes terms handled by L) ───────
     def nonlinear_rhs(rho, px_cur, py_cur, exclude_linear=False):
@@ -1059,7 +1590,7 @@ def forecast_multifield(
 
         fd = FieldData(
             rho_3d, px_3d, py_3d, grid, Lx, Ly, Phi=Phi,
-            use_spectral=True,  # Always spectral in forecast
+            use_spectral=forecast_use_spectral,
         )
 
         def _eval_eq(model, terms, fd, skip_linear):
@@ -1079,17 +1610,42 @@ def forecast_multifield(
 
     def _project(rho, px_cur, py_cur, step_idx):
         """Nonnegativity + mass conservation."""
-        rho = project_density(
-            rho,
-            step=step_idx,
-            dt=dt,
-            method=actual_method,
-            clip_negative=clip_negative_rho,
-            mass_conserve=mass_conserve,
-            target_mass=M0,
-            context="WSINDy multifield forecast",
-        )
+        try:
+            rho = project_density(
+                rho,
+                step=step_idx,
+                dt=dt,
+                method=actual_method,
+                clip_negative=clip_negative_rho,
+                mass_conserve=mass_conserve,
+                target_mass=M0,
+                context="WSINDy multifield forecast",
+            )
+        except Exception as exc:
+            raise MultiFieldForecastError(
+                str(exc),
+                reason="density_collapse",
+                step=step_idx,
+                method=actual_method,
+            ) from exc
         return rho, px_cur, py_cur
+
+    def _raise_diverged(step_idx: int, rho: np.ndarray, px_cur: np.ndarray, py_cur: np.ndarray) -> None:
+        max_abs = 0.0
+        for arr in (rho, px_cur, py_cur):
+            finite = np.abs(arr[np.isfinite(arr)])
+            if finite.size:
+                max_abs = max(max_abs, float(np.max(finite)))
+        raise MultiFieldForecastError(
+            (
+                f"WSINDy multifield forecast diverged at step {step_idx}/{n_steps} during {actual_method}: "
+                f"max_abs={max_abs:.6e}, rho_finite={np.all(np.isfinite(rho))}, "
+                f"px_finite={np.all(np.isfinite(px_cur))}, py_finite={np.all(np.isfinite(py_cur))}"
+            ),
+            reason="divergence",
+            step=step_idx,
+            method=actual_method,
+        )
 
     # ── RK4 loop ────────────────────────────────────────────────
     rho = rho0.copy()
@@ -1124,12 +1680,9 @@ def forecast_multifield(
 
             rho, px_cur, py_cur = _project(rho, px_cur, py_cur, n + 1)
 
-            if np.max(np.abs(rho)) > 1e10 or np.any(np.isnan(rho)):
-                print(f"    WARNING: RK4 diverged at step {n+1}/{n_steps}")
-                rho_hist[n + 1:] = rho_hist[n]
-                px_hist[n + 1:] = px_hist[n]
-                py_hist[n + 1:] = py_hist[n]
-                break
+            if (not np.all(np.isfinite(rho)) or not np.all(np.isfinite(px_cur))
+                    or not np.all(np.isfinite(py_cur)) or np.max(np.abs(rho)) > 1e10):
+                _raise_diverged(n + 1, rho, px_cur, py_cur)
 
             rho_hist[n + 1] = rho
             px_hist[n + 1] = px_cur
@@ -1236,12 +1789,9 @@ def forecast_multifield(
             px_hat = np.fft.fft2(px_cur)
             py_hat = np.fft.fft2(py_cur)
 
-            if np.max(np.abs(rho)) > 1e10 or np.any(np.isnan(rho)):
-                print(f"    WARNING: ETDRK4 diverged at step {n+1}/{n_steps}")
-                rho_hist[n + 1:] = rho_hist[n]
-                px_hist[n + 1:] = px_hist[n]
-                py_hist[n + 1:] = py_hist[n]
-                break
+            if (not np.all(np.isfinite(rho)) or not np.all(np.isfinite(px_cur))
+                    or not np.all(np.isfinite(py_cur)) or np.max(np.abs(rho)) > 1e10):
+                _raise_diverged(n + 1, rho, px_cur, py_cur)
 
             rho_hist[n + 1] = rho
             px_hist[n + 1] = px_cur

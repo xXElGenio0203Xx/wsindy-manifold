@@ -60,15 +60,29 @@ def generate_best_run_visualizations(
     test_dir = Path(test_dir)
     best_runs_dir = Path(best_runs_dir)
     best_runs_dir.mkdir(exist_ok=True, parents=True)
-    
+
+    if metrics_df.empty or not test_predictions or not ic_metrics:
+        print(f"\nNo successful runs available for {model_name.upper()} best-run videos")
+        return pd.DataFrame()
+
     # Select top runs by R² (for return value / summary)
-    top_runs = metrics_df.nlargest(n_top, 'r2')
+    successful_metrics = metrics_df[metrics_df["run_name"].isin(test_predictions.keys())]
+    if successful_metrics.empty:
+        print(f"\nNo successful runs available for {model_name.upper()} best-run videos")
+        return pd.DataFrame()
+    top_runs = successful_metrics.nlargest(n_top, 'r2')
     
     # Generate visualizations for BEST RUN OF EACH IC TYPE (not just top-N overall)
     # This ensures every IC type (uniform, gaussian_cluster, two_clusters, etc.)
     # gets its own subfolder with the best run for that type.
-    all_ic_types = sorted(ic_metrics.keys())
-    
+    all_ic_types = sorted(
+        ic_type for ic_type, stats in ic_metrics.items()
+        if stats.get("best_run") in test_predictions
+    )
+    if not all_ic_types:
+        print(f"\nNo IC types with successful forecasts for {model_name.upper()}")
+        return top_runs
+
     print(f"\nGenerating best-run visualizations for each IC type ({model_name.upper()}):")
     for ic_type in all_ic_types:
         ic_stats = ic_metrics[ic_type]
@@ -395,4 +409,3 @@ def _generate_order_parameters(pred, output_dir, ic_type, ic_stats, model_name='
     plt.tight_layout()
     plt.savefig(output_dir / "order_parameters.png", dpi=150, bbox_inches='tight')
     plt.close()
-

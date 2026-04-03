@@ -38,7 +38,7 @@ BASE_WSINDY_TEMPLATE = {
     },
     "model_selection": {
         "n_ell": 12,
-        "p": [2, 2, 2],
+        "p": [3, 5, 5],
         "stride": [2, 2, 2],
     },
     "lambdas": {

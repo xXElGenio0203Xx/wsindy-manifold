@@ -104,6 +104,9 @@ def wsindy_fit_regression(
                 "normalised_loss": h["normalised_loss"],
                 "cond": h["cond"],
                 "converged": h["converged"],
+                "active_terms": [
+                    col_names[i] for i, is_active in enumerate(h["active"]) if is_active
+                ],
             }
             for h in result["history"]
         ],

@@ -43,7 +43,12 @@ from rectsim.config_loader import load_config
 from wsindy.fields import compute_flux_kde
 from wsindy.grid import GridSpec
 from wsindy.model import WSINDyModel
-from wsindy.multifield import MultiFieldResult, build_default_library as build_mf_library, forecast_multifield
+from wsindy.multifield import (
+    MultiFieldForecastError,
+    MultiFieldResult,
+    build_default_library as build_mf_library,
+    forecast_multifield,
+)
 from wsindy.eval import r2_per_snapshot
 
 
@@ -75,6 +80,13 @@ def compute_r2_timeseries(rho_true: np.ndarray, rho_pred: np.ndarray) -> np.ndar
     """Per-snapshot R² over the common rollout window."""
     T = min(rho_true.shape[0], rho_pred.shape[0])
     return np.array([r2_per_snapshot(rho_true[t], rho_pred[t]) for t in range(T)], dtype=np.float64)
+
+
+def _motion_energy(field_hist: np.ndarray) -> float:
+    if field_hist.shape[0] <= 1:
+        return 0.0
+    diffs = np.diff(field_hist, axis=0)
+    return float(np.mean(np.linalg.norm(diffs.reshape(diffs.shape[0], -1), axis=1)))
 
 
 def _safe_to_text(active_terms: List[str], coefficients: Dict[str, float], lhs: str) -> str:
@@ -110,15 +122,21 @@ def _load_single_model(section: Dict[str, Any]) -> WSINDyModel:
     )
 
 
-def load_multifield_result(exp_dir: Path, morse: bool, rich: bool) -> Tuple[MultiFieldResult, Dict[str, List[Any]]]:
+def load_multifield_result(
+    exp_dir: Path,
+    morse: bool,
+    rich: bool,
+    rho_strategy: str,
+) -> Tuple[MultiFieldResult, Dict[str, List[Any]]]:
     """Reconstruct MultiFieldResult from JSON plus deterministic library build."""
     model_path = exp_dir / "WSINDy" / "multifield_model.json"
     with open(model_path) as handle:
         data = json.load(handle)
 
-    library = build_mf_library(morse=morse, rich=rich)
+    library = build_mf_library(morse=morse, rich=rich, rho_strategy=rho_strategy)
     ordered_terms: Dict[str, List[Any]] = {}
     models: Dict[str, WSINDyModel] = {}
+    metadata = data.get("metadata", {})
 
     for eq_name in ["rho", "px", "py"]:
         section = data[eq_name]
@@ -136,6 +154,7 @@ def load_multifield_result(exp_dir: Path, morse: bool, rich: bool) -> Tuple[Mult
         rho_terms=ordered_terms["rho"],
         px_terms=ordered_terms["px"],
         py_terms=ordered_terms["py"],
+        metadata=metadata,
     )
     return result, ordered_terms
 
@@ -208,6 +227,7 @@ def _write_export_manifest(exp_dir: Path, n_test: int) -> None:
         "summary.json",
         "config_used.yaml",
         "WSINDy/multifield_model.json",
+        "WSINDy/multifield_diagnostics.json",
         "WSINDy/wsindy_model_rho.npz",
         "WSINDy/wsindy_model_px.npz",
         "WSINDy/wsindy_model_py.npz",
@@ -264,6 +284,7 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
     mf_cfg = ws_cfg.get("multifield_library", {})
     morse_enabled = bool(mf_cfg.get("morse", True))
     rich = bool(mf_cfg.get("rich", False))
+    rho_strategy = str(mf_cfg.get("rho_strategy", "legacy"))
     kde_bw = float(mf_cfg.get("kde_bandwidth", 5.0))
     w_subsample = int(ws_cfg.get("subsample", rom_config.get("subsample", 3)))
     fc_cfg = ws_cfg.get("forecast", {})
@@ -276,7 +297,12 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
     base_config_test["sim"]["T"] = test_horizon
     eval_cfg = align_eval_forecast_start(eval_config, base_config_test, rom_config.get("subsample", 1), [])
 
-    model_result, ordered_terms = load_multifield_result(exp_dir, morse=morse_enabled, rich=rich)
+    model_result, ordered_terms = load_multifield_result(
+        exp_dir,
+        morse=morse_enabled,
+        rich=rich,
+        rho_strategy=rho_strategy,
+    )
 
     test_dir = exp_dir / "test"
     test_meta_list = _load_run_order(test_dir)
@@ -313,6 +339,8 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
     wsindy_dir = exp_dir / "WSINDy"
     wsindy_dir.mkdir(exist_ok=True)
     (wsindy_dir / "plots").mkdir(exist_ok=True)
+    with open(wsindy_dir / "multifield_diagnostics.json", "w") as handle:
+        json.dump(model_result.metadata, handle, indent=2, default=str)
 
     test_results: List[Dict[str, Any]] = []
     for ti, meta in enumerate(test_meta_list):
@@ -334,6 +362,14 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
                         "r2_pod": 1.0,
                         "rmse_recon": float(existing_summary.get("rmse_recon", float("nan"))),
                         "forecast_method": existing_summary.get("method", f"{fc_method}_multifield"),
+                        "forecast_status": "ok",
+                        "failure_reason": None,
+                        "failure_step": None,
+                        "forecast_method_attempted": fc_method,
+                        "forecast_method_used": existing_summary.get("method", f"{fc_method}_multifield"),
+                        "motion_energy_true": float("nan"),
+                        "motion_energy_pred": float("nan"),
+                        "mass_drift_mean": float("nan"),
                         "n_forecast_steps": int(existing_summary.get("n_forecast_steps", 0)),
                     }
                 )
@@ -349,6 +385,14 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
                         "r2_pod": 1.0,
                         "rmse_recon": float("nan"),
                         "forecast_method": f"{fc_method}_multifield",
+                        "forecast_status": "ok",
+                        "failure_reason": None,
+                        "failure_step": None,
+                        "forecast_method_attempted": fc_method,
+                        "forecast_method_used": f"{fc_method}_multifield",
+                        "motion_energy_true": float("nan"),
+                        "motion_energy_pred": float("nan"),
+                        "mass_drift_mean": float("nan"),
                         "n_forecast_steps": max(len(existing_r2) - 1, 0),
                     }
                 )
@@ -399,7 +443,7 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
                 xgrid=xgrid,
                 ygrid=ygrid,
             )
-            method_used = f"{fc_method}_multifield"
+            method_used = f"{model_result.metadata.get('last_forecast_method_used', fc_method)}_multifield"
         except Exception as exc:
             if fc_method == "auto":
                 print(f"[warn] {exp_dir.name} {run_name}: auto multifield forecast failed - {exc}")
@@ -421,11 +465,15 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
                         xgrid=xgrid,
                         ygrid=ygrid,
                     )
-                    method_used = "rk4_multifield"
+                    method_used = f"{model_result.metadata.get('last_forecast_method_used', 'rk4')}_multifield"
                 except Exception as rk4_exc:
-                    exc = RuntimeError(
+                    exc = MultiFieldForecastError(
                         f"WSINDy multifield forecast failed with auto and RK4. "
                         f"Auto error: {exc}. RK4 error: {rk4_exc}"
+                        ,
+                        reason="fallback_failed",
+                        step=getattr(rk4_exc, "step", getattr(exc, "step", None)),
+                        method=getattr(rk4_exc, "method", "rk4"),
                     )
             if method_used is None:
                 print(f"[fail] {exp_dir.name} {run_name}: forecast failed - {exc}")
@@ -438,6 +486,14 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
                         "r2_pod": float("nan"),
                         "rmse_recon": float("nan"),
                         "forecast_method": f"{fc_method}_multifield",
+                        "forecast_status": "failed",
+                        "failure_reason": getattr(exc, "reason", type(exc).__name__),
+                        "failure_step": getattr(exc, "step", None),
+                        "forecast_method_attempted": fc_method,
+                        "forecast_method_used": getattr(exc, "method", None),
+                        "motion_energy_true": float("nan"),
+                        "motion_energy_pred": float("nan"),
+                        "mass_drift_mean": float("nan"),
                         "n_forecast_steps": int(n_fc),
                         "failure": str(exc),
                     }
@@ -494,6 +550,12 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
             }
         ).to_csv(run_dir / "density_metrics_wsindy.csv", index=False)
 
+        mass_true = np.sum(rho_true_fc[:T_pred], axis=(1, 2))
+        mass_pred = np.sum(rho_pred[:T_pred], axis=(1, 2))
+        motion_energy_true = _motion_energy(rho_true_fc[:T_pred])
+        motion_energy_pred = _motion_energy(rho_pred[:T_pred])
+        mass_drift_mean = float(np.mean(np.abs(mass_pred - mass_true) / np.maximum(np.abs(mass_true), 1e-12)))
+
         test_results.append(
             {
                 "test_id": ti,
@@ -503,6 +565,14 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
                 "r2_pod": 1.0,
                 "rmse_recon": mean_rmse,
                 "forecast_method": method_used,
+                "forecast_status": "ok",
+                "failure_reason": None,
+                "failure_step": None,
+                "forecast_method_attempted": fc_method,
+                "forecast_method_used": method_used,
+                "motion_energy_true": motion_energy_true,
+                "motion_energy_pred": motion_energy_pred,
+                "mass_drift_mean": mass_drift_mean,
                 "n_forecast_steps": int(n_fc),
             }
         )
@@ -512,6 +582,8 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
     results_df.to_csv(wsindy_dir / "test_results.csv", index=False)
     mean_r2_wsindy = float(results_df["r2_reconstructed"].mean()) if not results_df.empty else float("nan")
     std_r2_wsindy = float(results_df["r2_reconstructed"].std()) if len(results_df) > 1 else 0.0
+    n_success_wsindy = int((results_df.get("forecast_status") == "ok").sum()) if "forecast_status" in results_df.columns else int(results_df["r2_reconstructed"].notna().sum())
+    n_failed_wsindy = int(len(results_df) - n_success_wsindy)
 
     log_meta = _parse_log_metadata(exp_dir)
     wsindy_summary: Dict[str, Any] = {
@@ -521,6 +593,7 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
             "n_terms_total": sum(len(v) for v in ordered_terms.values()),
             "morse": morse_enabled,
             "rich": rich,
+            "rho_strategy": rho_strategy,
             "per_equation": {eq: [t.name for t in terms] for eq, terms in ordered_terms.items()},
         },
         "n_train_trajectories": int(ws_cfg.get("n_train", n_train)),
@@ -528,7 +601,10 @@ def recover_experiment(exp_dir: Path, overwrite: bool = False) -> None:
             "mean_r2": None if np.isnan(mean_r2_wsindy) else mean_r2_wsindy,
             "std_r2": None if np.isnan(std_r2_wsindy) else std_r2_wsindy,
             "n_test": n_test,
+            "n_success": n_success_wsindy,
+            "n_failed": n_failed_wsindy,
         },
+        "diagnostics": model_result.metadata,
     }
     if "best_ell" in log_meta or "time_s" in log_meta:
         wsindy_summary["model_selection"] = {}

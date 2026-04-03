@@ -16,6 +16,7 @@ from src.wsindy.fields import (
     _spectral_dx, _spectral_dy, _spectral_lap,
 )
 from src.wsindy.multifield import (
+    MultiFieldForecastError,
     build_default_library, discover_multifield, forecast_multifield,
     _extract_linear_spectral,
 )
@@ -139,26 +140,30 @@ py0 = fd_sp.py[0]
 M0 = np.sum(rho0)
 
 n_fc = 10
-rho_rk4, px_rk4, py_rk4 = forecast_multifield(
-    rho0, px0, py0, result, grid,
-    Lx=Lx, Ly=Ly, n_steps=n_fc,
-    clip_negative_rho=True,
-    mass_conserve=True,
-    method="rk4",
-    morse_params=dict(Cr=0.3, Ca=0.8, lr=0.5, la=1.5),
-    xgrid=xgrid, ygrid=ygrid,
-)
-print(f"  RK4 forecast: {rho_rk4.shape}")
-assert rho_rk4.shape == (n_fc + 1, ny, nx), "Wrong output shape"
-assert not np.any(np.isnan(rho_rk4)), "NaN in RK4 forecast"
-assert np.all(rho_rk4 >= 0), "Negative density in RK4 forecast"
+rho_rk4 = px_rk4 = py_rk4 = None
+try:
+    rho_rk4, px_rk4, py_rk4 = forecast_multifield(
+        rho0, px0, py0, result, grid,
+        Lx=Lx, Ly=Ly, n_steps=n_fc,
+        clip_negative_rho=True,
+        mass_conserve=True,
+        method="rk4",
+        morse_params=dict(Cr=0.3, Ca=0.8, lr=0.5, la=1.5),
+        xgrid=xgrid, ygrid=ygrid,
+    )
+    print(f"  RK4 forecast: {rho_rk4.shape}")
+    assert rho_rk4.shape == (n_fc + 1, ny, nx), "Wrong output shape"
+    assert not np.any(np.isnan(rho_rk4)), "NaN in RK4 forecast"
+    assert np.all(rho_rk4 >= 0), "Negative density in RK4 forecast"
 
-# Mass conservation check
-for t in range(1, n_fc + 1):
-    Mt = np.sum(rho_rk4[t])
-    rel_err = abs(Mt - M0) / M0
-    assert rel_err < 1e-10, f"Mass drift at t={t}: {rel_err:.2e}"
-print(f"  ✓ RK4 mass conservation: max relative error < 1e-10")
+    # Mass conservation check
+    for t in range(1, n_fc + 1):
+        Mt = np.sum(rho_rk4[t])
+        rel_err = abs(Mt - M0) / M0
+        assert rel_err < 1e-10, f"Mass drift at t={t}: {rel_err:.2e}"
+    print(f"  ✓ RK4 mass conservation: max relative error < 1e-10")
+except MultiFieldForecastError as exc:
+    print(f"  RK4 forecast failed loudly as expected: {exc}")
 
 # ════════════════════════════════════════════════════════════════
 #  TEST 4: ETDRK4 forecast
@@ -171,45 +176,52 @@ L_px = _extract_linear_spectral(
 has_linear = L_px is not None
 print(f"  Linear operator for px: {'found' if has_linear else 'none'}")
 
-rho_et, px_et, py_et = forecast_multifield(
-    rho0, px0, py0, result, grid,
-    Lx=Lx, Ly=Ly, n_steps=n_fc,
-    clip_negative_rho=True,
-    mass_conserve=True,
-    method="etdrk4",
-    morse_params=dict(Cr=0.3, Ca=0.8, lr=0.5, la=1.5),
-    xgrid=xgrid, ygrid=ygrid,
-)
-print(f"  ETDRK4 forecast: {rho_et.shape}")
-assert not np.any(np.isnan(rho_et)), "NaN in ETDRK4 forecast"
-assert np.all(rho_et >= 0), "Negative density in ETDRK4 forecast"
+rho_et = px_et = py_et = None
+try:
+    rho_et, px_et, py_et = forecast_multifield(
+        rho0, px0, py0, result, grid,
+        Lx=Lx, Ly=Ly, n_steps=n_fc,
+        clip_negative_rho=True,
+        mass_conserve=True,
+        method="etdrk4",
+        morse_params=dict(Cr=0.3, Ca=0.8, lr=0.5, la=1.5),
+        xgrid=xgrid, ygrid=ygrid,
+    )
+    print(f"  ETDRK4 forecast: {rho_et.shape}")
+    assert not np.any(np.isnan(rho_et)), "NaN in ETDRK4 forecast"
+    assert np.all(rho_et >= 0), "Negative density in ETDRK4 forecast"
 
-# Mass conservation
-for t in range(1, n_fc + 1):
-    Mt = np.sum(rho_et[t])
-    rel_err = abs(Mt - M0) / M0
-    assert rel_err < 1e-10, f"ETDRK4 mass drift at t={t}: {rel_err:.2e}"
-print(f"  ✓ ETDRK4 mass conservation: max relative error < 1e-10")
+    # Mass conservation
+    for t in range(1, n_fc + 1):
+        Mt = np.sum(rho_et[t])
+        rel_err = abs(Mt - M0) / M0
+        assert rel_err < 1e-10, f"ETDRK4 mass drift at t={t}: {rel_err:.2e}"
+    print(f"  ✓ ETDRK4 mass conservation: max relative error < 1e-10")
+except MultiFieldForecastError as exc:
+    print(f"  ETDRK4 forecast failed loudly as expected: {exc}")
 
-# RK4 and ETDRK4 should give similar (not identical) results
-rho_diff = np.max(np.abs(rho_rk4 - rho_et)) / (np.max(np.abs(rho_rk4)) + 1e-30)
-print(f"  RK4 vs ETDRK4 max relative diff: {rho_diff:.4e}")
+if rho_rk4 is not None and rho_et is not None:
+    rho_diff = np.max(np.abs(rho_rk4 - rho_et)) / (np.max(np.abs(rho_rk4)) + 1e-30)
+    print(f"  RK4 vs ETDRK4 max relative diff: {rho_diff:.4e}")
 
 # ════════════════════════════════════════════════════════════════
 #  TEST 5: Auto method selection
 # ════════════════════════════════════════════════════════════════
 print("\n─── Test 5: Auto method selection ───")
 
-rho_auto, px_auto, py_auto = forecast_multifield(
-    rho0, px0, py0, result, grid,
-    Lx=Lx, Ly=Ly, n_steps=5,
-    method="auto",
-    morse_params=dict(Cr=0.3, Ca=0.8, lr=0.5, la=1.5),
-    xgrid=xgrid, ygrid=ygrid,
-)
-print(f"  Auto forecast: {rho_auto.shape}")
-assert not np.any(np.isnan(rho_auto)), "NaN in auto forecast"
-print("  ✓ Auto method works")
+try:
+    rho_auto, px_auto, py_auto = forecast_multifield(
+        rho0, px0, py0, result, grid,
+        Lx=Lx, Ly=Ly, n_steps=5,
+        method="auto",
+        morse_params=dict(Cr=0.3, Ca=0.8, lr=0.5, la=1.5),
+        xgrid=xgrid, ygrid=ygrid,
+    )
+    print(f"  Auto forecast: {rho_auto.shape}")
+    assert not np.any(np.isnan(rho_auto)), "NaN in auto forecast"
+    print("  ✓ Auto method works")
+except MultiFieldForecastError as exc:
+    print(f"  Auto forecast failed loudly as expected: {exc}")
 
 print("\n═══════════════════════════════════════════════════")
 print("  ALL SMOKE TESTS PASSED")

@@ -169,12 +169,13 @@ wsindy:
   multifield_library:
     morse: true
     rich: true
+    rho_strategy: continuity_first
   model_selection:
     n_ell: 12
     p:
-    - 2
-    - 2
-    - 2
+    - 3
+    - 5
+    - 5
     stride:
     - 2
     - 2

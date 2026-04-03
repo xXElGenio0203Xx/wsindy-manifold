@@ -35,7 +35,14 @@ from numpy.typing import NDArray
 
 from .grid import GridSpec
 from .test_functions import make_separable_psi
-from .system import build_weak_system, default_t_margin, make_query_indices
+from .system import (
+    build_weak_system,
+    default_t_margin,
+    fft_convolve3d_same,
+    make_query_indices,
+    nondimensionalize_field,
+    rescale_coefficients,
+)
 from .fit import wsindy_fit_regression
 from .model import WSINDyModel
 
@@ -158,6 +165,76 @@ def _pareto_frontier(
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  Spectral validation of test-function smoothing
+# ═══════════════════════════════════════════════════════════════════
+
+def spectral_fidelity(
+    U: NDArray[np.floating],
+    psi_bundle: dict,
+    grid: GridSpec,
+    *,
+    energy_fraction: float = 0.95,
+) -> float:
+    """Measure how much of U's spectral energy is preserved after ψ-convolution.
+
+    Computes ``ψ * U`` via FFT convolution and compares the spatial
+    power spectra.  A return value near 1.0 means the test function
+    is *not* over-smoothing the data; values significantly below 1.0
+    indicate that the test-function support is too wide and is
+    destroying high-frequency signal content.
+
+    The check is:
+        r = ‖F[ψ*U]‖₂ / ‖F[U] · F[ψ]_max‖₂
+
+    normalised so that a flat test function (no smoothing) gives r ≈ 1.
+
+    Parameters
+    ----------
+    U : ndarray (T, nx, ny)
+    psi_bundle : dict from ``make_separable_psi``
+    grid : GridSpec
+    energy_fraction : float
+        Fraction of total spectral energy to consider (top modes).
+
+    Returns
+    -------
+    fidelity : float in [0, 1]
+        1.0 = perfect preservation, < 0.9 suggests over-smoothing.
+    """
+    psi_kernel = np.asarray(psi_bundle["psi"], dtype=np.float64)
+    periodic = (grid.periodic_time, grid.periodic_space, grid.periodic_space)
+
+    # Convolve
+    smoothed = fft_convolve3d_same(U, psi_kernel, periodic)
+
+    # Compare spatial power spectra (averaged over time)
+    T_len = U.shape[0]
+    numer = 0.0
+    denom = 0.0
+    for t in range(T_len):
+        P_orig = np.abs(np.fft.fft2(U[t])) ** 2
+        P_smooth = np.abs(np.fft.fft2(smoothed[t])) ** 2
+
+        # Sort modes by original power (descending) and keep top fraction
+        flat_orig = P_orig.ravel()
+        flat_smooth = P_smooth.ravel()
+        order = np.argsort(flat_orig)[::-1]
+        cumulative = np.cumsum(flat_orig[order])
+        total = cumulative[-1]
+        if total < 1e-30:
+            continue
+        cutoff = np.searchsorted(cumulative, energy_fraction * total) + 1
+        idx = order[:cutoff]
+
+        numer += np.sum(flat_smooth[idx])
+        denom += np.sum(flat_orig[idx])
+
+    if denom < 1e-30:
+        return 1.0
+    return float(numer / denom)
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  Composite score
 # ═══════════════════════════════════════════════════════════════════
 
@@ -204,7 +281,7 @@ def wsindy_model_selection(
     library_terms: List[Tuple[str, str]],
     ell_grid: Sequence[Tuple[int, int, int]],
     *,
-    p: Tuple[int, int, int] = (2, 2, 2),
+    p: Tuple[int, int, int] = (3, 5, 5),
     lambdas: Optional[NDArray[np.floating]] = None,
     stride: Tuple[int, int, int] = (2, 2, 2),
     stride_grid: Optional[Sequence[Tuple[int, int, int]]] = None,
@@ -252,6 +329,11 @@ def wsindy_model_selection(
     """
     T_data, _nx, _ny = U.shape
 
+    # ── Nondimensionalize field data ────────────────────────────────
+    U_nd, U_c = nondimensionalize_field(U)
+    if verbose:
+        print(f"  Nondimensionalization: U_c = {U_c:.4e}")
+
     if lambdas is None:
         lambdas = np.logspace(-4, 1, 40)
 
@@ -285,6 +367,15 @@ def wsindy_model_selection(
                       f"ℓ=({ellt},{ellx},{elly}) SKIP (ψ build: {exc})")
             continue
 
+        # ── 1b. Spectral fidelity check ──────────────────────────
+        fidelity = spectral_fidelity(U_nd, psi_bundle, grid)
+        if fidelity < 0.5:
+            if verbose:
+                print(f"  [{idx + 1}/{len(configs)}] "
+                      f"ℓ=({ellt},{ellx},{elly}) SKIP "
+                      f"(spectral fidelity={fidelity:.3f} < 0.5)")
+            continue
+
         # ── 2. Query indices ──────────────────────────────────────
         t_margin = default_t_margin(psi_bundle)
         if 2 * t_margin >= T_data:
@@ -305,15 +396,18 @@ def wsindy_model_selection(
                       f"ℓ=({ellt},{ellx},{elly}) SKIP (too few query pts)")
             continue
 
-        # ── 3. Build weak system ──────────────────────────────────
+        # ── 3. Build weak system (on nondimensionalized field) ────
         b, G, col_names = build_weak_system(
-            U, grid, psi_bundle, library_terms, query_idx,
+            U_nd, grid, psi_bundle, library_terms, query_idx,
         )
 
         # ── 4. Fit ────────────────────────────────────────────────
         model = wsindy_fit_regression(
             b, G, col_names, lambdas=lambdas, max_iter=max_iter,
         )
+
+        # ── 4b. Rescale coefficients to physical units ────────────
+        model.w = rescale_coefficients(model.w, col_names, U_c)
 
         elapsed = time.perf_counter() - t0
 
@@ -355,7 +449,7 @@ def wsindy_model_selection(
                 f"  [{idx + 1}/{len(configs)}] "
                 f"ℓ=({ellt},{ellx},{elly}) s=({st_t},{st_x},{st_y})  "
                 f"active={model.n_active}  loss={nloss:.4e}  "
-                f"score={score:.4e}  "
+                f"score={score:.4e}  fidelity={fidelity:.3f}  "
                 f"({elapsed:.2f}s)"
             )
 
@@ -387,7 +481,9 @@ def default_ell_grid(
     """Generate a reasonable default sweep grid for :math:`\\ell`.
 
     Returns ``n_points`` logarithmically-spaced configurations where
-    each :math:`\\ell_i` ranges from 2 to roughly 1/4 of the axis length.
+    each :math:`\\ell_i` ranges from ``_MIN_ELL`` to roughly 1/4 of the
+    axis length, enforcing a minimum of 7 grid points per test function
+    (the literature requires ≥ 6).
 
     Parameters
     ----------
@@ -400,18 +496,19 @@ def default_ell_grid(
     -------
     list of (ellt, ellx, elly) tuples with integer half-widths.
     """
-    max_t = max(T // 4, 2)
-    max_x = max(nx // 4, 2)
-    max_y = max(ny // 4, 2)
+    _MIN_ELL = 3  # ell=3 ⇒ 2*3+1 = 7 gridpoints ≥ 6 (paper minimum)
+    max_t = max(T // 4, _MIN_ELL)
+    max_x = max(nx // 4, _MIN_ELL)
+    max_y = max(ny // 4, _MIN_ELL)
 
     ells_t = np.unique(
-        np.round(np.logspace(np.log10(2), np.log10(max_t), n_points))
+        np.round(np.logspace(np.log10(_MIN_ELL), np.log10(max_t), n_points))
     ).astype(int)
     ells_x = np.unique(
-        np.round(np.logspace(np.log10(2), np.log10(max_x), n_points))
+        np.round(np.logspace(np.log10(_MIN_ELL), np.log10(max_x), n_points))
     ).astype(int)
     ells_y = np.unique(
-        np.round(np.logspace(np.log10(2), np.log10(max_y), n_points))
+        np.round(np.logspace(np.log10(_MIN_ELL), np.log10(max_y), n_points))
     ).astype(int)
 
     # Pair them up (matching indices, not full outer product —

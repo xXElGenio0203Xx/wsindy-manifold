@@ -92,6 +92,8 @@ echo -e "${BLUE}Step 2: Submitting LFIX experiments (6 configs, sequential)...${
 
 ssh "$OSCAR_HOST" << 'ENDSSH'
 cd ~/wsindy-manifold || exit 1
+# LOGIN NODE GUARD — do not add 'du', 'find -exec', or python training here
+du() { echo "ERROR: 'du' is blocked on login nodes. Use 'myquota' or 'interact' first." >&2; return 1; }; export -f du
 mkdir -p slurm_logs oscar_output
 
 module load python/3.11.11-5e66
@@ -120,6 +122,8 @@ if [ "$FULL_RERUN" = true ]; then
     # Regenerate manifest on Oscar
     ssh "$OSCAR_HOST" << 'ENDSSH'
 cd ~/wsindy-manifold || exit 1
+# LOGIN NODE GUARD — do not add 'du', 'find -exec', or python training here
+du() { echo "ERROR: 'du' is blocked on login nodes. Use 'myquota' or 'interact' first." >&2; return 1; }; export -f du
 
 # Regenerate manifest
 ls configs/systematic/*.yaml | sort > configs/systematic/manifest.txt

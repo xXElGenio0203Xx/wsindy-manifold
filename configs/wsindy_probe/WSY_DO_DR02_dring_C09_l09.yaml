@@ -160,6 +160,7 @@ experiment_name: WSY_DO_DR02_dring_C09_l09
 wsindy:
   enabled: true
   mode: multifield
+  identification_only: true
   subsample: 3
   seed: 42
   multifield_library:

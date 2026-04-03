@@ -379,7 +379,7 @@ def default_config():
             },
             "model_selection": {
                 "n_ell": 8,
-                "p": [2, 2, 2],
+                "p": [3, 5, 5],
                 "alpha": 0.1,
                 "beta": 0.01,
                 "lambda_min": -3,
@@ -479,7 +479,7 @@ def main():
 
     ms_cfg = ws_cfg.get("model_selection", {})
     n_ell = ms_cfg.get("n_ell", 8)
-    p = tuple(ms_cfg.get("p", [2, 2, 2]))
+    p = tuple(ms_cfg.get("p", [3, 5, 5]))
     alpha = ms_cfg.get("alpha", 0.1)
     beta = ms_cfg.get("beta", 0.01)
     lam_min = ms_cfg.get("lambda_min", -3)

@@ -24,6 +24,8 @@ from .system import (
     fft_convolve3d_same,
     get_kernel,
     make_query_indices,
+    nondimensionalize_field,
+    rescale_coefficients,
 )
 from .regression import mstls, precondition_columns, solve_ls
 from .model import WSINDyModel
@@ -60,6 +62,7 @@ from .select import (
     SelectionResult,
     TrialResult,
     default_ell_grid,
+    spectral_fidelity,
     wsindy_model_selection,
 )
 
@@ -69,6 +72,16 @@ from .pretty import group_terms, to_latex, to_text
 # Part 7
 from .uncertainty import BootstrapResult, bootstrap_wsindy
 from .stability import StabilityResult, stability_selection
+
+# Diagnostics (Tasks 4.3, 6.3, 8.1)
+from .diagnostics import (
+    compare_model_hierarchy,
+    dominant_balance_report,
+    model_aic,
+    ols_comparison,
+    print_dominant_balance,
+    residual_analysis,
+)
 
 # Part 8
 from .library import (
@@ -91,6 +104,7 @@ from .fields import (
 )
 from .multifield import (
     LibraryTerm,
+    MultiFieldForecastError,
     MultiFieldResult,
     bootstrap_multifield,
     build_default_library,
@@ -115,6 +129,8 @@ __all__ = [
     "fft_convolve3d_same",
     "get_kernel",
     "make_query_indices",
+    "nondimensionalize_field",
+    "rescale_coefficients",
     # Part 3
     "mstls",
     "precondition_columns",
@@ -147,6 +163,7 @@ __all__ = [
     "SelectionResult",
     "TrialResult",
     "default_ell_grid",
+    "spectral_fidelity",
     "wsindy_model_selection",
     # Part 6
     "group_terms",
@@ -157,6 +174,13 @@ __all__ = [
     "bootstrap_wsindy",
     "StabilityResult",
     "stability_selection",
+    # Diagnostics
+    "residual_analysis",
+    "ols_comparison",
+    "dominant_balance_report",
+    "print_dominant_balance",
+    "model_aic",
+    "compare_model_hierarchy",
     # Part 8
     "LibraryBuilder",
     "clear_registrations",
@@ -172,6 +196,7 @@ __all__ = [
     "compute_flux_kde",
     "compute_morse_potential",
     "LibraryTerm",
+    "MultiFieldForecastError",
     "MultiFieldResult",
     "bootstrap_multifield",
     "build_default_library",

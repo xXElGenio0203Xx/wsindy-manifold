@@ -276,3 +276,89 @@ def build_weak_system(
         col_names.append(f"{op}:{feat}")
 
     return b, G, col_names
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6.  Data nondimensionalization
+# ═══════════════════════════════════════════════════════════════════════════
+
+_FEATURE_POWER: Dict[str, int] = {
+    "1": 0,
+    "u": 1,
+    "u2": 2,
+    "u3": 3,
+    "grad_u_sq": 2,   # |∇u|² ∝ U²
+}
+
+
+def _feature_power(feature_name: str) -> int:
+    """Return effective U-power of a library feature."""
+    if feature_name in _FEATURE_POWER:
+        return _FEATURE_POWER[feature_name]
+    # u4, u5, …
+    if feature_name.startswith("u") and feature_name[1:].isdigit():
+        return int(feature_name[1:])
+    # Unknown custom features — assume linear (safe default)
+    return 1
+
+
+def nondimensionalize_field(
+    U: NDArray[np.floating],
+) -> Tuple[NDArray[np.floating], float]:
+    """Rescale field data to O(1) for numerically stable library assembly.
+
+    Uses ``std(U)`` as the characteristic scale (robust to outliers).
+
+    Parameters
+    ----------
+    U : ndarray (T, nx, ny)
+
+    Returns
+    -------
+    U_nd : ndarray, same shape — rescaled field.
+    U_c  : float — characteristic scale (``U_nd = U / U_c``).
+    """
+    U = np.asarray(U, dtype=np.float64)
+    U_c = float(np.std(U))
+    if U_c < 1e-30:
+        U_c = float(np.max(np.abs(U)))
+    if U_c < 1e-30:
+        U_c = 1.0
+    return U / U_c, U_c
+
+
+def rescale_coefficients(
+    w: NDArray[np.floating],
+    col_names: List[str],
+    U_c: float,
+) -> NDArray[np.floating]:
+    r"""Convert nondimensionalized coefficients back to physical units.
+
+    If the weak system was assembled on :math:`\tilde U = U/U_c`, the
+    regression gives :math:`\tilde w`.  The physical coefficient for
+    a term ``op:u^k`` is:
+
+    .. math::
+        w_{\rm phys} = \tilde w \cdot U_c^{k - 1}
+
+    where *k* is the polynomial power of the feature.
+
+    Parameters
+    ----------
+    w : ndarray (M,)
+    col_names : list of str
+        ``"op:feature"`` labels matching *w*.
+    U_c : float
+        Characteristic scale used for nondimensionalization.
+
+    Returns
+    -------
+    w_phys : ndarray (M,)
+    """
+    w_phys = w.copy()
+    for j, name in enumerate(col_names):
+        feat = name.split(":")[-1]
+        k = _feature_power(feat)
+        if k != 1:
+            w_phys[j] = w[j] * U_c ** (k - 1)
+    return w_phys

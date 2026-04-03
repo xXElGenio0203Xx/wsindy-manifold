@@ -144,24 +144,22 @@ IC_DISPLAY = {
     'two_clusters': 'Double Gaussian',
 }
 
-# All three models
-ALL_MODELS = ['mvar', 'lstm', 'wsindy']
-MODEL_DISPLAY = {'mvar': 'MVAR', 'lstm': 'LSTM', 'wsindy': 'WSINDy'}
-MODEL_COLORS = {'mvar': '#1f77b4', 'lstm': '#ff7f0e', 'wsindy': '#2ca02c'}
+# Forecasting models (WSINDy is PDE-discovery only, not a forecaster)
+ALL_MODELS = ['mvar', 'lstm']
+MODEL_DISPLAY = {'mvar': 'MVAR', 'lstm': 'LSTM'}
+MODEL_COLORS = {'mvar': '#1f77b4', 'lstm': '#d62728'}
 
 # ── Thesis figure styling ────────────────────────────────────────────────────
 THESIS_MVAR_COLOR = '#1f77b4'   # navy
 THESIS_LSTM_COLOR = '#d62728'   # red
-THESIS_WSINDY_COLOR = '#2ca02c' # green
-THESIS_MODELS = ['mvar', 'lstm', 'wsindy']
+THESIS_MODELS = ['mvar', 'lstm']
 THESIS_COLORS = {
     'mvar': THESIS_MVAR_COLOR,
     'lstm': THESIS_LSTM_COLOR,
-    'wsindy': THESIS_WSINDY_COLOR,
 }
-THESIS_LABELS = {'mvar': 'MVAR', 'lstm': 'LSTM', 'wsindy': 'WSINDy'}
-THESIS_MARKERS = {'mvar': 'o', 'lstm': 's', 'wsindy': '^'}
-MODEL_LINESTYLES = {'mvar': '-', 'lstm': '--', 'wsindy': ':'}
+THESIS_LABELS = {'mvar': 'MVAR', 'lstm': 'LSTM'}
+THESIS_MARKERS = {'mvar': 'o', 'lstm': 's'}
+MODEL_LINESTYLES = {'mvar': '-', 'lstm': '--'}
 
 # Y-axis display floor for R²: values below this are clamped for visualization
 R2_DISPLAY_FLOOR = -1.0
@@ -366,12 +364,11 @@ def discover_experiments(data_dir, experiment_filter=None):
             continue
         if experiment_filter and d.name not in experiment_filter:
             continue
-        # Accept experiments with either ROM basis or WSINDy results
+        # Accept experiments with ROM basis
         has_pod = (d / 'rom_common' / 'pod_basis.npz').exists() or \
                   (d / 'mvar' / 'pod_basis.npz').exists()
-        has_wsindy = (d / 'WSINDy').exists()
         has_test = (d / 'test').exists()
-        if (has_pod or has_wsindy) and has_test:
+        if has_pod and has_test:
             experiments[d.name] = d
     return experiments
 
@@ -389,8 +386,6 @@ def detect_available_models(exp_dir):
                 models.append('lstm')
         except (StopIteration, PermissionError):
             pass
-    if (p / 'WSINDy' / 'test_results.csv').exists():
-        models.append('wsindy')
     return models
 
 
@@ -1066,12 +1061,20 @@ def plot_wsindy_coefficients(experiments, output_dir):
         elif info.get('mode') == 'multifield':
             # Multi-field: one subplot per equation
             eqs = info.get('equations', {})
+
+            # Try to load identification_summary.json for error bars + Pi_m
+            id_summary = None
+            id_summary_path = Path(exp_dir) / 'WSINDy' / 'identification_summary.json'
+            if id_summary_path.exists():
+                with open(id_summary_path) as f:
+                    id_summary = json.load(f)
+
             if not eqs:
                 # Try discovered_pde from JSON
                 dp = info.get('discovered_pde', {})
                 if dp:
                     n_eq = len(dp)
-                    fig, axes = plt.subplots(1, n_eq, figsize=(6 * n_eq, 4),
+                    fig, axes = plt.subplots(1, n_eq, figsize=(6 * n_eq, 4.5),
                                             squeeze=False)
                     for ei, (eq_name, eq_data) in enumerate(dp.items()):
                         ax = axes[0, ei]
@@ -1088,14 +1091,56 @@ def plot_wsindy_coefficients(experiments, output_dir):
                             ax.set_title(eq_name)
                             continue
                         x = np.arange(len(names))
-                        colors = ['steelblue' if v >= 0 else '#d62728' for v in vals]
-                        ax.bar(x, vals, color=colors, alpha=0.8)
+
+                        # Sign-aware coloring: green = physically expected sign,
+                        # red = unexpected/constrained, steelblue = neutral
+                        _expect_neg = {
+                            'px': {'px', 'lap_px', 'dx_rho2'},
+                            'py': {'py', 'lap_py', 'dy_rho2'},
+                        }
+                        neg_set = _expect_neg.get(eq_name, set())
+                        colors = []
+                        for n_i, v_i in zip(names, vals):
+                            if n_i in neg_set:
+                                colors.append('#2ca02c' if v_i < 0 else '#d62728')
+                            else:
+                                colors.append('steelblue' if v_i >= 0 else '#d62728')
+
+                        # Error bars from identification_summary
+                        yerr = None
+                        if id_summary is not None:
+                            eq_sum = id_summary.get('equations', {}).get(
+                                eq_name if '_t' in eq_name else f'{eq_name}_t', {})
+                            std_c = eq_sum.get('std_coefficients', {})
+                            if std_c:
+                                yerr = [std_c.get(n_i, 0.0) for n_i in names]
+
+                        ax.bar(x, vals, color=colors, alpha=0.8,
+                               yerr=yerr, capsize=3, ecolor='gray')
                         ax.set_xticks(x)
                         ax.set_xticklabels(names, fontsize=7, rotation=45, ha='right')
                         ax.set_ylabel('Coefficient')
                         ax.set_title(f'{eq_name} equation')
                         ax.grid(True, alpha=0.3, axis='y')
                         ax.axhline(0, color='k', linewidth=0.5)
+
+                        # Annotate Pi_tilde_m above each bar
+                        if id_summary is not None:
+                            eq_sum = id_summary.get('equations', {}).get(
+                                eq_name if '_t' in eq_name else f'{eq_name}_t', {})
+                            pi_norm = eq_sum.get('mean_dominant_balance', {})
+                            if pi_norm:
+                                for xi, n_i in enumerate(names):
+                                    pi_val = pi_norm.get(n_i)
+                                    if pi_val is not None and pi_val > 0.01:
+                                        y_pos = vals[xi]
+                                        offset = 0.02 * (max(abs(v) for v in vals) or 1)
+                                        ax.annotate(
+                                            f'\u03a0\u0303={pi_val:.2f}',
+                                            (xi, y_pos + (offset if y_pos >= 0 else -offset)),
+                                            ha='center', va='bottom' if y_pos >= 0 else 'top',
+                                            fontsize=6, color='#555555')
+
                     fig.suptitle(f'WSINDy Multi-Field PDE \u2014 {_short(exp_name)}',
                                  fontsize=12, fontweight='bold')
                     fig.tight_layout(rect=[0, 0, 1, 0.93])
@@ -1220,14 +1265,165 @@ def plot_wsindy_bootstrap(experiments, output_dir):
 
 
 # ============================================================================
+# PLOT: Dominant balance (horizontal bar chart per equation)
+# ============================================================================
+
+def plot_dominant_balance(experiments, output_dir):
+    """Horizontal bar chart of normalised dominant balance Pi_tilde per term."""
+    for exp_name, exp_dir in experiments.items():
+        id_path = Path(exp_dir) / 'WSINDy' / 'identification_summary.json'
+        if not id_path.exists():
+            continue
+        with open(id_path) as f:
+            id_sum = json.load(f)
+        eqs = id_sum.get('equations', {})
+        if not eqs:
+            continue
+
+        n_eq = len(eqs)
+        fig, axes = plt.subplots(1, n_eq, figsize=(5 * n_eq, 4), squeeze=False)
+        for ei, (eq_name, eq_data) in enumerate(eqs.items()):
+            ax = axes[0, ei]
+            pi_norm = eq_data.get('mean_dominant_balance', {})
+            if not pi_norm:
+                ax.text(0.5, 0.5, 'No data', ha='center', va='center',
+                        transform=ax.transAxes)
+                ax.set_title(eq_name)
+                continue
+            # Sort descending
+            items = sorted(pi_norm.items(), key=lambda kv: kv[1], reverse=True)
+            names = [k for k, v in items]
+            vals = [v for k, v in items]
+            y = np.arange(len(names))
+            ax.barh(y, vals, color='steelblue', alpha=0.8)
+            ax.set_yticks(y)
+            ax.set_yticklabels(names, fontsize=8)
+            ax.set_xlabel(r'$\tilde{\Pi}_m$')
+            ax.set_title(f'{eq_name}')
+            ax.set_xlim(0, 1.05)
+            ax.invert_yaxis()
+            ax.grid(True, alpha=0.3, axis='x')
+            # Annotate values
+            for yi, vi in enumerate(vals):
+                if vi > 0.01:
+                    ax.text(vi + 0.01, yi, f'{vi:.3f}', va='center', fontsize=7)
+        fig.suptitle(f'Dominant Balance — {_short(exp_name)}',
+                     fontsize=12, fontweight='bold')
+        fig.tight_layout(rect=[0, 0, 1, 0.93])
+        _save_fig(fig, output_dir, f'dominant_balance_{_short(exp_name)}')
+
+    print(f"  Saved: dominant_balance_*.pdf")
+
+
+# ============================================================================
+# PLOT: Regime comparison heatmap (terms × regimes, cells = Pi_tilde)
+# ============================================================================
+
+def plot_regime_comparison_heatmap(experiments, output_dir):
+    """Heatmap: rows=regimes, cols=library terms, cells=Pi_tilde_m."""
+    # Collect per-equation data across all experiments
+    eq_data = {}  # eq_name -> {exp_name: {term: Pi_tilde}}
+    for exp_name, exp_dir in experiments.items():
+        id_path = Path(exp_dir) / 'WSINDy' / 'identification_summary.json'
+        if not id_path.exists():
+            continue
+        with open(id_path) as f:
+            id_sum = json.load(f)
+        for eq_name, eq_info in id_sum.get('equations', {}).items():
+            pi_norm = eq_info.get('mean_dominant_balance', {})
+            if pi_norm:
+                eq_data.setdefault(eq_name, {})[exp_name] = pi_norm
+
+    if not eq_data:
+        print("  No identification summaries found — skipping regime heatmap.")
+        return
+
+    for eq_name, regime_dict in eq_data.items():
+        # Union of all terms
+        all_terms = sorted(set().union(*(d.keys() for d in regime_dict.values())))
+        regime_names = list(regime_dict.keys())
+        if len(regime_names) < 2 or not all_terms:
+            continue
+
+        mat = np.zeros((len(regime_names), len(all_terms)))
+        for ri, rn in enumerate(regime_names):
+            for ti, tn in enumerate(all_terms):
+                mat[ri, ti] = regime_dict[rn].get(tn, 0.0)
+
+        fig, ax = plt.subplots(figsize=(max(6, len(all_terms) * 0.9),
+                                        max(3, len(regime_names) * 0.7)))
+        im = ax.imshow(mat, aspect='auto', cmap='YlOrRd', vmin=0, vmax=1)
+        ax.set_xticks(np.arange(len(all_terms)))
+        ax.set_xticklabels(all_terms, fontsize=7, rotation=45, ha='right')
+        ax.set_yticks(np.arange(len(regime_names)))
+        ax.set_yticklabels([_short(r) for r in regime_names], fontsize=8)
+        # Annotate cells
+        for ri in range(len(regime_names)):
+            for ti in range(len(all_terms)):
+                v = mat[ri, ti]
+                if v > 0.01:
+                    ax.text(ti, ri, f'{v:.2f}', ha='center', va='center',
+                            fontsize=6, color='white' if v > 0.5 else 'black')
+        fig.colorbar(im, ax=ax, shrink=0.8, label=r'$\tilde{\Pi}_m$')
+        eq_label = eq_name.replace('_t', '')
+        ax.set_title(f'Dominant Balance — {eq_label} equation', fontweight='bold')
+        fig.tight_layout()
+        _save_fig(fig, output_dir, f'regime_comparison_{eq_label}')
+
+    print(f"  Saved: regime_comparison_*.pdf")
+
+
+# ============================================================================
+# PLOT: Condition numbers (grouped bar chart, log scale)
+# ============================================================================
+
+def plot_condition_numbers(experiments, output_dir):
+    """Grouped bar chart of cond(G) for rho/px/py across regimes."""
+    records = []
+    for exp_name, exp_dir in experiments.items():
+        diag_path = Path(exp_dir) / 'WSINDy' / 'multifield_diagnostics.json'
+        if not diag_path.exists():
+            continue
+        with open(diag_path) as f:
+            diag = json.load(f)
+        fit_diag = diag.get('fit_diagnostics', {})
+        row = {'regime': _short(exp_name)}
+        for eq in ['rho', 'px', 'py']:
+            row[eq] = fit_diag.get(eq, {}).get('condition_number', float('nan'))
+        records.append(row)
+
+    if not records:
+        print("  No diagnostics found — skipping condition numbers.")
+        return
+
+    regimes = [r['regime'] for r in records]
+    eq_names = ['rho', 'px', 'py']
+    x = np.arange(len(regimes))
+    width = 0.25
+    fig, ax = plt.subplots(figsize=(max(6, len(regimes) * 1.5), 5))
+    for i, eq in enumerate(eq_names):
+        vals = [r[eq] for r in records]
+        ax.bar(x + i * width, vals, width, label=f'{eq}', alpha=0.85)
+    ax.set_xticks(x + width)
+    ax.set_xticklabels(regimes, fontsize=8, rotation=30, ha='right')
+    ax.set_ylabel(r'$\kappa(G)$')
+    ax.set_yscale('log')
+    ax.set_title('Condition Numbers by Regime and Equation', fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis='y')
+    fig.tight_layout()
+    _save_fig(fig, output_dir, 'condition_numbers')
+    print(f"  Saved: condition_numbers.pdf")
+
+
+# ============================================================================
 # PLOT: Model comparison summary (R² bar chart across all models)
 # ============================================================================
 
 def plot_r2_summary_bars(experiments, ic_maps, ic_types, output_dir):
     """For each IC, create a grouped bar chart: experiments × models → mean R²."""
     active_models = [m for m in ALL_MODELS if any(
-        (Path(d) / m.upper() / 'test_results.csv').exists() or
-        (m == 'wsindy' and (Path(d) / 'WSINDy' / 'test_results.csv').exists())
+        (Path(d) / m.upper() / 'test_results.csv').exists()
         for d in experiments.values())]
     if not active_models:
         print("  No model data found — skipping r2_summary_bars.")
@@ -1334,10 +1530,7 @@ def _available_thesis_models(exp_dir):
     avail = []
     for model in THESIS_MODELS:
         tag = model.upper()
-        # Check for test_results.csv or density predictions
         if (p / tag / 'test_results.csv').exists():
-            avail.append(model)
-        elif model == 'wsindy' and (p / 'WSINDy' / 'test_results.csv').exists():
             avail.append(model)
     return avail
 
@@ -1551,6 +1744,85 @@ def plot_thesis_r2_degradation_detail(experiments, output_dir, style_map):
 
 
 # ---------------------------------------------------------------------------
+# THESIS FIG 2: Per-experiment MVAR vs LSTM R² degradation (side by side)
+# ---------------------------------------------------------------------------
+
+def plot_thesis_r2_degradation_per_exp(experiments, output_dir, style_map):
+    """Per-experiment R²(t): 2 panels side by side — MVAR (left) | LSTM (right).
+
+    All experiments overlaid with unique color+marker.  One figure saved as
+    thesis_r2_per_exp.pdf/png.
+    """
+    print(f"\n{'=' * 60}")
+    print("THESIS FIG 2: Per-Experiment R² Degradation (MVAR | LSTM)")
+    print("=" * 60)
+
+    active_models = _get_active_thesis_models(experiments)
+    if not active_models:
+        print("  No active models found — skipping.")
+        return
+
+    fig, axes = plt.subplots(1, len(active_models),
+                             figsize=(8 * len(active_models), 6),
+                             sharey=True, squeeze=False)
+
+    for mi, model in enumerate(active_models):
+        ax = axes[0, mi]
+        all_traces = _collect_all_r2_traces(experiments, model)
+        if not all_traces:
+            ax.set_title(f'{THESIS_LABELS[model]} — no data')
+            continue
+
+        from collections import defaultdict
+        exp_traces = defaultdict(list)
+        for t_arr, r2_arr, exp_name in all_traces:
+            exp_traces[exp_name].append((t_arr, r2_arr))
+
+        for exp_name in sorted(exp_traces.keys()):
+            traces = exp_traces[exp_name]
+            sty = style_map.get(exp_name, {'color': 'gray', 'marker': 'o'})
+
+            exp_times = np.unique(np.concatenate([t[0] for t in traces]))
+            r2_mat = []
+            for t_arr, r2_arr in traces:
+                r2_mat.append(np.interp(exp_times, t_arr, r2_arr,
+                                        left=np.nan, right=np.nan))
+            r2_mat = np.array(r2_mat)
+
+            with np.errstate(all='ignore'):
+                mean_r2 = np.nanmean(r2_mat, axis=0)
+                std_r2 = np.nanstd(r2_mat, axis=0)
+
+            ax.plot(exp_times, mean_r2, '-', color=sty['color'],
+                    linewidth=1.2, alpha=0.85, label=_short(exp_name))
+            ax.fill_between(exp_times, mean_r2 - std_r2, mean_r2 + std_r2,
+                            color=sty['color'], alpha=0.12)
+
+            n_marks = max(1, len(exp_times) // 10)
+            mark_idx = np.linspace(0, len(exp_times) - 1, n_marks, dtype=int)
+            ax.scatter(exp_times[mark_idx], mean_r2[mark_idx],
+                       marker=sty['marker'], color=sty['color'],
+                       s=30, zorder=4, edgecolors='white', linewidths=0.4)
+
+        ax.axhline(0.0, color='gray', ls='--', lw=0.8, alpha=0.5)
+        ax.axhline(1.0, color='gray', ls=':', lw=0.8, alpha=0.5)
+        ax.set_xlabel('Time (s)')
+        ax.set_title(THESIS_LABELS[model], fontsize=13, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(R2_DISPLAY_FLOOR, R2_DISPLAY_CEIL)
+        if mi == 0:
+            ax.set_ylabel(r'$R^2$ (density-space)')
+        if mi == len(active_models) - 1:
+            ax.legend(fontsize=7, ncol=2, loc='lower left')
+
+    fig.suptitle('Per-Experiment $R^2$ Degradation Over Forecast Horizon',
+                 fontsize=14, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    _save_fig(fig, output_dir, 'thesis_r2_per_exp')
+    print(f"  Saved: thesis_r2_per_exp.pdf/png")
+
+
+# ---------------------------------------------------------------------------
 # THESIS FIG 2: Density-space vs Latent-space R² scatter
 # ---------------------------------------------------------------------------
 
@@ -1558,7 +1830,7 @@ def plot_thesis_density_latent_scatter(experiments, output_dir, style_map):
     """Scatter of R²_density vs R²_latent — per-experiment marker + per-model fill.
 
     Each experiment gets a unique color+marker from style_map.
-    Model identity: MVAR = filled markers, LSTM = open/hollow, WSINDy = cross.
+    Model identity: MVAR = filled markers, LSTM = open/hollow.
     """
     print(f"\n{'=' * 60}")
     print("THESIS FIG 2: Density vs Latent R² Scatter")
@@ -1573,13 +1845,11 @@ def plot_thesis_density_latent_scatter(experiments, output_dir, style_map):
     _model_fill = {
         'mvar':   {'facecolors': None, 'edgecolors': None, 'linewidths': 0.6},
         'lstm':   {'facecolors': 'none', 'edgecolors': None, 'linewidths': 1.2},
-        'wsindy': {'facecolors': None, 'edgecolors': None, 'linewidths': 0.6},
     }
     # For the bold mean markers
     _model_fill_bold = {
         'mvar':   {'facecolors': None, 'edgecolors': 'black', 'linewidths': 1.0},
         'lstm':   {'facecolors': 'none', 'edgecolors': None, 'linewidths': 1.5},
-        'wsindy': {'facecolors': None, 'edgecolors': 'black', 'linewidths': 1.0},
     }
 
     model_counts = {m: 0 for m in active_models}
@@ -1587,8 +1857,6 @@ def plot_thesis_density_latent_scatter(experiments, output_dir, style_map):
 
     for model in active_models:
         model_tag = model.upper()
-        if model == 'wsindy':
-            model_tag = 'WSINDy'
         fill = _model_fill[model]
         fill_bold = _model_fill_bold[model]
 
@@ -1871,11 +2139,12 @@ def plot_thesis_kde_snapshots(experiments, output_dir, data_dir):
     print("=" * 60)
 
     TARGET_TIMES = [0.6, 3.0, 25.0, 75.0, 200.0]
-    kde_dir = output_dir / 'kde_snapshots'
-    kde_dir.mkdir(parents=True, exist_ok=True)
+    base_kde_dir = Path('kde_snapshots')
     n_generated = 0
 
     for exp_name, exp_dir in experiments.items():
+        exp_kde_dir = base_kde_dir / exp_name
+        exp_kde_dir.mkdir(parents=True, exist_ok=True)
         snapshot_path = Path(exp_dir) / 'kde_snapshots.npz'
         test_run = Path(exp_dir) / 'test' / 'test_000'
 
@@ -2028,7 +2297,7 @@ def plot_thesis_kde_snapshots(experiments, output_dir, data_dir):
                      f'Red dots = particle positions',
                      fontsize=14, fontweight='bold')
         fig.tight_layout(rect=[0, 0, 1, 0.96])
-        _save_fig(fig, kde_dir, f'kde_{exp_name}')
+        _save_fig(fig, exp_kde_dir, f'kde_{exp_name}')
         n_generated += 1
 
     print(f"  Generated {n_generated} KDE alignment figures")
@@ -2132,11 +2401,71 @@ def plot_thesis_mass_conservation(experiments, output_dir, data_dir):
 
 
 # ---------------------------------------------------------------------------
+# THESIS: Mass conservation table (replaces plot in thesis flow)
+# ---------------------------------------------------------------------------
+
+def generate_thesis_mass_table(experiments, output_dir, data_dir):
+    """Per-experiment mean mass deviation table: MVAR vs LSTM.
+
+    Reads mass_timeseries.npz when available, otherwise falls back to
+    loading full density files.  Outputs mass_table.csv and mass_table.tex.
+    """
+    print(f"\n{'=' * 60}")
+    print("THESIS: Mass Conservation Table")
+    print("=" * 60)
+
+    rows = []
+    for exp_name, exp_dir in sorted(experiments.items()):
+        row = {'Experiment': _short(exp_name)}
+        mass_path = Path(exp_dir) / 'mass_timeseries.npz'
+        if mass_path.exists():
+            mdata = np.load(mass_path)
+            m_true = mdata['mass_true']
+            M0 = m_true[0] if m_true[0] != 0 else 1.0
+            for model in THESIS_MODELS:
+                key = f'mass_pred_{model}'
+                if key in mdata:
+                    rel = mdata[key] / M0
+                    row[f'{THESIS_LABELS[model]} Δmass'] = float(
+                        np.mean(np.abs(rel - 1.0)))
+        else:
+            for model in THESIS_MODELS:
+                rho_t, rho_p, times = load_density_pair(
+                    exp_dir, test_idx=0, model=model)
+                if rho_t is None:
+                    continue
+                m_true = np.array([np.sum(rho_t[t])
+                                   for t in range(rho_t.shape[0])])
+                m_pred = np.array([np.sum(rho_p[t])
+                                   for t in range(rho_p.shape[0])])
+                M0 = m_true[0] if m_true[0] != 0 else 1.0
+                rel = m_pred / M0
+                row[f'{THESIS_LABELS[model]} Δmass'] = float(
+                    np.mean(np.abs(rel - 1.0)))
+        rows.append(row)
+
+    if not rows:
+        print("  No mass data found — skipping.")
+        return
+
+    table = pd.DataFrame(rows)
+    csv_path = output_dir / 'mass_table.csv'
+    table.to_csv(csv_path, index=False, float_format='%.4f')
+    print(f"  Saved: mass_table.csv ({len(table)} experiments)")
+
+    tex_path = output_dir / 'mass_table.tex'
+    with open(tex_path, 'w') as f:
+        f.write(table.to_latex(index=False, escape=False,
+                               float_format='%.4f', na_rep='---'))
+    print(f"  Saved: mass_table.tex")
+
+
+# ---------------------------------------------------------------------------
 # THESIS FIG 7: Phase dynamics — aggregate with per-experiment styling
 # ---------------------------------------------------------------------------
 
 def plot_thesis_phase_dynamics(experiments, output_dir, style_map):
-    """Phase dynamics aggregate: 6-panel GridSpec with per-experiment colors.
+    """Phase dynamics aggregate: 3-panel (trajectory | AR | autocorrelation).
 
     Adaptation of plot_phase_dynamics() with consistent per-experiment
     color+marker from style_map.
@@ -2158,16 +2487,8 @@ def plot_thesis_phase_dynamics(experiments, output_dir, style_map):
         print("  No shift data found — skipping phase dynamics.")
         return
 
-    fig = plt.figure(figsize=(18, 11))
-    gs = GridSpec(2, 3, figure=fig, hspace=0.35, wspace=0.35)
-    ax_traj = fig.add_subplot(gs[0, 0])
-    ax_psd = fig.add_subplot(gs[0, 1])
-    ax_ar = fig.add_subplot(gs[0, 2])
-    ax_var = fig.add_subplot(gs[1, 0])
-    ax_ac = fig.add_subplot(gs[1, 1])
-    ax_sum = fig.add_subplot(gs[1, 2])
+    fig, (ax_traj, ax_ar, ax_ac) = plt.subplots(1, 3, figsize=(16, 5))
     ar_orders = [1, 2, 3, 5, 10]
-    all_ar = []
 
     for idx, (exp_name, exp_dir, sa) in enumerate(shift_exps):
         sty = style_map.get(exp_name, {'color': _color(idx, len(shift_exps)),
@@ -2194,7 +2515,6 @@ def plot_thesis_phase_dynamics(experiments, output_dir, style_map):
 
         color = sty['color']
         marker = sty['marker']
-        label = _short(exp_name)
 
         # 1. Shift trajectory (mean over realizations)
         mean_s = shifts_3d.mean(axis=0)
@@ -2203,19 +2523,7 @@ def plot_thesis_phase_dynamics(experiments, output_dir, style_map):
         ax_traj.scatter(mean_s[0, 1], mean_s[0, 0], marker=marker,
                         color=color, s=30, zorder=4)
 
-        # 2. PSD
-        for dim in [0, 1]:
-            psds = []
-            for ri in range(min(M, 50)):
-                f_psd, psd = signal.welch(shifts_3d[ri, :, dim], fs=1.0,
-                                          nperseg=min(128, T_s // 2))
-                psds.append(psd)
-            mean_psd = np.mean(psds, axis=0)
-            ls = '-' if dim == 1 else '--'
-            ax_psd.semilogy(f_psd, mean_psd, ls, color=color,
-                            linewidth=1, alpha=0.7)
-
-        # 3. AR fit
+        # 2. AR fit
         ar_r2_p = []
         for p in ar_orders:
             r2s = []
@@ -2235,16 +2543,11 @@ def plot_thesis_phase_dynamics(experiments, output_dir, style_map):
                 r2s.append(1 - ss_res / ss_tot if ss_tot > 0 else 0)
             ar_r2_p.append(np.mean(r2s))
         ax_ar.plot(ar_orders, ar_r2_p, '-', color=color, linewidth=1.2,
-                   alpha=0.8)
+                   alpha=0.8, label=_short(exp_name))
         ax_ar.scatter(ar_orders, ar_r2_p, marker=marker, color=color, s=25,
                       zorder=3)
-        all_ar.append((_short(exp_name), dict(zip(ar_orders, ar_r2_p))))
 
-        # 4. Variance bar
-        ax_var.bar(idx, np.var(shifts_3d, axis=0).mean(),
-                   color=color, alpha=0.7)
-
-        # 5. Autocorrelation
+        # 3. Autocorrelation
         max_lag = min(T_s - 1, 50)
         lags = np.arange(max_lag)
         acorr = np.zeros(max_lag)
@@ -2262,50 +2565,25 @@ def plot_thesis_phase_dynamics(experiments, output_dir, style_map):
                 count += 1
         if count > 0:
             acorr /= count
-        ax_ac.plot(lags, acorr, '-', color=color, linewidth=1, alpha=0.7)
+        ax_ac.plot(lags, acorr, '-', color=color, linewidth=1, alpha=0.7,
+                   label=_short(exp_name))
 
-    # Axis labels and titles
     ax_traj.set_xlabel(r'Shift $\Delta y$')
     ax_traj.set_ylabel(r'Shift $\Delta x$')
     ax_traj.set_title('Mean Shift Trajectory')
     ax_traj.grid(True, alpha=0.3)
 
-    ax_psd.set_xlabel('Frequency')
-    ax_psd.set_ylabel('PSD')
-    ax_psd.set_title('Power Spectral Density')
-    ax_psd.grid(True, alpha=0.3)
-
     ax_ar.set_xlabel('AR order $p$')
     ax_ar.set_ylabel(r'$R^2$')
     ax_ar.set_title('AR Predictability')
+    ax_ar.legend(fontsize=6, ncol=2, frameon=True)
     ax_ar.grid(True, alpha=0.3)
-
-    ax_var.set_xlabel('Experiment')
-    ax_var.set_ylabel('Mean Shift Variance')
-    ax_var.set_title('Shift Variance')
-    ax_var.set_xticks([])
-    ax_var.grid(True, alpha=0.3, axis='y')
 
     ax_ac.set_xlabel('Lag')
     ax_ac.set_ylabel('Autocorrelation')
     ax_ac.set_title('Shift Autocorrelation')
     ax_ac.axhline(0, color='gray', ls='--', lw=0.8)
     ax_ac.grid(True, alpha=0.3)
-
-    # Summary panel: experiment legend
-    ax_sum.axis('off')
-    plotted_exps = {name: style_map[name] for name, _, _ in shift_exps
-                    if name in style_map}
-    handles = []
-    for name in sorted(plotted_exps.keys()):
-        s = plotted_exps[name]
-        h = plt.Line2D([], [], marker=s['marker'], color=s['color'],
-                        linestyle='None', markersize=5,
-                        label=_short(name))
-        handles.append(h)
-    ax_sum.legend(handles=handles, ncol=3, fontsize=6, loc='center',
-                  frameon=True, fancybox=True, title='Experiments',
-                  title_fontsize=8)
 
     fig.suptitle('Phase Dynamics — Shift Analysis',
                  fontsize=14, fontweight='bold')
@@ -2653,7 +2931,7 @@ def plot_thesis_runtime(experiments, output_dir):
         profiles = summary.get('runtime_analysis', {}).get('profiles', [])
         for prof in profiles:
             model_name = prof.get('model_name', '').lower()
-            if model_name not in ('mvar', 'lstm', 'wsindy'):
+            if model_name not in ('mvar', 'lstm'):
                 continue
 
             train_s = prof.get('training', {}).get('total_seconds', np.nan)
@@ -2889,7 +3167,7 @@ def _get_active_thesis_models(experiments):
                 pass
         # Also check for test_results.csv directories
         for model in THESIS_MODELS:
-            dir_tag = 'WSINDy' if model == 'wsindy' else model.upper()
+            dir_tag = model.upper()
             if (p / dir_tag / 'test_results.csv').exists():
                 active.add(model)
     return [m for m in THESIS_MODELS if m in active]
@@ -2976,7 +3254,7 @@ def plot_thesis_r2_heatmap(experiments, output_dir):
 
     pivot = pivot.reindex(ordered_exps)
     # Reorder columns to active models only
-    col_order = [m for m in ['mvar', 'lstm', 'wsindy'] if m in pivot.columns]
+    col_order = [m for m in ['mvar', 'lstm'] if m in pivot.columns]
     pivot = pivot[col_order]
 
     # Short names for display
@@ -3355,9 +3633,7 @@ def generate_thesis_table(experiments, output_dir):
 
         for model in THESIS_MODELS:
             tag = model.upper()
-            # WSINDy uses 'WSINDy' directory name
-            dir_tag = 'WSINDy' if model == 'wsindy' else tag
-            csv_path = Path(exp_dir) / dir_tag / 'test_results.csv'
+            csv_path = Path(exp_dir) / tag / 'test_results.csv'
             if not csv_path.exists():
                 # Model not available for this experiment — skip entirely
                 continue
@@ -3407,7 +3683,7 @@ def generate_thesis_table(experiments, output_dir):
     tex_path = output_dir / 'results_table.tex'
     # Format for LaTeX — keep it readable
     fmt_table = table.copy()
-    for tag in ['MVAR', 'LSTM', 'WSINDY']:
+    for tag in ['MVAR', 'LSTM']:
         r2_col = f'{tag} R²'
         std_col = f'{tag} R²_std'
         if r2_col in fmt_table.columns and std_col in fmt_table.columns:
@@ -3417,7 +3693,7 @@ def generate_thesis_table(experiments, output_dir):
             fmt_table = fmt_table.drop(columns=[r2_col, std_col])
 
     tex_cols = ['Experiment', 'Regime']
-    for tag in ['MVAR', 'LSTM', 'WSINDY']:
+    for tag in ['MVAR', 'LSTM']:
         if f'{tag} R²±std' in fmt_table.columns:
             tex_cols.append(f'{tag} R²±std')
         if f'{tag} RMSE' in fmt_table.columns:
@@ -3441,7 +3717,7 @@ def thesis_figures(experiments, ic_maps, output_dir, data_dir, skip_kde=False,
                    skip_phase=False, skip_lp=False):
     """Generate all thesis-quality aggregate figures."""
     print("\n" + "=" * 80)
-    print("THESIS MODE — Aggregate Model-Level Figures (MVAR vs LSTM vs WSINDy)")
+    print("THESIS MODE — Aggregate Model-Level Figures (MVAR vs LSTM)")
     print("=" * 80)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -3450,65 +3726,44 @@ def thesis_figures(experiments, ic_maps, output_dir, data_dir, skip_kde=False,
     style_map = _build_experiment_style_map(experiments)
     print(f"  Style map: {len(style_map)} experiments assigned color+marker")
 
-    # Fig 1: R² degradation (aggregate)
+    # Fig 1: R² degradation (aggregate — all experiments, all IC types)
     plot_thesis_r2_degradation(experiments, output_dir)
 
-    # Fig 1b: R² degradation detail (per-experiment)
-    plot_thesis_r2_degradation_detail(experiments, output_dir, style_map)
-
-    # Fig 2: Density vs Latent scatter
-    plot_thesis_density_latent_scatter(experiments, output_dir, style_map)
+    # Fig 2: Per-experiment MVAR | LSTM R² degradation (side by side)
+    plot_thesis_r2_degradation_per_exp(experiments, output_dir, style_map)
 
     # Fig 3: sPOD vs POD decay (aggregate)
     plot_thesis_svd_decay(experiments, output_dir)
 
-    # Fig 3b: SVD decay detail (per-experiment)
+    # Fig 4: Density vs Latent R² scatter
+    plot_thesis_density_latent_scatter(experiments, output_dir, style_map)
+
+    # Fig 5: Mass conservation table (CSV + LaTeX — no plot)
+    generate_thesis_mass_table(experiments, output_dir, data_dir)
+
+    # Fig 6: Summary results table
+    generate_thesis_table(experiments, output_dir)
+
+    # Fig 7: Phase dynamics (3 panels: trajectory | AR | autocorrelation)
+    if not skip_phase:
+        plot_thesis_phase_dynamics(experiments, output_dir, style_map)
+    else:
+        print(f"\n  Skipping phase dynamics (--skip_phase)")
+
+    # Fig 8: sPOD vs POD decay per-experiment detail
     plot_thesis_svd_decay_detail(experiments, output_dir, style_map)
 
-    # Fig 4: KDE snapshots
+    # Fig 9: KDE snapshots per experiment → kde_snapshots/<exp_name>/
     if not skip_kde:
         plot_thesis_kde_snapshots(experiments, output_dir, data_dir)
     else:
         print(f"\n  Skipping KDE snapshots (--skip_kde)")
 
-    # Fig 5: Mass conservation
-    plot_thesis_mass_conservation(experiments, output_dir, data_dir)
-
-    # Fig 6: Summary table
-    generate_thesis_table(experiments, output_dir)
-
-    # Fig 7: Phase dynamics
-    if not skip_phase:
-        plot_thesis_phase_dynamics(experiments, output_dir, style_map)
-        plot_thesis_phase_dynamics_detail(experiments, output_dir, style_map)
-    else:
-        print(f"\n  Skipping phase dynamics (--skip_phase)")
-
-    # Fig 8: L^p errors
-    if not skip_lp:
-        plot_thesis_lp_errors(experiments, output_dir, style_map)
-    else:
-        print(f"\n  Skipping L^p errors (--skip_lp)")
-
-    # Fig 9: Runtime comparison
-    plot_thesis_runtime(experiments, output_dir)
-
-    # Fig 10: R² heatmap — compact single-figure overview
-    plot_thesis_r2_heatmap(experiments, output_dir)
-
-    # Fig 11: R² distribution — violin per model
-    plot_thesis_r2_distribution(experiments, output_dir)
-
-    # Fig 12: MVAR vs LSTM head-to-head scatter
-    plot_thesis_mvar_vs_lstm(experiments, output_dir)
-
-    # Fig 13: R² by regime group — grouped bars
-    plot_thesis_r2_by_group(experiments, output_dir)
-
     print(f"\n{'=' * 80}")
     print("THESIS FIGURES COMPLETE")
     print("=" * 80)
     print(f"  Output: {output_dir}/")
+    print(f"  KDE snapshots: kde_snapshots/<experiment_name>/")
 
 
 # ============================================================================
@@ -3532,14 +3787,12 @@ def main():
                         help='Skip KDE snapshot grids (large figures)')
     parser.add_argument('--skip_phase', action='store_true',
                         help='Skip phase dynamics (slow)')
-    parser.add_argument('--skip_wsindy_detail', action='store_true',
-                        help='Skip per-experiment WSINDy coefficient/bootstrap plots')
     parser.add_argument('--skip_lp', action='store_true',
                         help='Skip L^p error figures (requires extracted data)')
     parser.add_argument('--systematic', action='store_true',
                         help='Only include systematic experiments (DO_*/NDYN_*)')
     parser.add_argument('--thesis', action='store_true',
-                        help='Generate thesis-quality aggregate figures (MVAR vs LSTM vs WSINDy)')
+                        help='Generate thesis-quality aggregate figures (MVAR vs LSTM)')
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
@@ -3550,7 +3803,7 @@ def main():
 
     print("=" * 80)
     print("3-MODEL IC-STRATIFIED CROSS-EXPERIMENT ANALYSIS PIPELINE")
-    print("  Models: MVAR | LSTM | WSINDy")
+    print("  Models: MVAR | LSTM")
     print("=" * 80)
 
     experiments = discover_experiments(data_dir, args.experiments)
@@ -3569,8 +3822,7 @@ def main():
         model_avail[exp_name] = detect_available_models(exp_dir)
     n_mvar = sum(1 for v in model_avail.values() if 'mvar' in v)
     n_lstm = sum(1 for v in model_avail.values() if 'lstm' in v)
-    n_wsindy = sum(1 for v in model_avail.values() if 'wsindy' in v)
-    print(f"Model availability: MVAR={n_mvar}, LSTM={n_lstm}, WSINDy={n_wsindy}")
+    print(f"Model availability: MVAR={n_mvar}, LSTM={n_lstm}")
 
     ic_maps = {}
     for exp_name, exp_dir in experiments.items():
@@ -3626,21 +3878,6 @@ def main():
     print("4. R\u00b2 Summary Bars (all 3 models)")
     print("=" * 60)
     plot_r2_summary_bars(experiments, ic_maps, ic_types, cross_dir)
-
-    # WSINDy-specific cross-IC plots
-    if not args.skip_wsindy_detail:
-        wsindy_dir = output_dir / 'wsindy_detail'
-        wsindy_dir.mkdir(parents=True, exist_ok=True)
-
-        print(f"\n{'=' * 60}")
-        print("5. WSINDy Discovered Coefficients")
-        print("=" * 60)
-        plot_wsindy_coefficients(experiments, wsindy_dir)
-
-        print(f"\n{'=' * 60}")
-        print("6. WSINDy Bootstrap UQ")
-        print("=" * 60)
-        plot_wsindy_bootstrap(experiments, wsindy_dir)
 
     # Per-IC x Per-Group plots (3-panel)
     total_generated = 0
@@ -3707,8 +3944,6 @@ def main():
     print("=" * 80)
     print(f"\n  Output directory:    {output_dir}/")
     print(f"  Cross-IC plots:      {output_dir}/cross_ic/")
-    if not args.skip_wsindy_detail:
-        print(f"  WSINDy detail:       {output_dir}/wsindy_detail/")
     for ic in ic_types:
         n_grp = sum(
             1 for g in active_groups
@@ -3716,7 +3951,7 @@ def main():
         )
         print(f"  {IC_DISPLAY[ic]:15s}  -> {output_dir}/IC_{ic}/  "
               f"({n_grp} groups)")
-    print(f"\n  Models detected:     MVAR={n_mvar}  LSTM={n_lstm}  WSINDy={n_wsindy}")
+    print(f"\n  Models detected:     MVAR={n_mvar}  LSTM={n_lstm}")
     print(f"  Figures generated:   ~{total_generated}")
     print(f"  Wall-clock time:     {elapsed / 60:.1f} min")
     print("=" * 80)

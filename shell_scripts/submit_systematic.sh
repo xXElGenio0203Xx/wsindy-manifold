@@ -93,6 +93,8 @@ fi
 
 ssh "$OSCAR_HOST" << ENDSSH
 cd ~/wsindy-manifold || exit 1
+# LOGIN NODE GUARD — do not add 'du', 'find -exec', or python training here
+du() { echo "ERROR: 'du' is blocked on login nodes. Use 'myquota' or 'interact' first." >&2; return 1; }; export -f du
 mkdir -p slurm_logs oscar_output
 
 # Verify manifest
@@ -102,7 +104,6 @@ echo "Manifest has \$N configs"
 # Verify environment
 module load python/3.11.11-5e66
 source ~/wsindy_env_new/bin/activate
-python -c "import numpy, torch; print('numpy', numpy.__version__, 'torch', torch.__version__)"
 
 # Submit
 JOB_ID=\$(sbatch $SBATCH_ARGS slurm_scripts/run_systematic.slurm | grep -oP '\d+')

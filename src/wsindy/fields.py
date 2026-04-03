@@ -116,6 +116,25 @@ def compute_flux_kde(
     return px, py
 
 
+def center_flux_fields(
+    px: np.ndarray,
+    py: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Remove the per-frame spatial mean from the momentum fields.
+
+    This centers each flux snapshot independently:
+
+        px_centered[t] = px[t] - mean_{x,y}(px[t])
+        py_centered[t] = py[t] - mean_{x,y}(py[t])
+
+    Returns the centered fields plus the removed framewise means, which can
+    be reused later if a forecast wants to restore a background drift.
+    """
+    px_mean = np.mean(px, axis=(-2, -1), keepdims=True)
+    py_mean = np.mean(py, axis=(-2, -1), keepdims=True)
+    return px - px_mean, py - py_mean, px_mean[..., 0, 0], py_mean[..., 0, 0]
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Morse potential Φ = W * ρ via FFT
 # ═══════════════════════════════════════════════════════════════════
@@ -331,6 +350,8 @@ class FieldData:
         Ly: float,
         Phi: Optional[np.ndarray] = None,
         use_spectral: bool = False,
+        px_mean_t: Optional[np.ndarray] = None,
+        py_mean_t: Optional[np.ndarray] = None,
     ):
         self.rho = rho
         self.px = px
@@ -340,6 +361,17 @@ class FieldData:
         self.Lx = Lx
         self.Ly = Ly
         self.use_spectral = use_spectral
+        T = rho.shape[0]
+        self.px_mean_t = (
+            np.asarray(px_mean_t, dtype=np.float64)
+            if px_mean_t is not None
+            else np.zeros(T, dtype=np.float64)
+        )
+        self.py_mean_t = (
+            np.asarray(py_mean_t, dtype=np.float64)
+            if py_mean_t is not None
+            else np.zeros(T, dtype=np.float64)
+        )
 
     @property
     def dx(self) -> float:
@@ -485,6 +517,20 @@ class FieldData:
         return self._cache("p_dot_grad_py", lambda:
             self.px * self._ddx(self.py) + self.py * self._ddy(self.py))
 
+    def div_px_p(self):
+        """∇·(p_x p) = ∂_x(p_x^2) + ∂_y(p_x p_y)."""
+        return self._cache("div_px_p", lambda: self._div(
+            self.px * self.px,
+            self.px * self.py,
+        ))
+
+    def div_py_p(self):
+        """∇·(p_y p) = ∂_x(p_x p_y) + ∂_y(p_y^2)."""
+        return self._cache("div_py_p", lambda: self._div(
+            self.px * self.py,
+            self.py * self.py,
+        ))
+
     # ── Pressure gradients ────────────────────────────────────────
 
     def dx_rho2(self):
@@ -518,6 +564,7 @@ def build_field_data(
     bc: str = "periodic",
     subsample: int = 1,
     morse_params: Optional[Dict[str, float]] = None,
+    center_flux: bool = False,
 ) -> FieldData:
     """One-shot construction of all fields from simulation data.
 
@@ -533,6 +580,9 @@ def build_field_data(
     bc : boundary condition
     subsample : temporal sub-sample factor (applied to traj/vel → match ρ)
     morse_params : dict with keys ``Cr, Ca, lr, la`` or None
+    center_flux : bool
+        If True, subtract the spatial mean of ``p_x`` and ``p_y`` at each
+        saved time slice before constructing :class:`FieldData`.
 
     Returns
     -------
@@ -549,6 +599,10 @@ def build_field_data(
     rho = rho[:T]
     px = px[:T]
     py = py[:T]
+    px_mean_t = np.zeros(T, dtype=np.float64)
+    py_mean_t = np.zeros(T, dtype=np.float64)
+    if center_flux:
+        px, py, px_mean_t, py_mean_t = center_flux_fields(px, py)
 
     grid = GridSpec(dt=dt, dx=Lx / len(xgrid), dy=Ly / len(ygrid))
 
@@ -564,7 +618,17 @@ def build_field_data(
             bc=bc,
         )
 
-    return FieldData(rho, px, py, grid, Lx, Ly, Phi=Phi)
+    return FieldData(
+        rho,
+        px,
+        py,
+        grid,
+        Lx,
+        Ly,
+        Phi=Phi,
+        px_mean_t=px_mean_t,
+        py_mean_t=py_mean_t,
+    )
 
 
 def build_field_data_rho_only(
