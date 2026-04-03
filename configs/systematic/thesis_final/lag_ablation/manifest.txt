@@ -1,0 +1,16 @@
+configs/systematic/thesis_final/lag_ablation/NDYN04_gas_bic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN04_gas_hqic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN04_gas_aic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN04_gas_fpe.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN05_blackhole_bic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN05_blackhole_hqic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN05_blackhole_aic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN05_blackhole_fpe.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN06_supernova_bic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN06_supernova_hqic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN06_supernova_aic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN06_supernova_fpe.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN08_pure_vicsek_bic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN08_pure_vicsek_hqic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN08_pure_vicsek_aic.yaml
+configs/systematic/thesis_final/lag_ablation/NDYN08_pure_vicsek_fpe.yaml
