@@ -1,0 +1,22 @@
+# Tier 1 config manifest
+# 9 regimes × 2 lag variants = 18 tasks
+#
+# Columns: config_file  lag_variant  bic_lag  variant
+NDYN04_gas_tier1_w5.yaml  w5  5  CS  confirmed
+NDYN04_gas_tier1_bic.yaml  bic  2  CS  confirmed
+NDYN04_gas_VS_tier1_w5.yaml  w5  5  VS  estimate
+NDYN04_gas_VS_tier1_bic.yaml  bic  2  VS  estimate
+NDYN05_blackhole_tier1_w5.yaml  w5  5  CS  confirmed
+NDYN05_blackhole_tier1_bic.yaml  bic  2  CS  confirmed
+NDYN05_blackhole_VS_tier1_w5.yaml  w5  5  VS  estimate
+NDYN05_blackhole_VS_tier1_bic.yaml  bic  2  VS  estimate
+NDYN06_supernova_tier1_w5.yaml  w5  5  CS  confirmed
+NDYN06_supernova_tier1_bic.yaml  bic  2  CS  confirmed
+NDYN06_supernova_VS_tier1_w5.yaml  w5  5  VS  estimate
+NDYN06_supernova_VS_tier1_bic.yaml  bic  2  VS  estimate
+NDYN07_crystal_tier1_w5.yaml  w5  5  CS  confirmed
+NDYN07_crystal_tier1_bic.yaml  bic  3  CS  confirmed
+NDYN07_crystal_VS_tier1_w5.yaml  w5  5  VS  estimate
+NDYN07_crystal_VS_tier1_bic.yaml  bic  3  VS  estimate
+NDYN08_pure_vicsek_tier1_w5.yaml  w5  5  CS  confirmed
+NDYN08_pure_vicsek_tier1_bic.yaml  bic  2  CS  confirmed

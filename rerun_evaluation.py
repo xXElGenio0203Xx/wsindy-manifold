@@ -128,7 +128,8 @@ def load_lstm(lstm_dir: Path, device: str = "cpu"):
     return model, input_mean, input_std
 
 
-def evaluate_experiment(output_dir: Path, *, mvar_only=False, lstm_only=False):
+def evaluate_experiment(output_dir: Path, *, mvar_only=False, lstm_only=False,
+                        mass_postprocess_override=None):
     """Re-run Step 6 (evaluation) for a single experiment directory."""
     output_dir = Path(output_dir)
     print(f"\n{'=' * 72}")
@@ -147,6 +148,11 @@ def evaluate_experiment(output_dir: Path, *, mvar_only=False, lstm_only=False):
     eval_config = config.get("eval", {"save_time_resolved": True})
     # Force time-resolved saving so we get r2_vs_time CSVs
     eval_config["save_time_resolved"] = True
+
+    # ── Override mass_postprocess if requested ──
+    if mass_postprocess_override is not None:
+        eval_config["mass_postprocess"] = mass_postprocess_override
+        print(f"  ℹ️  mass_postprocess overridden → {mass_postprocess_override}")
 
     DENSITY_NX = config["density"]["nx"]
     DENSITY_NY = config["density"]["ny"]
@@ -310,6 +316,9 @@ def main():
                         help="Only re-evaluate MVAR")
     parser.add_argument("--lstm-only", action="store_true",
                         help="Only re-evaluate LSTM")
+    parser.add_argument("--mass-postprocess", type=str, default=None,
+                        choices=["none", "scale", "simplex"],
+                        help="Override mass_postprocess (default: use config)")
     args = parser.parse_args()
 
     exp_path = Path(args.experiment_dir)
@@ -326,7 +335,8 @@ def main():
         n_ok = 0
         for e in experiments:
             ok = evaluate_experiment(e, mvar_only=args.mvar_only,
-                                     lstm_only=args.lstm_only)
+                                     lstm_only=args.lstm_only,
+                                     mass_postprocess_override=args.mass_postprocess)
             if ok:
                 n_ok += 1
         print(f"\n{'=' * 72}")
@@ -337,7 +347,8 @@ def main():
             print(f"Not a directory: {exp_path}")
             sys.exit(1)
         evaluate_experiment(exp_path, mvar_only=args.mvar_only,
-                            lstm_only=args.lstm_only)
+                            lstm_only=args.lstm_only,
+                            mass_postprocess_override=args.mass_postprocess)
 
 
 if __name__ == "__main__":

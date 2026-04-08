@@ -1,0 +1,19 @@
+{
+  "experiment": "NDYN04_gas_VS_thesis_final",
+  "alignment": "aligned",
+  "M_used_latent": 50,
+  "T_rom": 166,
+  "R_POD": 19,
+  "dt_latent": 0.12,
+  "adf_alpha": 0.01,
+  "n_stationary": 19,
+  "n_modes": 19,
+  "all_stationary": true,
+  "w_max": 50,
+  "lag_bic": 1,
+  "lag_aic": 8,
+  "lag_hqic": 3,
+  "lag_fpe": 8,
+  "var_elapsed_s": 4.127187013626099,
+  "total_elapsed_s": 8.826634645462036
+}

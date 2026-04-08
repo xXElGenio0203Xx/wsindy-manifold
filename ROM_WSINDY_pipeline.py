@@ -508,6 +508,74 @@ def compute_r2_timeseries(rho_true, rho_pred):
     return r2
 
 
+def _compute_stationarity_stats(y_trajs):
+    """
+    Run ADF and KPSS tests on training latent trajectories to assess stationarity.
+
+    Parameters
+    ----------
+    y_trajs : list of np.ndarray, each (T, D)
+        List of latent trajectories from POD projection.
+
+    Returns
+    -------
+    dict
+        Aggregate statistics across all (trajectory, mode) pairs:
+          adf_pval_mean / adf_pval_median  — ADF p-values (low  → stationary)
+          kpss_pval_mean                   — KPSS p-values (low → non-stationary)
+          nonstationary_frac               — fraction where ADF p > 0.05
+          n_pairs_tested                   — number of (trajectory, mode) pairs
+
+        ADF null = unit root (non-stationary) → p < 0.05 rejects unit root → stationary.
+        KPSS null = stationary               → p < 0.05 rejects stationarity.
+    """
+    try:
+        from statsmodels.tsa.stattools import adfuller
+        from statsmodels.tsa.stattools import kpss as kpss_test
+    except ImportError:
+        return {"error": "statsmodels not available"}
+
+    import warnings
+
+    adf_pvals = []
+    kpss_pvals = []
+
+    for traj in y_trajs:
+        T, D = traj.shape
+        if T < 20:
+            continue
+        for d in range(D):
+            x = traj[:, d]
+            try:
+                adf_pvals.append(float(adfuller(x, autolag='AIC')[1]))
+            except Exception:
+                pass
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    kpss_pvals.append(float(kpss_test(x, regression='c', nlags='auto')[1]))
+            except Exception:
+                pass
+
+    if not adf_pvals:
+        return {"error": "no valid test results"}
+
+    adf_arr = np.array(adf_pvals)
+    kpss_arr = np.array(kpss_pvals) if kpss_pvals else None
+
+    return {
+        "adf_pval_mean": float(np.mean(adf_arr)),
+        "adf_pval_median": float(np.median(adf_arr)),
+        "kpss_pval_mean": float(np.mean(kpss_arr)) if kpss_arr is not None else None,
+        "nonstationary_frac": float(np.mean(adf_arr > 0.05)),
+        "n_pairs_tested": len(adf_pvals),
+        "note": (
+            "ADF null=unit_root (low p → stationary). "
+            "KPSS null=stationary (low p → non-stationary)."
+        ),
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  MAIN PIPELINE
 # ═══════════════════════════════════════════════════════════════════
@@ -585,13 +653,8 @@ def main():
     # ================================================================
     # STEP 1: Generate Training Data
     # ================================================================
-    print(f"\n{sep}")
-    print("  STEP 1: Generating Training Data")
-    print(f"{sep}")
-
     train_configs = generate_training_configs(train_ic_config, BASE_CONFIG)
     n_train = len(train_configs)
-    print(f"  Total runs: {n_train}")
 
     TRAIN_DIR = OUTPUT_DIR / "train"
     pod_data = None
@@ -601,18 +664,38 @@ def main():
     X_latent = None
     y_trajs = None
 
-    train_metadata, train_time = run_simulations_parallel(
-        configs=train_configs,
-        base_config=BASE_CONFIG,
-        output_dir=OUTPUT_DIR,
-        density_nx=DENSITY_NX,
-        density_ny=DENSITY_NY,
-        density_bandwidth=DENSITY_BANDWIDTH,
-        is_test=False,
+    _latent_cache = ROM_COMMON_DIR / "latent_dataset.npz"
+    _pod_cache = ROM_COMMON_DIR / "pod_basis.npz"
+    _resume_from_latent = (
+        raw_config.get("resume_from_latent", False)
+        and _latent_cache.exists()
+        and _pod_cache.exists()
     )
-    print(f"  Done in {train_time/60:.1f}m")
+    stationarity_stats = None  # Populated after POD basis build (if not resuming)
 
-    if rom_enabled:
+    if _resume_from_latent:
+        print(f"\n{sep}")
+        print("  STEP 1-3 SKIPPED: resuming from existing latent_dataset.npz")
+        print(f"{sep}")
+        print(f"  Found: {_latent_cache}")
+    else:
+        print(f"\n{sep}")
+        print("  STEP 1: Generating Training Data")
+        print(f"{sep}")
+        print(f"  Total runs: {n_train}")
+
+        train_metadata, train_time = run_simulations_parallel(
+            configs=train_configs,
+            base_config=BASE_CONFIG,
+            output_dir=OUTPUT_DIR,
+            density_nx=DENSITY_NX,
+            density_ny=DENSITY_NY,
+            density_bandwidth=DENSITY_BANDWIDTH,
+            is_test=False,
+        )
+        print(f"  Done in {train_time/60:.1f}m")
+
+    if rom_enabled and not _resume_from_latent:
         # ================================================================
         # STEP 2: Build POD Basis (shared)
         # ================================================================
@@ -626,33 +709,28 @@ def main():
         R_POD = pod_data["R_POD"]
         T_rom = pod_data["T_rom"]
         M = pod_data["M"]
+        # Reshape flat latent array (M*T_rom, R_POD) into list of per-run trajectories
+        y_trajs = [pod_data["X_latent"][i * T_rom:(i + 1) * T_rom] for i in range(M)]
         print(f"  Latent dim: {R_POD}, T_rom: {T_rom}")
 
-        # ================================================================
-        # STEP 3: Build Shared Latent Dataset
-        # ================================================================
-        print(f"\n{sep}")
-        print("  STEP 3: Building Latent Dataset")
-        print(f"{sep}")
+        # Stationarity tests on training latent trajectories (ADF + KPSS)
+        print("  Computing stationarity statistics on training latent trajectories...")
+        stationarity_stats = _compute_stationarity_stats(y_trajs)
+        nstat = stationarity_stats.get("nonstationary_frac", float("nan"))
+        print(f"  Nonstationary fraction (ADF p>0.05): {nstat:.1%}")
 
-        X_latent = pod_data["X_latent"]
-
-        latent_standardize = rom_config.get("latent_standardize", False)
-        if latent_standardize:
-            latent_mean = X_latent.mean(axis=0)
-            latent_std = X_latent.std(axis=0)
-            latent_std[latent_std < 1e-12] = 1.0
-            X_latent = (X_latent - latent_mean) / latent_std
-            pod_data["X_latent"] = X_latent
-            pod_data["latent_mean"] = latent_mean
-            pod_data["latent_std"] = latent_std
-        else:
-            pod_data["latent_mean"] = None
-            pod_data["latent_std"] = None
-
-        y_trajs = []
-        for m_idx in range(M):
-            y_trajs.append(X_latent[m_idx * T_rom : (m_idx + 1) * T_rom, :])
+    elif rom_enabled and _resume_from_latent:
+        # Load saved latent dataset directly — skip simulation and POD rebuild
+        _cached = np.load(_latent_cache)
+        X_all = _cached['X_all']
+        Y_all = _cached['Y_all']
+        lag = int(_cached['lag'])
+        R_POD = X_all.shape[2]
+        T_rom = None   # not persisted; lag guard skipped for numeric lags
+        M = None
+        y_trajs = None
+        print(f"  Loaded: X_all={X_all.shape}, Y_all={Y_all.shape}, lag={lag}")
+        print(f"  Latent dim: {R_POD}")
     else:
         print(f"\n{sep}")
         print("  STEP 2-3: Skipping Shared POD/Latent ROM Setup")
@@ -660,8 +738,50 @@ def main():
         print("  No MVAR/LSTM models enabled, so WSINDy runs directly on physical fields.")
 
     # Determine lag for each model independently
-    mvar_lag = models_cfg.get("mvar", {}).get("lag", 5) if mvar_enabled else None
-    lstm_lag = models_cfg.get("lstm", {}).get("lag", 20) if lstm_enabled else None
+    # Supports symbolic lag values: "bic", "aic", "hqic", "fpe"
+    # resolved from alvarez_lag_selection results in rom_hyperparameters/
+    def _resolve_lag(raw_lag, default, T_rom_val):
+        """Resolve a lag value that may be numeric or a symbolic IC name."""
+        if raw_lag is None:
+            return default
+        if isinstance(raw_lag, (int, float)):
+            lag_val = int(raw_lag)
+        elif isinstance(raw_lag, str):
+            ic_key = f"lag_{raw_lag.lower()}"  # e.g. "bic" -> "lag_bic"
+            # Search for alvarez results matching this experiment
+            alvarez_dirs = [
+                Path("rom_hyperparameters/results") / args.experiment_name,
+                Path("rom_hyperparameters/results_oscar_unaligned") / args.experiment_name,
+            ]
+            lag_val = None
+            for adir in alvarez_dirs:
+                summary_path = adir / "summary.json"
+                if summary_path.exists():
+                    with open(summary_path) as f:
+                        alvarez_summary = json.load(f)
+                    if ic_key in alvarez_summary:
+                        lag_val = int(alvarez_summary[ic_key])
+                        print(f"    Resolved symbolic lag '{raw_lag}' -> {lag_val} from {summary_path}")
+                        break
+            if lag_val is None:
+                print(f"    WARNING: Could not resolve symbolic lag '{raw_lag}', "
+                      f"falling back to default={default}")
+                lag_val = default
+        else:
+            lag_val = default
+        # Apply lag guard: min(lag, 30, T_rom - 2)
+        if T_rom_val is not None:
+            lag_cap = min(lag_val, 30, T_rom_val - 2)
+            if lag_cap < lag_val:
+                print(f"    Lag guard: capping {lag_val} -> {lag_cap} "
+                      f"(30 cap or T_rom-2={T_rom_val - 2})")
+                lag_val = lag_cap
+        return lag_val
+
+    raw_mvar_lag = models_cfg.get("mvar", {}).get("lag", 5) if mvar_enabled else None
+    raw_lstm_lag = models_cfg.get("lstm", {}).get("lag", 20) if lstm_enabled else None
+    mvar_lag = _resolve_lag(raw_mvar_lag, 5, T_rom) if mvar_enabled else None
+    lstm_lag = _resolve_lag(raw_lstm_lag, 20, T_rom) if lstm_enabled else None
 
     # Primary lag for shared dataset (MVAR if enabled, else LSTM)
     lag = mvar_lag if mvar_enabled else lstm_lag
@@ -674,14 +794,18 @@ def main():
     lstm_effective_lag = None
 
     if mvar_enabled or lstm_enabled:
-        X_all, Y_all = build_latent_dataset(y_trajs, lag=lag)
-        print(f"  X_all: {X_all.shape}, Y_all: {Y_all.shape}, lag={lag}")
+        if _resume_from_latent:
+            # X_all / Y_all already loaded from latent_dataset.npz — skip rebuild
+            print(f"  Using pre-built latent dataset (resume): X_all={X_all.shape}, lag={lag}")
+        else:
+            X_all, Y_all = build_latent_dataset(y_trajs, lag=lag)
+            print(f"  X_all: {X_all.shape}, Y_all: {Y_all.shape}, lag={lag}")
 
         # Build separate LSTM dataset if LSTM lag differs from MVAR lag
         X_lstm = X_all
         Y_lstm = Y_all
         lstm_effective_lag = lag  # track what lag was actually used for LSTM data
-        if lstm_enabled and mvar_enabled and lstm_lag != mvar_lag:
+        if lstm_enabled and mvar_enabled and lstm_lag != mvar_lag and not _resume_from_latent:
             print(f"\n  Building SEPARATE LSTM dataset: MVAR lag={mvar_lag}, LSTM lag={lstm_lag}")
             X_lstm, Y_lstm_sep = build_latent_dataset(y_trajs, lag=lstm_lag)
             Y_lstm = Y_lstm_sep
@@ -695,7 +819,7 @@ def main():
             if ms_enabled and ms_k > 1:
                 X_lstm, Y_multi = build_multistep_latent_dataset(y_trajs, lag=lstm_lag, k_steps=ms_k)
                 Y_lstm = Y_multi[:, 0, :]
-        elif lstm_enabled:
+        elif lstm_enabled and not _resume_from_latent:
             lstm_effective_lag = lag
             lstm_ms_cfg = models_cfg.get("lstm", {})
             ms_enabled = lstm_ms_cfg.get("multistep_loss", False)
@@ -704,9 +828,23 @@ def main():
                 X_lstm, Y_multi = build_multistep_latent_dataset(y_trajs, lag=lag, k_steps=ms_k)
                 Y_lstm = Y_multi[:, 0, :]
 
-        np.savez(ROM_COMMON_DIR / "latent_dataset.npz", X_all=X_all, Y_all=Y_all, lag=lag)
+        if not _resume_from_latent:
+            np.savez(ROM_COMMON_DIR / "latent_dataset.npz", X_all=X_all, Y_all=Y_all, lag=lag)
     else:
         print("  Skipping latent dataset: no MVAR/LSTM models enabled")
+
+    # ================================================================
+    # Optional: delete train/ directory after POD + latent dataset are built
+    # Controlled by top-level config key cleanup_train_after_pod: true
+    # Use this to reclaim disk quota on HPC when raw simulations are not
+    # needed downstream (ablation runs, lag sweeps, etc.).
+    # ================================================================
+    if raw_config.get("cleanup_train_after_pod", False) and TRAIN_DIR.exists():
+        if wsindy_enabled:
+            print(f"  cleanup_train_after_pod: skipped (WSINDy enabled — TRAIN_DIR needed downstream)")
+        else:
+            shutil.rmtree(TRAIN_DIR)
+            print(f"  cleanup_train_after_pod: deleted {TRAIN_DIR}")
 
     # ================================================================
     # STEP 4a: Train MVAR (if enabled)
@@ -842,7 +980,7 @@ def main():
                     d=R_POD, hidden_units=lstm_data["hidden_units"],
                     num_layers=lstm_data["num_layers"],
                     dropout=lstm_cfg_fb.get("dropout", 0.0),
-                    residual=lstm_cfg_fb.get("residual", True),
+                    residual=lstm_cfg_fb.get("residual", False),
                     use_layer_norm=lstm_cfg_fb.get("use_layer_norm", True),
                 )
                 state = torch.load(lstm_data["model_path"], map_location=device, weights_only=False)
@@ -1880,14 +2018,38 @@ def main():
         summary["mvar"] = {
             "mean_r2_test": float(mean_r2_mvar) if not pd.isna(mean_r2_mvar) else None,
             "training_time_s": mvar_training_time,
+            "lag_used": int(mvar_lag) if mvar_lag is not None else None,
+            "lag_raw_config": models_cfg.get("mvar", {}).get("lag", 5),
         }
     if lstm_enabled and mean_r2_lstm is not None:
         summary["lstm"] = {
             "mean_r2_test": float(mean_r2_lstm) if not pd.isna(mean_r2_lstm) else None,
             "training_time_s": lstm_training_time,
+            "lag_used": int(lstm_effective_lag) if lstm_effective_lag is not None else None,
+            "lag_raw_config": models_cfg.get("lstm", {}).get("lag", 20),
         }
+    # Record all 4 IC criteria if alvarez results are available
+    _alvarez_dirs = [
+        Path("rom_hyperparameters/results") / args.experiment_name,
+        Path("rom_hyperparameters/results_oscar_unaligned") / args.experiment_name,
+    ]
+    for _adir in _alvarez_dirs:
+        _alvarez_path = _adir / "summary.json"
+        if _alvarez_path.exists():
+            with open(_alvarez_path) as f:
+                _alvarez = json.load(f)
+            summary["lag_criteria"] = {
+                "lag_bic": _alvarez.get("lag_bic"),
+                "lag_aic": _alvarez.get("lag_aic"),
+                "lag_hqic": _alvarez.get("lag_hqic"),
+                "lag_fpe": _alvarez.get("lag_fpe"),
+                "source": str(_alvarez_path),
+            }
+            break
     if wsindy_summary:
         summary["wsindy"] = wsindy_summary
+    if stationarity_stats and "error" not in stationarity_stats:
+        summary["stationarity"] = stationarity_stats
 
     with open(OUTPUT_DIR / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)

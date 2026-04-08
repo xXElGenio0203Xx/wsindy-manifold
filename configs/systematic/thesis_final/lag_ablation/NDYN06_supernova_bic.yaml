@@ -193,3 +193,5 @@ wsindy:
     mass_conserve: true
     method: auto
   n_train: 340
+cleanup_train_after_pod: true
+resume_from_latent: true
