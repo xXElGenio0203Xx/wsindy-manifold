@@ -678,6 +678,11 @@ def main():
         print("  STEP 1-3 SKIPPED: resuming from existing latent_dataset.npz")
         print(f"{sep}")
         print(f"  Found: {_latent_cache}")
+    elif args.wsindy_only and TRAIN_DIR.exists() and (TRAIN_DIR / "metadata.json").exists():
+        print(f"\n{sep}")
+        print("  STEP 1 SKIPPED: --wsindy-only and training data already on disk")
+        print(f"{sep}")
+        print(f"  Found: {TRAIN_DIR}")
     else:
         print(f"\n{sep}")
         print("  STEP 1: Generating Training Data")
@@ -919,18 +924,24 @@ def main():
         BASE_CONFIG_TEST["sim"]["T"] = test_T
         print(f"  Test horizon: {test_T}s")
 
-        test_metadata, test_time = run_simulations_parallel(
-            configs=test_configs,
-            base_config=BASE_CONFIG_TEST,
-            output_dir=OUTPUT_DIR,
-            density_nx=DENSITY_NX,
-            density_ny=DENSITY_NY,
-            density_bandwidth=DENSITY_BANDWIDTH,
-            is_test=True,
-        )
-        print(f"  Done in {test_time/60:.1f}m")
-
         TEST_DIR = OUTPUT_DIR / "test"
+        _test_meta_path = TEST_DIR / "metadata.json"
+        if args.wsindy_only and TEST_DIR.exists() and _test_meta_path.exists():
+            print("  STEP 5 SKIPPED: --wsindy-only and test data already on disk")
+            with open(_test_meta_path) as _f:
+                test_metadata = json.load(_f)
+        else:
+            test_metadata, test_time = run_simulations_parallel(
+                configs=test_configs,
+                base_config=BASE_CONFIG_TEST,
+                output_dir=OUTPUT_DIR,
+                density_nx=DENSITY_NX,
+                density_ny=DENSITY_NY,
+                density_bandwidth=DENSITY_BANDWIDTH,
+                is_test=True,
+            )
+            print(f"  Done in {test_time/60:.1f}m")
+
         ROM_SUBSAMPLE = rom_config.get("subsample", 1)
         eval_config = align_eval_forecast_start(
             eval_config,
