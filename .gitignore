@@ -1,4 +1,4 @@
-# Ignore generated artifacts and outputs
+# ===== Outputs & large generated data =====
 artifacts/
 outputs/
 simulations/
@@ -6,41 +6,83 @@ mvar_outputs/
 slurm_logs/
 oscar_output/
 predictions/
+Analyses_3models/
+Analyses_DM01_showcase/
+rom_hyperparameters/
+tmp_*/
 
-# Virtual environments
+# ===== Virtual environments =====
 .venv/
 env/
+.env/
 
-# Byte-compiled / optimized / DLL files
+# ===== Python bytecode =====
 __pycache__/
 *.py[cod]
 *$py.class
+.eggs/
+*.egg-info/
+build/
+dist/
+*.so
+*.dylib
 
-# OS files
+# ===== OS files =====
 .DS_Store
+Thumbs.db
 
-# Large media and model files
+# ===== Large binary files =====
 *.mp4
 *.gif
 *.npz
-*.log
-__pycache__/
-.ipynb_checkpoints/
-*.pyc
-*.pyo
-*.pyd
-*.so
-*.dylib
-build/
-dist/
-*.egg-info/
-.eggs/
-.venv/
-.env/
-.DS_Store
-outputs/
-data/
 
-# local node modules for renderer
+# ===== Archive / throwaway scripts =====
+.archive/
+pipeline_archive/
+_*.py
+
+# ===== LaTeX build artifacts =====
+*.aux
+*.log
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.out
+*.toc
+*.lof
+*.lot
+*.acn
+*.glo
+*.ist
+*.acr
+*.alg
+*.glg
+*.gls
+_minted-*/
+Thesis/_minted-*/
+
+# ===== Compiled docs (keep .tex source, ignore compiled) =====
+docs/*.pdf
+docs/*.aux
+docs/*.out
+docs/*.toc
+docs/*.log
+
+# ===== Misc =====
+*.ipynb_checkpoints/
+.ipynb_checkpoints/
+data/
 scripts/node_modules/
 scripts/package-lock.json
+scripts/_legacy/node_modules/
+scripts/_legacy/package-lock.json
+
+# ===== Root-level artifacts that shouldn't be tracked =====
+brown_seal.png
+WSINDY.pdf
+test_kde_wrapping.png
+n_conv_log.txt
+1104.0725v1.pdf
+1512.01985v3.pdf

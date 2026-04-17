@@ -3,9 +3,9 @@
 #SBATCH -N 1
 #SBATCH -n 4
 #SBATCH --mem=96G
-#SBATCH --time=12:00:00
+#SBATCH --time=48:00:00
 #SBATCH -p batch
-#SBATCH --array=0-5%4
+#SBATCH --array=0-5%6
 #SBATCH -o slurm_logs/tier4_nconv_%A_%a.out
 #SBATCH -e slurm_logs/tier4_nconv_%A_%a.err
 

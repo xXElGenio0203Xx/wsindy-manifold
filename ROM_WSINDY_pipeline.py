@@ -736,6 +736,25 @@ def main():
         y_trajs = None
         print(f"  Loaded: X_all={X_all.shape}, Y_all={Y_all.shape}, lag={lag}")
         print(f"  Latent dim: {R_POD}")
+
+        # Reconstruct pod_data from saved POD basis (needed for evaluation)
+        _pod_npz = np.load(_pod_cache)
+        _X_mean = np.load(ROM_COMMON_DIR / "X_train_mean.npy")
+        _sa_path = ROM_COMMON_DIR / "shift_align.npz"
+        _sa_data = None
+        if _sa_path.exists():
+            _sa_npz = np.load(_sa_path)
+            _sa_data = {k: _sa_npz[k] for k in _sa_npz.files}
+        pod_data = {
+            'U_r': _pod_npz['U'],
+            'X_mean': _X_mean,
+            'R_POD': R_POD,
+            'shift_align': rom_config.get('shift_align', False),
+            'shift_align_data': _sa_data,
+            'density_transform': rom_config.get('density_transform', 'raw'),
+            'density_transform_eps': rom_config.get('density_transform_eps', 1e-10),
+        }
+        print(f"  Reconstructed pod_data from {_pod_cache}")
     else:
         print(f"\n{sep}")
         print("  STEP 2-3: Skipping Shared POD/Latent ROM Setup")
@@ -791,8 +810,9 @@ def main():
     # Primary lag for shared dataset (MVAR if enabled, else LSTM)
     lag = mvar_lag if mvar_enabled else lstm_lag
 
-    X_all = None
-    Y_all = None
+    if not _resume_from_latent:
+        X_all = None
+        Y_all = None
     Y_multi = None
     X_lstm = None
     Y_lstm = None

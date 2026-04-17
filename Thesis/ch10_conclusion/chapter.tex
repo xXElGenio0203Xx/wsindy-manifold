@@ -1,0 +1,225 @@
+\chapter{Conclusion}
+\label{ch:conclusion}
+
+\section{Summary of contributions}
+
+This thesis developed two approaches for learning macroscopic structure
+from noisy interacting-agent trajectories: equation-free
+forecasting~\cite{alvarez2025eqfree} via shift-aligned POD with latent
+MVAR and LSTM time-steppers (Chapter~\ref{ch:rom_results}), and
+weak-form mechanistic identification via
+WSINDy~\cite{messenger2021wsindy} (Chapter~\ref{ch:wsindy_results}).
+The two branches yield complementary diagnostics: regimes where
+identification succeeds but autonomous rollout fails expose closure
+limitations that neither branch could reveal alone.
+
+\emph{Part~I} established an equation-free forecasting baseline.
+Chapter~\ref{ch:background} laid out the Vicsek--Morse microscopic model
+and KDE coarse-graining.
+Chapters~\ref{ch:global_pod_pipeline}--\ref{ch:latent_rom} developed the
+shift-aligned POD compression and the MVAR/LSTM latent time-steppers.
+Chapter~\ref{ch:exp_protocol_metrics} defined the nine-regime benchmark
+and evaluation metrics, and Chapter~\ref{ch:rom_results} delivered the
+main forecasting result: MVAR achieves $R^2>0.99$ on the strongest
+constant-speed regimes while requiring $116\times$ fewer parameters than
+LSTM, confirming that aligned latent dynamics are effectively linear for
+well-shifting regimes.  Variable-speed regimes exposed a
+shift-predictability bottleneck that neither model class could overcome.
+
+\emph{Part~II} turned from forecasting to mechanism.
+Chapter~\ref{ch:wsindy_methodology} formulated the coupled multi-field
+WSINDy problem, with a physically motivated Morse library, automatic
+support-scale selection, and MSTLS sparsification.
+Chapter~\ref{ch:wsindy_results} applied this pipeline to all nine
+regimes, achieving density weak-form $R^2>0.99$ in eight of nine cases
+and recovering the continuity backbone universally.  The CS/VS paired
+comparison showed that variable speed degrades not only rollout but
+also momentum identification: the three-field library
+$(\rho,p_x,p_y)$ is structurally insufficient to close the mean-field
+description when agent speed is state-dependent, constituting a
+structural non-identification rather than a regression failure.
+
+Across the benchmark regimes, the main empirical pattern was clear:
+density weak-form $R^2$ exceeded~0.99 on every regime except
+blackhole\_VS (Table~\ref{tab:mechanism_confidence}), with
+the continuity backbone recovered in all nine cases;
+the EF-ROM achieved forecast $R^2>0.99$ on the strongest constant-speed
+regimes (CS\,+\,PV median $0.994$), while VS median forecast $R^2$
+dropped to $0.425$ for MVAR and $-0.052$ for LSTM; and WSINDy
+nevertheless recovered sparse regime-consistent effective mechanisms even
+where autonomous rollout was poor.
+
+Weak-form sparse regression does detect interpretable coarse-grained
+structure in these data.  The remaining challenge---the \emph{closure gap}---is whether
+the selected state variables and library are sufficiently rich to close
+that structure under autonomous evolution at the chosen effective scale.
+Bridging this gap is a structural problem, not primarily a fitting
+problem: it requires richer effective states or constrained regression
+that enforces stability by construction.
+
+\section{Limitations}
+\label{sec:limitations}
+
+These conclusions hold for a specific effective-modeling pipeline and should
+be interpreted subject to four main limitations.
+
+\paragraph{Scale and observability.}
+The discovered PDE is scale-dependent.  KDE bandwidth, weak test-function
+support, density transformation, and translational alignment together define
+what structures are observable and therefore identifiable.  The recovered law
+is thus an effective finite-scale description, not a unique continuum truth
+independent of coarse-graining.  This matters especially for short-range
+interaction effects, rotational organisation, and multimodal transport,
+which are only partially resolved by the present preprocessing choices.
+
+\paragraph{Finite-$N$ interpretation.}
+With $N{=}300$ agents, the density
+field is a noisy estimator of the mean-field limit, so the WSINDy
+coefficients should be interpreted as effective finite-$N$ parameters
+rather than as rigorous continuum-limit PDE coefficients.  These particle
+counts reflect a practical compute constraint: each regime requires
+approximately 2--4~CPU-hours on the Oscar HPC cluster; scaling to
+$N{=}1000$ increases the per-regime cost roughly tenfold, which exceeded
+the available allocation for a full nine-regime benchmark.
+A preliminary $N$-convergence study was conducted, but a full cross-regime
+convergence analysis remains open.
+
+\paragraph{Closure and task asymmetry.}
+The main limitation of the WSINDy branch is that the selected state
+variables and candidate library may not close the effective law at the
+chosen scale (Section~\ref{sec:closure_problem}).  The EF-ROM branch
+bypasses this by learning a closed discrete-time map in latent space,
+so side-by-side metrics must be interpreted accordingly.
+
+\paragraph{Coefficient uncertainty.}
+No bootstrap confidence intervals are reported for the WSINDy
+coefficients.  Cross-scale stability selection
+(Section~\ref{subsec:stability}) serves as a proxy for
+robustness, but a formal uncertainty quantification campaign---e.g.\
+resampling over initial-condition draws or KDE bandwidth
+perturbations---would strengthen the coefficient-level conclusions.
+
+\paragraph{Generalisability.}
+Even with nine benchmark regimes and four initial-condition families, the
+study remains restricted to one simulator family on a periodic flat domain.
+The conclusions should therefore be read as claims about the explored
+Vicsek--Morse~\cite{vicsek1995vicsek,dorsogna2006morse} regime family under this coarse-graining pipeline, not as
+universal statements about collective-motion PDE discovery.
+
+\paragraph{Threats to validity.}
+Five additional experimental factors may restrict generalisability or bias the
+reported conclusions.
+(i)~All data come from one Vicsek--Morse model on a periodic square
+domain at $N{=}300$; identified structures may not transfer to
+larger swarms, other geometries, or alternative interaction models.
+(ii)~Both branches consume density fields from the same fixed-bandwidth
+Gaussian KDE, so any coarse-graining bias propagates to every subsequent
+result, making the two branches less independent than they appear.
+(iii)~The WSINDy candidate library is designed with knowledge of the
+expected continuum mechanisms (advection, diffusion, alignment), so the
+regression cannot discover mechanisms absent from the library.
+(iv)~POD rank, MVAR lag, test-function support, and thresholding schedule
+are held fixed across all nine regimes, which may disadvantage regimes
+whose dynamics would benefit from individual tuning.
+(v)~Shift alignment assumes a single dominant translational mode; regimes
+with rotational or multi-modal transport violate this assumption, inflating
+both ROM error and WSINDy closure residuals.
+
+\section{Future work}
+\label{sec:future_work}
+
+Six extensions follow most directly from the thesis's findings.
+
+\emph{1.~Richer closure and state augmentation.}
+Closure insufficiency is the main barrier to autonomous PDE rollout
+(Section~\ref{sec:closure_problem}).  The most direct next step is therefore
+to enlarge the effective state or the candidate library, for example through
+congestion/saturation terms, higher-order moment surrogates, or additional
+fields that capture variability unresolved by $(\rho,\mathbf{p})$ alone.
+
+\emph{2.~Constrained sparse regression.}
+The closure gap could be narrowed from the regression side by replacing
+unconstrained MSTLS with a stability-aware formulation such as SR3 (Sparse
+Relaxed Regularised Regression)~\cite{zheng2019sr3} or by imposing physical
+constraints during optimisation (for example, forcing the Laplacian
+coefficient to be non-negative so that the identified diffusion operator
+is dissipative.  Such {\em physical inductive biases} would convert
+post-hoc safeguards (Section~\ref{sec:pipeline_fixes}) into structural
+guarantees, reducing the gap between identification quality and rollout
+stability.
+
+\emph{3.~Scale-sensitivity analysis.}
+The KDE bandwidth~$\sigma$ acts as a spatial filter: every identified PDE
+is implicitly a function of that coarse-graining scale.  A systematic
+Pareto-front analysis trading KDE bandwidth~$\sigma$ (smaller~$\to$
+finer spatial resolution) against weak test-function support
+(larger~$\to$ more noise averaging) would
+map how the identified law changes with coarse-graining and would quantify
+which interaction mechanisms are robustly recoverable at which scales.
+This extension would clarify whether the recovered coefficients are
+properties of the physics or of the smoothing---the most immediate
+methodological question raised by the present results.
+
+\emph{4.~Adaptive POD rank.}
+The fixed rank $m{=}19$ used throughout this thesis may undersample the
+latent dynamics of variable-speed regimes, where spectral decay is slower.
+Future work should replace the fixed rank with an energy-based criterion
+(e.g.\ retaining ${\geq}\,99.9\%$ of cumulative energy) or with the
+singular value hard threshold of Gavish and
+Donoho~\cite{gavish2014svht}, which provides an asymptotically optimal
+cutoff for matrices with known noise level, allowing the ROM dimension
+to adapt to regime complexity.
+
+\emph{5.~Finite-$N$ and out-of-family validation.}
+A broader $N$-convergence study, together with tests on additional simulator
+families or geometries, is needed to determine which identified structures
+persist beyond the present finite-$N$, single-simulator setting.
+
+\emph{6.~Extension to curved domains.}
+All numerical results in this thesis use flat periodic domains, but the
+weak-form integral framework extends naturally to Riemannian manifolds
+$(\mathcal{M},g)$: test functions are defined on the manifold's intrinsic
+coordinates, and the integration-by-parts identity that eliminates spatial
+derivatives replaces the Euclidean divergence theorem with its Riemannian
+counterpart~\cite{lee2018riemannian}.  Concretely, the weak-form residual
+for a conservation law $\partial_t u + \nabla_g\!\cdot\!\mathbf{F}=0$
+becomes
+\begin{equation}
+  \int_{\mathcal{M}} \partial_t u\;\varphi\;\mathrm{d}V_g
+  \;=\;
+  \int_{\mathcal{M}} \mathbf{F}\cdot\nabla_g\varphi\;\mathrm{d}V_g,
+  \label{eq:weak_form_riemannian}
+\end{equation}
+where $\nabla_g$ is the Levi-Civita connection, $\mathrm{d}V_g =
+\sqrt{\det g}\;\mathrm{d}x^1\!\wedge\!\cdots\!\wedge\mathrm{d}x^n$ is
+the Riemannian volume form, and the boundary term vanishes for compactly
+supported~$\varphi$.  Two additional requirements arise on curved
+domains.  First, all library terms must be \emph{metric-aware}: spatial
+derivatives become covariant derivatives, and Laplacians are replaced by
+the Laplace--Beltrami operator $\Delta_g u = \mathrm{div}_g(\nabla_g u)$.
+Second, any time-stepping scheme that updates fields in a tangent-space
+linearisation must \emph{project back to the manifold} at each step,
+for example via the Riemannian exponential map
+$u_{k+1} = \exp_{u_k}(\Delta t\;\dot{u}_k)$, to ensure that the
+evolved density remains a well-defined field on~$\mathcal{M}$.
+The main implementation task is
+replacing FFT-based convolutions (used here for the Morse potential
+$\Phi=W*\rho$) with manifold-aware kernel evaluations, for example via
+heat-kernel approximations or spherical-harmonic transforms on~$S^2$.
+This extension would enable WSINDy-based PDE discovery for agent-based
+models on curved surfaces---a setting increasingly relevant in
+biological collective motion (cells on tissue surfaces) and
+geophysical swarming (flocks navigating the Earth's curvature).
+The repository accompanying this thesis is named
+\texttt{wsindy-manifold} in anticipation of this direction.
+
+\noindent
+Taken together, the equation-free and equation-based branches define a
+\emph{trade-off map} for data-driven modelling of agent-based systems.
+The EF-ROM delivers high short-term forecasting accuracy with zero
+physical interpretability; WSINDy delivers mechanistic insight with
+limited autonomous forecasting capability (due to the closure gap).
+This work demonstrates that we can successfully ``read'' the physics of
+interacting-agent systems from data; ``writing'' a stable predictive
+simulation from those discovered laws remains the primary challenge for
+the next generation of data-driven modelling.

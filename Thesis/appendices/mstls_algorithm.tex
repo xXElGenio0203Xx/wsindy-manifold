@@ -1,0 +1,111 @@
+\chapter{MSTLS: Modified Sequential Thresholded Least Squares}
+\label{app:mstls}
+\enlargethispage{3\baselineskip}
+
+The sparse regression step in WSINDy solves the overdetermined system
+$\mathbf{G}\mathbf{w} \approx \mathbf{b}$, where $\mathbf{G}\in\mathbb{R}^{K\times M}$
+is the weak-form library matrix, $\mathbf{b}\in\mathbb{R}^K$ the weak-form
+time-derivative target, and $\mathbf{w}\in\mathbb{R}^M$ the coefficient vector
+to be sparsified.  The sequential thresholding strategy originates
+in the WSINDy framework of Messenger and
+Bortz~\cite{messenger2021wsindy}; our implementation follows the
+dominant-balance extension of Minor et al.~\cite{minor2025mstls}.
+
+\paragraph{Column preconditioning.}
+Each column of $\mathbf{G}$ is scaled to unit $\ell^2$ norm:
+$\tilde{\mathbf{G}} = \mathbf{G}\,\mathrm{diag}(s_1^{-1},\dots,s_M^{-1})$
+with $s_j = \lVert \mathbf{G}_{:,j}\rVert_2$.  This ensures
+that the thresholding criterion treats all candidate terms on equal footing.
+Physical coefficients are recovered via $w_j^{\mathrm{phys}} = \tilde w_j / s_j$.
+
+\paragraph{Dominant-balance criterion.}
+A term~$j$ is \emph{kept} at threshold~$\hat\lambda$ if its relative
+contribution lies in the band
+\[
+  \hat\lambda \;\le\;
+  \frac{\lvert \tilde w_j\rvert\,\lVert \tilde{\mathbf{G}}_{:,j}\rVert_2}
+       {\lVert \mathbf{b}\rVert_2}
+  \;\le\;
+  \frac{1}{\hat\lambda}\,.
+\]
+Terms outside this band are pruned, and the least-squares fit is recomputed
+on the surviving columns until convergence.
+
+\begin{breakablealgorithm}
+\caption{MSTLS with dominant-balance thresholding}
+\label{alg:mstls}
+{\footnotesize
+\begin{algorithmic}[1]
+\Require Design matrix $\mathbf{G}\in\mathbb{R}^{K\times M}$, target $\mathbf{b}\in\mathbb{R}^K$, threshold grid $\{\hat\lambda_1,\dots,\hat\lambda_L\}$, max iterations $I_{\max}$
+\Ensure Sparse coefficient vector $\mathbf{w}^*$, active mask $\mathcal{A}^*$
+
+\State $(\tilde{\mathbf{G}},\,\{s_j\}) \gets \textsc{Precondition}(\mathbf{G})$
+\Comment{Scale columns to unit norm}
+\State $\mathbf{w}_{\mathrm{LS}} \gets \arg\min_{\mathbf{w}} \lVert \tilde{\mathbf{G}}\mathbf{w} - \mathbf{b}\rVert_2$
+\Comment{Full least-squares baseline}
+\State $\ell^* \gets +\infty$
+\Comment{Track best normalised loss}
+
+\For{$\hat\lambda \in \{\hat\lambda_1,\dots,\hat\lambda_L\}$}
+  \State $\mathcal{A} \gets \{1,\dots,M\}$
+  \Comment{Start with all terms active}
+  \For{$i = 1,\dots,I_{\max}$}
+    \State $\tilde{\mathbf{w}}_\mathcal{A} \gets \arg\min \lVert \tilde{\mathbf{G}}_{:,\mathcal{A}}\,\mathbf{w} - \mathbf{b}\rVert_2$
+    \Comment{LS on active columns}
+    \State $\tilde{\mathbf{w}}_j \gets 0$ for $j \notin \mathcal{A}$
+    \State $\mathcal{A}' \gets \bigl\{j \in \mathcal{A} \;:\; \hat\lambda \le \lvert\tilde w_j\rvert\,\lVert\tilde{\mathbf{G}}_{:,j}\rVert_2 / \lVert\mathbf{b}\rVert_2 \le 1/\hat\lambda\bigr\}$
+    \If{$\mathcal{A}' = \mathcal{A}$}
+      \State \textbf{break}
+      \Comment{Converged}
+    \EndIf
+    \State $\mathcal{A} \gets \mathcal{A}'$
+  \EndFor
+  \State Re-fit: $\tilde{\mathbf{w}}_\mathcal{A} \gets \arg\min \lVert \tilde{\mathbf{G}}_{:,\mathcal{A}}\,\mathbf{w} - \mathbf{b}\rVert_2$
+  \State $\ell \gets \lVert\mathbf{b} - \tilde{\mathbf{G}}\tilde{\mathbf{w}}\rVert_2 \;/\; \lVert\tilde{\mathbf{G}}\mathbf{w}_{\mathrm{LS}}\rVert_2$
+  \Comment{Normalised loss}
+  \If{$\ell < \ell^*$ \textbf{or} ($\ell = \ell^*$ \textbf{and} $|\mathcal{A}| < |\mathcal{A}^*|$)}
+    \Comment{Prefer lowest loss; break ties by sparsity (Occam)}
+    \State $\mathbf{w}^* \gets \tilde{\mathbf{w}},\;\;\mathcal{A}^* \gets \mathcal{A},\;\;\ell^* \gets \ell$
+  \EndIf
+\EndFor
+
+\State \Return $\mathbf{w}^*_j / s_j$ for all $j$, active mask $\mathcal{A}^*$
+\Comment{Un-scale to physical units}
+\end{algorithmic}
+}
+\end{breakablealgorithm}
+
+\noindent The implementation is in \texttt{src/wsindy/regression.py} (\cv{mstls}).
+The default $\hat\lambda$ grid is 25 log-spaced values in $[10^{-4},1]$.
+The tie-break rule on line~17 (prefer equal-loss models with fewer
+active terms) enforces an Occam preference: among all threshold values
+that achieve the same normalised residual, we select the sparsest
+model.  This is equivalent to a loss-first, complexity-second
+lexicographic ordering, and avoids the need for a penalised
+criterion such as BIC, which would require specifying an effective
+noise variance for the weak-form residual.
+
+\paragraph{Post-convergence dominant balance diagnostic.}
+After MSTLS converges to $(\mathbf{w}^*,\mathcal{A}^*)$, the
+\emph{dominant balance ratio} for each active term is computed as
+\begin{equation}
+  \Pi_j = |w_j^*|\,\lVert\mathbf{G}_{:,j}\rVert_2 \;/\; \lVert\mathbf{b}\rVert_2,
+  \qquad
+  \tilde\Pi_j = \Pi_j / \max_k \Pi_k,
+  \label{eq:pi_j_diagnostic}
+\end{equation}
+so that $\tilde\Pi_j\in[0,1]$ measures the fractional contribution of
+term~$j$ to the total weak-form signal.  This is a \emph{post-fit}
+diagnostic, not a thresholding criterion: it characterises dominant balance
+after the active set has been determined.  Chapters~\ref{ch:wsindy_results}
+reports $\tilde\Pi_m$ as heatmap colouring (Eq.~\eqref{eq:pi_m_norm}).
+
+\paragraph{Remark.}
+The MSTLS model-selection loss
+$\ell = \lVert\mathbf{b}-\tilde{\mathbf{G}}\tilde{\mathbf{w}}\rVert_2
+        / \lVert\tilde{\mathbf{G}}\mathbf{w}_{\mathrm{LS}}\rVert_2$
+normalises against the dense fit, while
+$R^2_{\mathrm{wf}} = 1 - \lVert\mathbf{b}-\mathbf{G}\mathbf{w}^*\rVert_2^2
+                        / \lVert\mathbf{b}\rVert_2^2$
+measures explained signal energy; both lie in $[0,1]$ but differ in
+purpose.

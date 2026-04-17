@@ -1,0 +1,158 @@
+\chapter{Experiment Configuration Catalogue}
+\label{app:config_catalogue}
+
+Not all configurations listed here are discussed equally in the main text;
+the thesis chapters focus on a representative subset of nine benchmark
+regimes chosen for interpretability and computational completeness.
+The parameter values for each dynamics regime are given in
+Tables~\ref{tab:ndyn_regimes_full} and~\ref{tab:do_regimes_full}
+(Appendix~\ref{app:full_regime_catalogue}).  This appendix lists every
+YAML file in \texttt{configs/systematic/} for reference.
+
+\noindent\footnotesize
+Most NDYN base files have a \emph{\_VS} companion (\cv{speed\_mode}${}=$\texttt{variable}), except where the speed mode is already variable or no companion was defined; see Appendix~\ref{app:full_regime_catalogue} for exceptions.
+All DO configs share $v_0{=}3$, $\eta{=}0.2$, $C_a{=}1$, $\ell_a{=}1$; only $C_r,\ell_r$ vary.
+
+\medskip
+\begin{minipage}[t]{0.48\textwidth}\raggedright
+\captionof{table}{NDYN configs (physics-knob sweep).}
+\renewcommand{\arraystretch}{0.92}
+\begin{tabular}{@{}ll@{}}
+\toprule
+File & Regime \\
+\midrule
+\cv{NDYN01\_crawl}           & Slow, low noise \\
+\cv{NDYN02\_flock}           & Coherent flock \\
+\cv{NDYN03\_sprint}          & High speed \\
+\cv{NDYN04\_gas}             & High noise \\
+\cv{NDYN05\_blackhole}       & Strong attraction \\
+\cv{NDYN06\_supernova}       & Dominant repulsion \\
+\cv{NDYN07\_crystal}         & Balanced forces \\
+\cv{NDYN08\_pure\_vicsek}    & No Morse forces \\
+\cv{NDYN09\_longrange}       & Large length scales \\
+\cv{NDYN10\_shortrange}      & Small length scales \\
+\cv{NDYN11\_noisy\_collapse} & Noise + attraction \\
+\cv{NDYN12\_fast\_explosion} & Speed + repulsion \\
+\cv{NDYN13\_chaos}           & Extreme speed/noise \\
+\cv{NDYN14\_varspeed}        & Variable speed \\
+\bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\textwidth}\raggedright
+\captionof{table}{DO configs (outcome-targeted sweep).}
+\renewcommand{\arraystretch}{0.92}
+\begin{tabular}{@{}ll@{}}
+\toprule
+File & Target pattern \\
+\midrule
+\cv{DO\_CS01\_swarm\_C01\_l05}     & Cohesive swarm \\
+\cv{DO\_CS02\_swarm\_C05\_l3}      & Cohesive swarm \\
+\cv{DO\_CS03\_swarm\_C09\_l3}      & Cohesive swarm \\
+\cv{DO\_DM01\_dmill\_C09\_l05}     & Double mill \\
+\cv{DO\_DR01\_dring\_C01\_l01}     & Double ring \\
+\cv{DO\_DR02\_dring\_C09\_l09}     & Double ring \\
+\cv{DO\_EC01\_esccol\_C2\_l3}      & Escape--collapse \\
+\cv{DO\_EC02\_esccol\_C3\_l05}     & Escape--collapse \\
+\cv{DO\_ES01\_escsym\_C3\_l09}     & Escape symmetric \\
+\cv{DO\_EU01\_escuns\_C2\_l2}      & Escape unstable \\
+\cv{DO\_EU02\_escuns\_C3\_l3}      & Escape unstable \\
+\cv{DO\_SM01\_mill\_C05\_l01}      & Single mill \\
+\cv{DO\_SM02\_mill\_C3\_l01}       & Single mill \\
+\cv{DO\_SM03\_mill\_C2\_l05}       & Single mill \\
+\bottomrule
+\end{tabular}
+\end{minipage}\normalsize
+
+\noindent Including the \_VS variants, the repository contains
+\textbf{54 YAML files} in \texttt{configs/systematic/}.
+Six of these (three near-duplicate base regimes---NDYN03, NDYN11,
+NDYN12---and their VS counterparts) were removed before running,
+leaving 48 candidate configurations; of those, \textbf{37} produced
+usable results and form the catalogue analysed in Chapters~7--9
+(Appendix~\ref{app:full_regime_catalogue}).
+The repository contains the full configuration set used during
+development, including duplicate or superseded files.  The systematic
+catalogue analysed in this thesis retains 37 regimes after removing
+duplicate NDYN entries; of these, nine form the primary benchmark used
+in the main-text comparisons, while the remainder are used for
+catalogue-level robustness checks.
+Each configuration is run across \textbf{4 IC families} $\times$
+multiple runs per family, totalling several thousand independent
+simulations.
+
+% -----------------------------------------------------------------------
+\section{Configuration Schema}
+\label{app:config_schema}
+% -----------------------------------------------------------------------
+
+Every experiment is fully specified by a single YAML file read at boot time.
+The schema below mixes global defaults with regime-specific
+overrides; only a subset of keys varies across the systematic regime files
+listed above.
+The schema mirrors an actual experiment configuration,
+annotated with allowed values.
+The EF-ROM keys (\cv{sim} through \cv{eval}) follow
+\cv{NDYN02\_flock.yaml}; the \cv{wsindy} block follows
+\cv{DYN1\_gentle\_wsindy.yaml}.
+
+Each YAML file contains twelve top-level sections:
+\texttt{sim} (agent count, training horizon, domain geometry),
+\texttt{test\_sim} (forecast horizon),
+\texttt{model} (agent dynamics type and speed mode),
+\texttt{noise} (angular noise magnitude),
+\texttt{forces} (Morse attraction/repulsion parameters $C_a$, $C_r$, $\ell_a$, $\ell_r$),
+\texttt{alignment} (Vicsek radius and coupling strength),
+\texttt{train\_ic} and \texttt{test\_ic} (initial-condition family and distributional parameters),
+\texttt{rom} (POD rank, MVAR lag, LSTM architecture and training settings),
+\texttt{eval} (forecast metrics, bootstrap replicates, confidence level),
+\texttt{wsindy} (library scope, thresholding schedule, test-function parameters),
+and \texttt{experiment\_name} (unique run identifier).
+Full annotated schemas for all nine benchmark regimes are
+available in the repository at
+\url{https://github.com/eugenio-macias/wsindy-manifold/tree/main/configs}.
+
+% -----------------------------------------------------------------------
+\section{Symbol-to-Configuration Key Mapping}
+\label{app:symbol_config_map}
+% -----------------------------------------------------------------------
+
+Table~\ref{tab:symbol_config} maps the mathematical symbols used in the
+main text to their corresponding YAML configuration keys and source
+modules in the accompanying repository.
+
+\begin{table}[htbp]
+\centering
+\caption{Mapping from mathematical symbols to configuration keys
+and source modules used in the code repository.}
+\label{tab:symbol_config}
+\renewcommand{\arraystretch}{1.05}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Math symbol / quantity}  & \textbf{Config key} & \textbf{Source module} \\
+\midrule
+$\Delta t$ (time step)                & \cv{sim.dt}                     & \cv{sim\_runner.py}            \\
+$N$ (agent count)                     & \cv{sim.traj}                   & \cv{sim\_runner.py}            \\
+$v_0$ (speed)                         & \cv{model.speed}                & \cv{particle\_model.py}        \\
+$R$ (alignment radius)                & \cv{alignment.R}                & \cv{particle\_model.py}        \\
+$\eta$ (noise strength)               & \cv{noise.eta}                  & \cv{particle\_model.py}        \\
+Noise model (uniform/wrapped-Cauchy)  & \cv{noise.kind}                 & \cv{particle\_model.py}        \\
+Match variance flag                   & \cv{noise.match\_variance}      & \cv{particle\_model.py}        \\
+KDE bandwidth                         & \cv{rom.density\_bandwidth}     & \cv{pod\_builder.py}           \\
+Shift-alignment reference             & \cv{rom.shift\_align\_ref}      & \cv{shift\_align.py}           \\
+Density transform ($\sqrt{\cdot}$)    & \cv{rom.density\_transform}     & \cv{pod\_builder.py}           \\
+$r$ (POD rank)                        & \cv{rom.fixed\_modes}           & \cv{pod\_builder.py}           \\
+Clamp mode (C1)                       & \cv{rom.clamp\_mode}            & \cv{test\_evaluator.py}        \\
+Mass post-processing                  & \cv{rom.mass\_postprocess}      & \cv{test\_evaluator.py}        \\
+MVAR lag $p$                          & \cv{rom.mvar.lag}               & \cv{mvar\_trainer.py}          \\
+Ridge penalty $\alpha$                & \cv{rom.mvar.ridge\_alpha}      & \cv{mvar\_trainer.py}          \\
+Eigenvalue threshold                  & \cv{rom.eigenvalue\_threshold}  & \cv{mvar\_trainer.py}          \\
+LSTM subsample factor                 & \cv{rom.lstm.subsample}         & \cv{lstm\_rom.py}              \\
+Residual prediction mode              & \cv{rom.lstm.residual}          & \cv{lstm\_rom.py}              \\
+Patience (early stopping)             & \cv{rom.lstm.patience}          & \cv{lstm\_rom.py}              \\
+Library polynomial degree $p_{\max}$  & \cv{wsindy.max\_poly}           & \cv{library.py}                \\
+Test-function stride                  & \cv{wsindy.stride}              & \cv{system.py}                 \\
+Morse forces enabled                  & \cv{forces.enabled}             & \cv{multifield.py}             \\
+\bottomrule
+\end{tabular}
+\end{table}

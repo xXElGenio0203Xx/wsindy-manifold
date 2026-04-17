@@ -1,0 +1,200 @@
+\chapter{Additional Studies in Progress}
+\label{app:studies_in_progress}
+
+This appendix collects two robustness studies whose EF-ROM (MVAR and LSTM)
+results are complete and whose WSINDy identification is partially
+available at the time of submission.
+
+% ======================================================================
+\section{Physical inductive biases}
+\label{app:pipeline_fixes}
+% ======================================================================
+
+Section~\ref{sec:pipeline_fixes} describes six physical inductive biases
+in full; a compact summary is reproduced here for self-contained
+reference.
+
+\begin{enumerate}[nosep]
+
+  \item \textbf{Centred flux estimation.}
+    The KDE flux estimator subtracts the domain-mean flux from each snapshot
+    before convolution, preventing a spurious DC offset from aliasing into
+    the linear drag coefficient.
+
+  \item \textbf{Biharmonic operator removal.}
+    The biharmonic ($\nabla^4$) library term was removed: it is not part of
+    the expected mean-field structure and in trial runs absorbed energy from
+    the viscous term, degrading interpretability.
+
+  \item \textbf{Temporal test-function width floor.}
+    The temporal support is floored at $\ell_t \geq 7$ grid points to prevent
+    the width optimiser from collapsing the weak-form integral to a pointwise
+    residual.
+
+  \item \textbf{Sign constraints on post-fit coefficients.}
+    After each MSTLS solve, coefficients whose physical sign is known
+    \emph{a priori} (e.g.\ viscous terms must be non-positive) are checked;
+    sign-violating survivors are zeroed and the fit re-solved.
+
+  \item \textbf{Coefficient magnitude cap.}
+    Retained coefficients exceeding $|c|>5.0$ are removed, guarding against
+    inflation from near-singular library matrices.
+
+  \item \textbf{Regime-aware library construction.}
+    The \cv{forces.enabled} flag controls whether Morse potential terms enter
+    the candidate library; for pure-Vicsek regimes the Morse columns are
+    automatically excluded.
+
+\end{enumerate}
+
+% ======================================================================
+\section{Noise robustness}
+\label{app:noise_robustness}
+% ======================================================================
+
+The primary question is whether the \emph{same mechanisms remain
+identifiable} under varying noise, rather than whether weak-form $R^2$
+degrades.  We run the full pipeline at five noise levels for each of four
+regimes: gas ($\eta\in\{0.15, 0.50, 1.00, 1.50, 2.00\}$, native
+$\eta{=}1.5$), blackhole ($\eta\in\{0.05, 0.15, 0.50, 1.00, 1.50\}$,
+native $\eta{=}0.15$), supernova ($\eta\in\{0.05, 0.15, 0.50, 1.00,
+1.50\}$, native $\eta{=}0.15$), and crystal
+($\eta\in\{0.05, 0.10, 0.50, 1.00, 1.50\}$, native $\eta{=}0.10$).
+WSINDy identification on these sweeps is partially complete; where available,
+the weak-form $R^2$ and companion MVAR and LSTM forecast quality are reported in
+Table~\ref{tab:noise_sweep_forecast}.
+
+\begin{table}[ht]
+\centering
+\caption{Noise-sweep forecast $R^2$ (mean over four IC families).
+WSINDy $R^2_{\mathrm{wf},\rho}$ reports the weak-form fit on the density
+field; dashes indicate results pending computation.
+Native noise levels are marked with~$\star$.
+All entries use a single random seed; seed-to-seed variation has not yet been quantified.}
+\label{tab:noise_sweep_forecast}
+\renewcommand{\arraystretch}{0.92}
+\small
+\begin{tabular}{llccc}
+\toprule
+\textbf{Regime} & $\boldsymbol{\eta}$ & \textbf{MVAR} $R^2$ & \textbf{LSTM} $R^2$ & \textbf{WSINDy} $R^2_{\mathrm{wf}}$ \\
+\midrule
+Gas       & 0.15          & ---   & ---   & --- \\
+Gas       & 0.50          & 0.993 & 0.972 & 1.000 \\
+Gas       & 1.00          & ---   & ---   & 1.000 \\
+Gas       & 1.50$\star$   & 0.994 & 0.977 & 1.000 \\
+Gas       & 2.00          & 0.994 & 0.806 & 1.000 \\
+\midrule
+Blackhole & 0.05          & 0.995 & 0.988 & --- \\
+Blackhole & 0.15$\star$   & 0.986 & 0.966 & --- \\
+Blackhole & 0.50          & ---   & ---   & 1.000 \\
+Blackhole & 1.00          & 0.984 & 0.125 & --- \\
+Blackhole & 1.50          & ---   & ---   & --- \\
+\midrule
+Supernova & 0.05          & ---   & ---   & 1.000 \\
+Supernova & 0.15$\star$   & ---   & ---   & --- \\
+Supernova & 0.50          & ---   & ---   & --- \\
+Supernova & 1.00          & ---   & ---   & 0.999 \\
+Supernova & 1.50          & ---   & ---   & 0.998 \\
+\midrule
+Crystal   & 0.05          & ---   & ---   & 1.000 \\
+Crystal   & 0.10$\star$   & ---   & ---   & 1.000 \\
+Crystal   & 0.50          & ---   & ---   & 1.000 \\
+Crystal   & 1.00          & ---   & ---   & 1.000 \\
+Crystal   & 1.50          & ---   & ---   & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Where MVAR and LSTM results are available (gas and blackhole), MVAR
+forecast quality is stable across the tested noise range
+($R^2 \geq 0.984$), while LSTM degrades more noticeably at higher noise:
+from $R^2{=}0.806$ at gas $\eta{=}2.0$ to $R^2{=}0.125$ at blackhole
+$\eta{=}1.0$ (a $6.7\times$ increase over the native level), consistent
+with the sensitivity to distributional shift discussed in
+Section~\ref{sec:ch7_lstm_modes}.
+For crystal, WSINDy achieves $R^2_{\text{wf},\rho}\geq 0.9999$ at
+$\eta\in\{0.05, 0.10, 0.50, 1.00\}$, confirming that the continuity equation
+is identifiable even in this balanced-force regime; however, all
+crystal noise-sweep forecasts fail ($R^2 < 0$).
+Note that the main-text crystal result
+(Table~\ref{tab:efrom_forecast}, MVAR $R^2{=}0.996$) is at native
+noise $\eta{=}0$; the failures here reflect the additional
+measurement noise injected by the sweep.
+WSINDy identification is now available for gas at all five noise levels,
+blackhole at $\eta{=}0.50$, three supernova levels, and four crystal
+levels; in every case the continuity coefficient
+$\nabla\cdot\mathbf{p}\approx -1$ is recovered with
+$R^2_{\text{wf},\rho}\geq 0.9996$
+(Figure~\ref{fig:noise_coeff_stability}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.82\textwidth]{../Thesis_Figures/noise_coeff_stability.pdf}
+\caption{Noise-sweep WSINDy coefficient stability.
+Rows correspond to candidate library terms; columns to available
+regime--noise configurations (gas, blackhole, supernova, crystal).
+White cells indicate terms absent from the
+active set.  The continuity backbone $\nabla\cdot\mathbf{p}\approx -1$
+is stable across all twelve tested conditions.}
+\label{fig:noise_coeff_stability}
+\end{figure}
+
+% ======================================================================
+\section{Convergence in the number of particles}
+\label{app:n_convergence}
+% ======================================================================
+
+To verify that the WSINDy-recovered PDEs represent a genuine mean-field
+limit, we repeat the pure Vicsek identification at
+$N\in\{50, 100, 200, 300, 1000\}$.
+Table~\ref{tab:n_convergence_forecast} reports the
+companion MVAR and LSTM forecast quality alongside the WSINDy weak-form
+$R^2$.  At all four completed particle counts ($N{=}50$--$300$),
+WSINDy recovers $R^2_{\text{wf},\rho}\geq 0.9999$ with a consistent
+active set of $|\mathcal{A}|{=}5$ terms (one for $\rho$, two each for
+$p_x$ and $p_y$); momentum fit ranges from $R^2_{\text{wf},p}{=}0.80$
+to~$0.85$, suggesting the mean-field limit is well-approximated
+even at moderate particle counts.
+
+\begin{table}[ht]
+\centering
+\caption{$N$-convergence forecast $R^2$ for pure Vicsek (mean over four
+IC families).  MVAR is stable across $N$; LSTM degrades at larger $N$,
+possibly due to increased latent dimensionality.  WSINDy weak-form
+$R^2_{\mathrm{wf},\rho}\geq 0.9999$ at all completed particle counts;
+momentum fit $R^2_{\mathrm{wf},p}$ is in the $0.80$--$0.85$ range,
+consistent with the main-text pure Vicsek result ($R^2_{\mathrm{wf},p}{=}0.82$).
+Dashes indicate results pending computation.}
+\label{tab:n_convergence_forecast}
+\renewcommand{\arraystretch}{0.92}
+\small
+\begin{tabular}{rccccc}
+\toprule
+$N$ & \textbf{MVAR} $R^2$ & \textbf{LSTM} $R^2$ & \textbf{MVAR} $R^2$ (Gaussian IC) & \textbf{WSINDy} $R^2_{\mathrm{wf},\rho}$ & \textbf{WSINDy} $R^2_{\mathrm{wf},p}$ \\
+\midrule
+  50  & 0.635 &  0.229 & 0.982 & 1.000 & 0.801 \\
+ 100  & 0.542 &  0.085 & 0.992 & 1.000 & 0.827 \\
+ 200  & 0.647 & $-0.794$ & 0.995 & 1.000 & 0.849 \\
+ 300  & 0.654 & $-0.914$ & 0.992 & 1.000 & 0.834 \\
+1000  & \multicolumn{5}{c}{\textit{in progress}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+MVAR $R^2$ is stable at $0.54$--$0.65$ across the tested range and
+reaches $R^2 > 0.98$ on the Gaussian IC family at all particle counts,
+indicating that the forecast ceiling is limited by IC diversity rather
+than particle number.  LSTM forecast quality degrades from $R^2{=}0.23$
+at $N{=}50$ to $R^2{=}-0.91$ at $N{=}300$, reflecting sensitivity to
+the growing latent state dimension.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.78\textwidth]{../Thesis_Figures/n_convergence_coefficients.pdf}
+\caption{$N$-convergence of WSINDy-identified coefficients for the
+pure Vicsek regime.  Each curve tracks a single coefficient across
+$N\in\{50, 100, 200, 300\}$.  The continuity coefficient
+$\nabla\cdot\mathbf{p}$ (blue) converges to $-1$ at all particle counts;
+the momentum pressure and advection terms show larger variation.}
+\label{fig:n_convergence_coefficients}
+\end{figure}

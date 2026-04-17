@@ -1,0 +1,271 @@
+\documentclass[10pt,landscape]{article}
+\usepackage[margin=1.2cm]{geometry}
+\usepackage{booktabs,longtable,array,xcolor,colortbl,pdflscape}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{footnote}
+\makesavenoteenv{longtable}
+
+\definecolor{rowA}{HTML}{EBF5FB}
+\definecolor{rowB}{HTML}{FEF9E7}
+\definecolor{rowC}{HTML}{FDEDEC}
+\definecolor{hdrA}{HTML}{2E86C1}
+\definecolor{hdrB}{HTML}{D4AC0D}
+\definecolor{hdrC}{HTML}{CB4335}
+\definecolor{dup}{HTML}{F5B7B1}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\title{\textbf{Configuration Audit: All Regimes in \texttt{configs/systematic/}}\\[4pt]
+\large Parameter Comparison \& Duplicate Detection}
+\author{Auto-generated~---~3 April 2026}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+%% ====================================================================
+\section*{1.\quad Main Regimes (\texttt{main\_regimes/}) --- Thesis-Final Candidates}
+
+These are the 5 base regimes (+ 4 variable-speed variants) selected for the thesis.
+All share: $N{=}300$, $T{=}20$, $\Delta t{=}0.04$, $L_x{=}L_y{=}25$, periodic BC, $R{=}4$,
+density $64{\times}64$, bw$=5$, ROM subsample$=3$, $r{=}19$ POD modes, $\sqrt{\cdot}$ transform,
+shift-align, MVAR \& LSTM lag$=5$.
+
+\begin{center}
+\small
+\begin{tabular}{l c c c c c l}
+\toprule
+\textbf{Config} & \textbf{speed} & \textbf{$\eta$} & \textbf{$C_a$} & \textbf{$C_r$} & \textbf{Forces?} & \textbf{Expected Behaviour} \\
+\midrule
+\rowcolor{rowA}
+NDYN04\_gas           & 3.0 & 1.5  & 0.5  & 0.2  & \checkmark & Disordered gas; noise dominates weak forces \\
+NDYN04\_gas\_VS       & 3.0 & 1.5  & 0.5  & 0.2  & \checkmark & Same gas, variable speed mode \\
+\rowcolor{rowA}
+NDYN05\_blackhole     & 4.0 & 0.15 & 20.0 & 0.05 & \checkmark & Extreme attraction $\to$ density spike / collapse \\
+NDYN05\_blackhole\_VS & 4.0 & 0.15 & 20.0 & 0.05 & \checkmark & Same blackhole, variable speed \\
+\rowcolor{rowA}
+NDYN06\_supernova     & 3.0 & 0.15 & 0.05 & 15.0 & \checkmark & Explosive dispersal; strong repulsion \\
+NDYN06\_supernova\_VS & 3.0 & 0.15 & 0.05 & 15.0 & \checkmark & Same supernova, variable speed \\
+\rowcolor{rowA}
+NDYN08\_pure\_vicsek  & 3.0 & 0.3  & ---  & ---  & $\times$ & Pure alignment; no Morse forces \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%% ====================================================================
+\section*{2.\quad NDYN Regimes (\texttt{systematic/NDYN*.yaml}) --- Extended Physics Sweep}
+
+All share: $N{=}300$, $T{=}20$, $\Delta t{=}0.04$, $L{=}25$, periodic, $R{=}4$, Morse forces,
+alignment on, density $64{\times}64$ bw$=5$, ROM: subsample$=3$, $r{=}19$, mvar/lstm lag$=5$,
+LSTM $h{=}64$, 2 layers.  Constant speed mode unless noted.
+
+\begin{center}
+\small
+\begin{tabular}{l c c c c c c l}
+\toprule
+\textbf{Config} & \textbf{speed} & $\boldsymbol{\eta}$ & $\boldsymbol{C_a}$ & $\boldsymbol{C_r}$ & $\boldsymbol{\ell_a}$ & $\boldsymbol{\ell_r}$ & \textbf{Expected Behaviour} \\
+\midrule
+\rowcolor{rowA}
+NDYN01\_crawl       & 0.5  & 0.03 & 0.8  & 0.3  & 1.5 & 0.5 & Slow, low-noise; quasi-static clustering \\
+NDYN02\_flock       & 3.0  & 0.1  & 2.0  & 0.5  & 1.5 & 0.5 & Moderate flocking with mild repulsion \\
+\rowcolor{rowA}
+NDYN03\_sprint      & 10.0 & 0.1  & 2.0  & 0.5  & 1.5 & 0.5 & High-speed flocking; fast transients \\
+NDYN07\_crystal     & 2.0  & 0.1  & 3.0  & 3.0  & 2.0 & 0.5 & Balanced $C_a{\approx}C_r$; lattice formation \\
+\rowcolor{rowA}
+NDYN09\_longrange   & 2.0  & 0.2  & 1.5  & 0.6  & 6.0 & 3.0 & Long-range attract/repel ($\ell_a{=}6$) \\
+NDYN10\_shortrange  & 3.0  & 0.15 & 4.0  & 2.0  & 0.3 & 0.1 & Very short-range forces; contact-like \\
+\rowcolor{rowA}
+NDYN11\_noisy\_collapse & 3.0 & 0.8 & 12.0 & 0.1 & 1.5 & 0.5 & Very strong attract + high noise $\to$ noisy collapse \\
+NDYN12\_fast\_explosion & 8.0 & 0.2 & 0.1  & 10.0 & 1.5 & 0.5 & Fast particles + strong repulsion $\to$ explosion \\
+\rowcolor{rowA}
+NDYN13\_chaos        & 12.0 & 1.2  & 1.0  & 0.5  & 1.5 & 0.5 & Extreme speed + extreme noise $\to$ chaotic \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%% ====================================================================
+\section*{3.\quad D'Orsogna Regimes (\texttt{systematic/DO\_*.yaml}) --- $C_r / \ell_r$ Phase Space}
+
+All share: $N{=}300$, speed$=3$, $\eta{=}0.2$, $C_a{=}1.0$, $\ell_a{=}1.0$, $R{=}4$, forces on.
+Only $C_r$ and $\ell_r$ vary.  These sample the D'Orsogna phase diagram.
+
+\begin{center}
+\small
+\begin{tabular}{l c c c l}
+\toprule
+\textbf{Config} & $\boldsymbol{C_r}$ & $\boldsymbol{\ell_r}$ & $\boldsymbol{C_r / C_a}$ & \textbf{Phase / Expected Behaviour} \\
+\midrule
+\rowcolor{rowA}
+DO\_CS01\_swarm\_C01\_l05   & 0.1  & 0.5  & 0.1 & Coherent swarm; weak short-range repulsion \\
+DO\_CS02\_swarm\_C05\_l3    & 0.5  & 3.0  & 0.5 & Swarm; moderate long-range repulsion \\
+\rowcolor{rowA}
+DO\_CS03\_swarm\_C09\_l3    & 0.9  & 3.0  & 0.9 & Swarm near transition; nearly balanced \\
+\midrule
+DO\_SM01\_mill\_C05\_l01    & 0.5  & 0.1  & 0.5 & Single mill; moderate short-range repulsion \\
+\rowcolor{rowA}
+DO\_SM02\_mill\_C3\_l01     & 3.0  & 0.1  & 3.0 & Single mill; strong very-short-range repulsion \\
+DO\_SM03\_mill\_C2\_l05     & 2.0  & 0.5  & 2.0 & Single mill; intermediate \\
+\midrule
+\rowcolor{rowA}
+DO\_DM01\_dmill\_C09\_l05   & 0.9  & 0.5  & 0.9 & Double mill; near-balanced forces \\
+\midrule
+DO\_DR01\_dring\_C01\_l01   & 0.1  & 0.1  & 0.1 & Double ring; very weak very-short repulsion \\
+\rowcolor{rowA}
+DO\_DR02\_dring\_C09\_l09   & 0.9  & 0.9  & 0.9 & Double ring; near-balanced \\
+\midrule
+DO\_EC01\_esccol\_C2\_l3    & 2.0  & 3.0  & 2.0 & Escape/collapse; repulsion$>$attraction, long-range \\
+\rowcolor{rowA}
+DO\_EC02\_esccol\_C3\_l05   & 3.0  & 0.5  & 3.0 & Escape/collapse; strong short-range repulsion \\
+\midrule
+DO\_ES01\_escsym\_C3\_l09   & 3.0  & 0.9  & 3.0 & Escape, symmetric; strong intermediate repulsion \\
+\midrule
+\rowcolor{rowA}
+DO\_EU01\_escuns\_C2\_l2    & 2.0  & 2.0  & 2.0 & Escape, unstable; matched scales \\
+DO\_EU02\_escuns\_C3\_l3    & 3.0  & 3.0  & 3.0 & Escape, unstable; strong long-range repulsion \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%% ====================================================================
+\section*{4.\quad Legacy DYN Configs (\texttt{configs/DYN*.yaml}) --- Original Prototypes}
+
+These are the original configs predating the systematic redesign.
+Shared: $N{=}200$, $T{=}20$, $\Delta t{=}0.04$, $L{=}25$, $R{=}4$, ROM $r{=}19$,
+LSTM $h{=}128$, 2~layers, lr$=10^{-3}$, patience$=20$, WSINDy $n_\text{train}{=}30$.
+
+\begin{center}
+\small
+\begin{tabular}{l c c c c c c l}
+\toprule
+\textbf{Config} & \textbf{speed} & \textbf{mode} & $\boldsymbol{\eta}$ & $\boldsymbol{C_a}$ & $\boldsymbol{C_r}$ & \textbf{Forces?} & \textbf{Notes / Behaviour} \\
+\midrule
+\rowcolor{rowB}
+DYN1\_gentle          & 1.5  & const & 0.1  & 0.8  & 0.3  & \checkmark & Mild; prototype gentle regime \\
+DYN1\_gentle\_wsindy  & 1.5  & const & 0.1  & 0.8  & 0.3  & \checkmark & Same, LSTM \emph{disabled} \\
+\rowcolor{rowB}
+DYN2\_hypervelocity   & 15.0 & const & 0.2  & 1.5  & 0.5  & \checkmark & Extreme speed \\
+DYN3\_hypernoisy      & 4.0  & const & 1.5  & 1.5  & 0.5  & \checkmark & Extreme noise; $n_\text{train}{=}40$ \\
+\rowcolor{rowB}
+DYN4\_blackhole       & 4.0  & const & 0.2  & 12.0 & 0.1  & \checkmark & Strong attraction \\
+DYN5\_supernova       & 4.0  & const & 0.2  & 0.1  & 10.0 & \checkmark & Strong repulsion \\
+\rowcolor{rowB}
+DYN6\_varspeed        & 4.0  & \textbf{variable} & 0.2 & 1.5 & 0.5 & \checkmark & Variable speed mode \\
+DYN7\_pure\_vicsek    & 4.0  & const & 0.2  & ---  & ---  & $\times$ & No forces; Morse off in WSINDy \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+%% ====================================================================
+\section*{5.\quad Cross-Generation Overlap Detection}
+
+The table below maps \textbf{legacy DYN} configs to their \textbf{systematic NDYN / main\_regimes}
+successors, highlighting parameter differences.
+
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+\textbf{Legacy Config} & \textbf{Systematic Successor(s)} & \textbf{Key Differences} \\
+\midrule
+\rowcolor{dup}
+DYN1\_gentle ($v{=}1.5$, $\eta{=}0.1$, $C_a{=}0.8$) 
+  & NDYN01\_crawl ($v{=}0.5$, $\eta{=}0.03$, $C_a{=}0.8$)
+  & Speed $1.5{\to}0.5$; noise $0.1{\to}0.03$; $N$ $200{\to}300$ \\
+\rowcolor{dup}
+DYN2\_hypervelocity ($v{=}15$)
+  & NDYN03\_sprint ($v{=}10$) 
+  & Speed $15{\to}10$; $N$ $200{\to}300$ \\
+\rowcolor{dup}
+DYN3\_hypernoisy ($\eta{=}1.5$, $C_a{=}1.5$)
+  & NDYN04\_gas ($\eta{=}1.5$, $C_a{=}0.5$)
+  & $C_a$ $1.5{\to}0.5$; $C_r$ $0.5{\to}0.2$; $N$ $200{\to}100$ \\
+  & NDYN13\_chaos ($\eta{=}1.2$, $v{=}12$)
+  & Both high-noise; chaos adds extreme speed \\
+\rowcolor{dup}
+DYN4\_blackhole ($C_a{=}12$, $C_r{=}0.1$)
+  & NDYN05\_blackhole ($C_a{=}20$, $C_r{=}0.05$) 
+  & Attraction $12{\to}20$; rep.\ $0.1{\to}0.05$; $N$ $200{\to}100$ \\
+  & NDYN11\_noisy\_collapse ($C_a{=}12$, $\eta{=}0.8$, $N{=}300$) 
+  & Same $C_a{=}12$ but much noisier; different $N$ \\
+\rowcolor{dup}
+DYN5\_supernova ($C_a{=}0.1$, $C_r{=}10$)
+  & NDYN06\_supernova ($C_a{=}0.05$, $C_r{=}15$)
+  & Stronger repulsion; weaker attraction; $N$ $200{\to}100$ \\
+  & NDYN12\_fast\_explosion ($C_r{=}10$, $v{=}8$)
+  & Same $C_r{=}10$ but faster particles; $N{=}300$ \\
+\rowcolor{dup}
+DYN6\_varspeed
+  & NDYN04\_gas\_VS, NDYN05\_blackhole\_VS, etc.
+  & VS is now a flag per regime, not a standalone config \\
+\rowcolor{dup}
+DYN7\_pure\_vicsek ($v{=}4$, $\eta{=}0.2$)
+  & NDYN08\_pure\_vicsek ($v{=}3$, $\eta{=}0.3$)
+  & Speed $4{\to}3$; noise $0.2{\to}0.3$; $N$ $200{\to}100$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%% ====================================================================
+\section*{6.\quad Potential Duplicates Within Systematic}
+
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+\textbf{Config A} & \textbf{Config B} & \textbf{Overlap Concern} \\
+\midrule
+\rowcolor{dup}
+NDYN02\_flock ($v{=}3$, $C_a{=}2$, $C_r{=}0.5$, $\eta{=}0.1$)
+  & DO\_CS01 ($v{=}3$, $C_a{=}1$, $C_r{=}0.1$, $\eta{=}0.2$)
+  & Both moderate cohesive; differ in $C_a$, $C_r$, $\eta$ \\
+\rowcolor{dup}
+NDYN11\_noisy\_collapse ($C_a{=}12$, $C_r{=}0.1$, $\eta{=}0.8$)
+  & DYN4\_blackhole ($C_a{=}12$, $C_r{=}0.1$, $\eta{=}0.2$)
+  & Identical forces; only noise differs \\
+\rowcolor{dup}
+NDYN12\_fast\_explosion ($C_a{=}0.1$, $C_r{=}10$, $v{=}8$)
+  & DYN5\_supernova ($C_a{=}0.1$, $C_r{=}10$, $v{=}4$)
+  & Identical forces; only speed differs \\
+\rowcolor{dup}
+NDYN03\_sprint ($v{=}10$, $C_a{=}2$, $C_r{=}0.5$)
+  & NDYN02\_flock ($v{=}3$, $C_a{=}2$, $C_r{=}0.5$)
+  & Identical forces; only speed differs \\
+\rowcolor{dup}
+DO\_DM01\_dmill ($C_r{=}0.9$, $\ell_r{=}0.5$)
+  & DO\_CS03\_swarm ($C_r{=}0.9$, $\ell_r{=}3.0$)
+  & Same $C_r$; differ in $\ell_r$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%% ====================================================================
+\section*{7.\quad Summary Statistics}
+
+\begin{center}
+\begin{tabular}{l r l}
+\toprule
+\textbf{Category} & \textbf{Count} & \textbf{Location} \\
+\midrule
+Main regimes (thesis-final)  & 7 (4 base + 3 VS) & \texttt{systematic/main\_regimes/} \\
+NDYN extended physics        & 9                  & \texttt{systematic/NDYN*.yaml} \\
+D'Orsogna phase-space        & 14                 & \texttt{systematic/DO\_*.yaml} \\
+Variable-speed mirrors       & 23 + 1             & \texttt{systematic/variable\_speed/} \\
+Legacy DYN prototypes        & 8                  & \texttt{configs/DYN*.yaml} \\
+Thesis-final (phase A/B)     & 4 + 7 + 16         & \texttt{systematic/thesis\_final/} \\
+\midrule
+\textbf{Total unique physics regimes} & \textbf{$\ge$30} & (excluding VS mirrors \& lag ablation) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vfill
+\noindent\textit{Note: Variable-speed (\texttt{\_VS}) configs are exact copies of their base configs
+with \texttt{speed\_mode} changed to \texttt{variable}.  They are not listed individually above.}
+
+\end{document}

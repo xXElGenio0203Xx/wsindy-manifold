@@ -3,7 +3,7 @@
 #SBATCH -N 1
 #SBATCH -n 4
 #SBATCH --mem=64G
-#SBATCH --time=06:00:00
+#SBATCH --time=24:00:00
 #SBATCH -p batch
 #SBATCH --array=0-18%7
 #SBATCH -o slurm_logs/tier3_ext_%A_%a.out

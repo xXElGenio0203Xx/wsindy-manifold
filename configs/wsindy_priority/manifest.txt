@@ -1,0 +1,4 @@
+configs/wsindy_priority/NDYN04_gas_VS.yaml
+configs/wsindy_priority/NDYN06_supernova.yaml
+configs/wsindy_priority/NDYN07_crystal.yaml
+configs/wsindy_priority/NDYN07_crystal_VS.yaml

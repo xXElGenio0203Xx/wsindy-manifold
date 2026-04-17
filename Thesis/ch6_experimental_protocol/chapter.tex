@@ -1,0 +1,253 @@
+\chapter{Experimental Protocol and Metrics}
+\label{ch:exp_protocol_metrics}
+
+This chapter defines the evaluation protocol shared by every experiment in
+this thesis.  Section~\ref{sec:pipeline_orchestration} outlines the
+eight-stage pipeline from configuration to evaluation.
+Section~\ref{sec:splits} defines the train/test split.
+Section~\ref{sec:lag_selection} motivates the MVAR lag order via an
+information-theoretic study.
+Section~\ref{sec:metrics} specifies all evaluation metrics and the forecast
+horizon.
+
+%% -------------------------------------------------------------------
+\section{Pipeline orchestration}
+\label{sec:pipeline_orchestration}
+
+Every experiment is driven by a single YAML configuration file (one per
+regime) and executed end-to-end by the pipeline described in
+Figure~\ref{fig:pipeline_stages}.
+The pipeline proceeds through the eight sequential stages shown in
+Figure~\ref{fig:pipeline_stages}.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=0.35cm and 0.0cm,
+    stage/.style={
+      draw, rounded corners=3pt, minimum width=13cm,
+      minimum height=0.65cm, font=\footnotesize, align=center,
+      fill=blue!6
+    },
+    arr/.style={-{Stealth[length=3pt]}, semithick}
+  ]
+  \node[stage]                  (s1) {\textbf{1.}~Generate training data --- 340 Vicsek--Morse trajectories, 4~IC families};
+  \node[stage, below=of s1]     (s2) {\textbf{2.}~Build shared POD basis --- shift-align, $\sqrt{\cdot}$-transform, truncated SVD $\to$ $r$ modes};
+  \node[stage, below=of s2]     (s3) {\textbf{3.}~Build latent dataset --- project $\to$ $y(t)\in\mathbb{R}^r$, subsample$\,{=}\,3$, construct $(X,Y)$ pairs};
+  \node[stage, below=of s3]     (s4) {\textbf{4.}~Train MVAR \& LSTM on shared latent dataset (Chapter~\ref{ch:latent_rom})};
+  \node[stage, below=of s4]     (s5) {\textbf{5.}~Generate test data --- 4 held-out trajectories (one per IC family)};
+  \node[stage, below=of s5]     (s6) {\textbf{6.}~Evaluate MVAR \& LSTM --- condition, forecast, lift, compute metrics};
+  \node[stage, below=of s6]  (s7) {\textbf{7.}~WSINDy PDE discovery --- same train split, raw-field weak systems, MSTLS};
+  \node[stage, below=of s7]  (s8) {\textbf{8.}~WSINDy evaluation --- identification diagnostics, cross-scale stability selection, targeted closure stress test};
+  %% arrows
+  \draw[arr] (s1) -- (s2);
+  \draw[arr] (s2) -- (s3);
+  \draw[arr] (s3) -- (s4);
+  \draw[arr] (s4) -- (s5);
+  \draw[arr] (s5) -- (s6);
+  \draw[arr] (s6) -- (s7);
+  \draw[arr] (s7) -- (s8);
+\end{tikzpicture}
+\caption{Eight-stage pipeline.
+  Stages~1--6 run the EF-ROM branch~\cite{alvarez2025eqfree};
+  stages~7--8 run WSINDy~\cite{messenger2021wsindy} PDE discovery and evaluation.}
+\label{fig:pipeline_stages}
+\end{figure}
+
+\noindent
+Stages~1 and~5 share a common upstream: the same
+Vicsek--Morse~\cite{vicsek1995vicsek,dorsogna2006morse} simulations,
+KDE-based coarse-grained fields, and train/test split.
+Stages~2--6 build a shift-aligned~\cite{reiss2018shifted_pod} POD latent
+dataset and learn MVAR and LSTM~\cite{hochreiter1997lstm} evolution maps;
+stages~7--8 bypass POD and apply
+MSTLS~\cite{minor2025mstls}/stability-selection~\cite{meinshausen2010stability}
+weak-form regression on the same trajectories, with
+ETDRK4~\cite{kassam2005etdrk4} rollout performed only as a targeted
+closure diagnostic on selected identified PDEs (not as the primary
+evaluation protocol).  All artefacts and metrics are written to a
+self-contained experiment directory.
+
+%% -------------------------------------------------------------------
+\section{Train/test splits}
+\label{sec:splits}
+
+Training and test data are drawn from the same parameter regime but use
+disjoint initial conditions.
+
+\noindent\textbf{Training set.}
+Each regime generates 340 runs from four IC families
+(Table~\ref{tab:ic_split}, Chapter~\ref{ch:experimentation}).
+For the EF-ROM branch, all runs contribute to the shared POD basis and latent
+dataset.  For WSINDy, the same training trajectories are used in physical
+space: density and auxiliary fields are computed on each run and then
+converted into weak-form regression constraints.
+
+\noindent\textbf{Test set.}
+Four runs---one per IC family---are generated at held-out IC parameters
+(e.g.\ a Gaussian centred at $(12.5,12.5)$ rather than the training grid
+positions) and simulated for $T_{\mathrm{test}}$ (Table~\ref{tab:fixed_params}).
+They are never seen during POD construction, latent-model fitting, or WSINDy
+regression.  The same held-out trajectories define the test set for both
+branches.
+
+\noindent\textbf{Forecasting protocol.}
+All models are evaluated in closed-loop (iterated single-step) mode.
+The effective forecast start is
+$t_{\mathrm{fc}} = \max(t_{\mathrm{fc}}^{\mathrm{req}},\, w_{\max}\Delta t_{\mathrm{rom}})$,
+where $w_{\max}$ is the largest enabled latent lag.
+In baseline configs $w_{\mathrm{MVAR}}=w_{\mathrm{LSTM}}=5$, giving
+$t_{\mathrm{fc}}=0.6$\,s.
+WSINDy evaluation uses the same $t_{\mathrm{fc}}$ but initialises from
+physical fields rather than a lagged latent window.
+
+%% -------------------------------------------------------------------
+\section{Lag selection}
+\label{sec:lag_selection}
+
+The MVAR lag order $w$ determines how many past latent frames the model
+uses for prediction.  We evaluate BIC, HQIC, and AIC~\cite{wasserman2006all} on unrestricted
+VAR($w$) models for $w=1,\dots,100$ on every regime.
+For reference, the information-theoretically optimal lags on a
+representative DO catalogue regime (DO\_CS01, collective swarm; see
+Appendix~\ref{app:full_regime_catalogue}) range from
+$w^*_{\mathrm{BIC}}=23$ to $w^*_{\mathrm{AIC}}=50$.
+Despite these large information-criterion optima, we fix
+$w_{\mathrm{MVAR}}=5$ for the baseline systematic comparison.
+This is a deliberate design trade-off between three considerations:
+\begin{enumerate}[nosep]
+\item \textbf{Cross-regime comparability.}  A single lag order applied
+      uniformly to all nine benchmark regimes ensures that performance
+      differences reflect the dynamics rather than per-regime
+      hyperparameter tuning.
+\item \textbf{Computational cost.}  The parameter count of an MVAR($w$)
+      model scales as $w r^2$; at $r=19$, increasing $w$ from~5 to~23
+      would multiply the number of coefficients by~4.6$\times$.
+\item \textbf{Diminishing returns after preprocessing.}  After
+      shift-alignment and the $\sqrt{\cdot}$-transform in our pipeline,
+      the latent trajectories become approximately linear, so additional
+      lags contribute less new information than in the raw
+      (unconditioned) setting where the BIC/AIC criteria were computed.
+\end{enumerate}
+No formal lag sweep over the deployed ridge-regularised MVAR is presented
+in this thesis; validating whether $w{>}5$ yields measurable forecast
+gains is left to future work (Section~\ref{sec:future_work}).
+We note that the BIC analysis was performed on a single DO catalogue
+regime; the information-criterion optima may differ for the NDYN
+benchmark regimes, so $w{=}5$ is a conservative lower bound rather
+than a per-regime optimum.
+The choice $w{=}5$ should therefore be interpreted as a practical,
+not individually optimal, setting.
+The LSTM lag is treated as a separate hyperparameter; whenever
+$w_{\mathrm{LSTM}}\neq w_{\mathrm{MVAR}}$, the common forecast
+start is shifted according to the largest enabled lag.
+
+%% -------------------------------------------------------------------
+\section{Evaluation metrics}
+\label{sec:metrics}
+
+All metrics compare predicted densities $\hat{\boldsymbol{\rho}}^n$ against
+ground truth $\boldsymbol{\rho}^n$ over the forecast window
+$\mathcal{T}_{\mathrm{fc}} = \{n_0, n_0{+}1, \dots, n_1\}$, where $n_0$
+is the forecast start index and $n_1$ is the terminal index.
+Let $d = N_x N_y$ denote the number of spatial grid points.
+
+\noindent\textbf{Coefficient of determination ($R^2$).}
+\label{subsec:r2_time}
+The per-snapshot $R^2$ is
+\begin{equation}
+  R^2(n) \;=\; 1 \;-\;
+  \frac{\sum_{j=1}^{d}\bigl(\rho_j^n - \hat\rho_j^n\bigr)^2}
+       {\sum_{j=1}^{d}\bigl(\rho_j^n - \bar\rho^n\bigr)^2},
+  \qquad
+  \bar\rho^n = \frac{1}{d}\sum_{j=1}^d \rho_j^n,
+  \label{eq:r2_snapshot}
+\end{equation}
+where the denominator uses the spatial mean of the ground-truth snapshot at
+time~$n$.  We report the mean over the forecast window,
+$R^2_{\mathrm{fc}} = |\mathcal{T}_{\mathrm{fc}}|^{-1}\sum_{n\in\mathcal{T}_{\mathrm{fc}}} R^2(n)$,
+as the primary scalar metric.
+Because the null model in~\eqref{eq:r2_snapshot} is the per-snapshot
+spatial mean~$\bar\rho^n$---a single scalar per frame---$R^2$ values
+near~$1$ indicate that the predictor tracks the full spatial structure,
+not merely the global density level.  For nearly uniform density fields,
+however, the denominator becomes small and $R^2$ can be dominated by
+numerical noise; the relative-error norms below provide a complementary
+check in such regimes.
+
+\noindent\textbf{Relative $\ell^p$ errors.}
+\label{subsec:rel_errors}
+Three relative error norms are
+averaged over the
+forecast window:
+\begin{align}
+  \mathrm{RelErr}_1(n) &= \frac{\|\boldsymbol{e}^n\|_1}{\|\boldsymbol{\rho}^n\|_1 + \epsilon},
+  &
+  \mathrm{RelErr}_2(n) &= \frac{\|\boldsymbol{e}^n\|_2}{\|\boldsymbol{\rho}^n\|_2 + \epsilon},
+  &
+  \mathrm{RelErr}_\infty(n) &= \frac{\|\boldsymbol{e}^n\|_\infty}{\|\boldsymbol{\rho}^n\|_\infty + \epsilon},
+  \label{eq:rel_errors}
+\end{align}
+where $\boldsymbol{e}^n = \boldsymbol{\rho}^n - \hat{\boldsymbol{\rho}}^n$
+and $\epsilon = 10^{-12}$ guards against division by zero.
+
+\noindent\textbf{Mass conservation.}
+\label{subsec:mass_metric}
+The discrete total mass at time $n$ is
+$m^n = (\Delta x\,\Delta y)\,\mathbf{1}^\top\boldsymbol{\rho}^n$ (and
+analogously $\hat m^n$ for the prediction).  We track $m^n$ and $\hat m^n$
+over the forecast window and report the maximum relative mass violation:
+\begin{equation}
+  \Delta m_{\max} \;=\;\max_{n\in\mathcal{T}_{\mathrm{fc}}}
+    \frac{|\hat m^n - m^n|}{m^{n_0}}.
+  \label{eq:mass_violation}
+\end{equation}
+The pipeline optionally applies a post-hoc mass correction step,
+either the global rescaling
+\eqref{eq:mass_postprocess_scale} or the simplex projection
+\eqref{eq:mass_postprocess_simplex}, to match the initial mass.  In the
+preprocessing ablations this had little effect on MVAR but improved LSTM
+rollout robustness and reduced $\Delta m_{\max}$ in practice.
+
+\noindent\textbf{Spatial order parameter.}
+\label{subsec:spatial_order_metric}
+To assess whether the model preserves the spatial structure of the density
+field, we track the spatial standard deviation
+$\sigma_\rho(n) = \mathrm{std}(\boldsymbol{\rho}^n)$ defined in
+Eq.~\eqref{eq:spatial_order} (Chapter~\ref{ch:background}).
+A high $\sigma_\rho$ indicates concentrated density; a low value
+indicates a nearly uniform field.  Together with the agent-level order
+parameters defined in Section~\ref{sec:order_parameters}, this diagnostic
+helps distinguish regime-level structural failures that may not be fully
+visible from density-space~$R^2$ alone.
+
+\noindent\textbf{Metric hierarchy by branch.}
+For the EF-ROM branch, forecast accuracy metrics---particularly
+$R^2_{\mathrm{fc}}$ and the relative errors~\eqref{eq:rel_errors}---are
+primary evaluation targets.  For the WSINDy branch, these same metrics are
+reported for completeness and as consistency checks under ETDRK4 rollout,
+but the primary criteria are identification-oriented: sparsity of the
+discovered PDE, coefficient stability under cross-scale selection, agreement
+with expected regime-specific mechanisms, and weak-form residual quality.
+Common metrics provide a shared diagnostic vocabulary, but the decision
+criteria differ between the two branches.
+
+\noindent\textbf{Parameter counts.}
+\label{subsec:param_counts}
+At the baseline comparison settings
+($r{=}19$, $w_{\mathrm{MVAR}}{=}w_{\mathrm{LSTM}}{=}5$, hidden width
+$h{=}128$, $L{=}2$ LSTM layers), the MVAR has
+$p_{\mathrm{MVAR}} = w\,r^2 + r = 1{,}824$ trainable parameters, while the
+LSTM has $p_{\mathrm{LSTM}} = 211{,}091$---a roughly $116\times$
+ratio.  This count compares raw learnable parameters, not effective
+degrees of freedom: LSTM weight sharing across time steps and the
+recurrent bottleneck mean that the effective capacity gap is smaller
+than $116\times$.  Full derivations appear in
+Chapter~\ref{ch:latent_rom}, \S\ref{subsec:mvar_identifiability}
+and~\S\ref{sec:lstm_surrogate}.
+
+\medskip\noindent
+From this point onward, all branch-level results should be read under
+this common upstream protocol but evaluated against branch-specific
+decision criteria: forecast accuracy for the EF-ROM, and
+identification quality for WSINDy.

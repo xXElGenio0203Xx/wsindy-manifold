@@ -1,0 +1,47 @@
+\begin{abstract}
+Can interpretable macroscopic PDEs be recovered from noisy
+interacting-agent trajectories?
+This thesis investigates the question for Vicsek--Morse particle systems
+by pairing shift-aligned \gls{pod} forecasting (\gls{mvar} and LSTM
+latent time-steppers) with weak-form PDE discovery (\gls{wsindy}) on
+density and polarisation flux fields across nine dynamical regimes and
+four initial-condition families.
+
+WSINDy recovers sparse, regime-consistent effective PDEs---matching
+the mechanism structure anticipated from kinetic theory
+(advection, diffusion, Morse forcing)
+with density weak-form $R^2>0.99$ in eight of nine regimes
+(the ninth at $0.95$)---yet the
+identified coefficients often reside outside the regime of numerical
+stability for autonomous forward-integration.
+This \emph{closure gap} between identification and rollout quality is
+itself a diagnostic: the recovered coefficients are effective finite-$N$
+parameters at the chosen KDE bandwidth, and the gap reveals which closure
+ingredients the effective description still lacks.
+In particular, the three-field library $(\rho,p_x,p_y)$ appears
+insufficient to close the mean-field description when agent speed is
+state-dependent, suggesting that variable-speed regimes require
+additional closure fields beyond density and polarisation flux.
+
+On the forecasting side, the $116\!\times$ parameter-count gap between
+MVAR ($1{,}824$ parameters) and LSTM ($211{,}091$) does not yield
+proportional accuracy gains: MVAR achieves forecast $R^2>0.99$ on the
+strongest constant-speed regimes (CS\,+\,PV median~$0.994$), while
+variable-speed variants degrade sharply (VS median~$0.425$), exposing a
+shift-predictability bottleneck that neither model class overcomes.
+Together, these findings delineate the boundary between what is
+identifiable and what is predictable from coarse-grained
+collective-motion data.%
+\footnote{Code and configurations:
+\url{https://github.com/eugenio-macias/wsindy-manifold}.}
+\end{abstract}
+
+\vspace{1.5em}
+\noindent\textbf{Acknowledgments.}\enspace
+I am grateful to my thesis advisor, Prof.\ Björn Sandstede, for his
+guidance throughout this project, and to my second reader,
+Prof.\ Ian~Wong.
+I thank the Center for Computation and Visualization (CCV) at Brown
+University for providing access to the OSCAR high-performance computing
+cluster, on which all particle simulations, ROM training, WSINDy fitting,
+and ETDRK4 rollout computations were performed.

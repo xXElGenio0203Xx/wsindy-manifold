@@ -1,0 +1,6 @@
+configs/systematic/variable_speed/DO_EC02_esccol_C3_l05_VS.yaml
+configs/systematic/variable_speed/DO_ES01_escsym_C3_l09_VS.yaml
+configs/extended_catalogue/DO_EU01_escuns_C2_l2.yaml
+configs/systematic/variable_speed/NDYN10_shortrange_VS.yaml
+configs/extended_catalogue/NDYN13_chaos.yaml
+configs/systematic/variable_speed/NDYN14_varspeed.yaml

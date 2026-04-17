@@ -1,0 +1,200 @@
+\chapter{Detailed Algorithm Pseudocode}
+\label{app:detailed_algorithms}
+
+% -----------------------------------------------------------------------
+\section{Vicsek simulation with steering Morse forces}
+\label{sec:app_vicsek}
+% -----------------------------------------------------------------------
+
+\begin{breakablealgorithm}
+\caption{Discrete-time Vicsek simulation with steering Morse forces}
+\label{alg:vicsek}
+
+{\footnotesize
+\begin{algorithmic}[1]
+\Require $N$, $L_x$, $L_y$, $\Delta t$, $T$, $v_0$, $R$; boundary type \texttt{bc};
+noise kind and amplitude~$\eta$; \texttt{speed\_mode};
+(optional) Morse parameters $(C_r,C_a,\ell_r,\ell_a,r_{\mathrm{cut}},\mu_t)$.
+\Ensure Saved frames $\{x^n,p^n\}$; metadata.
+
+\State Initialize positions $x^0\subset [0,L_x)\times[0,L_y)$ and angles $\theta^0\sim \mathrm{Unif}(0,2\pi)$.
+\State Set headings $p^0 \gets \texttt{headings\_from\_angles}(\theta^0)$; set $n_{\max} \gets \lfloor T/\Delta t\rfloor$.
+\State Set $r_{\mathrm{cut}} \gets \texttt{rcut\_factor}\cdot \max(\texttt{lr},\texttt{la})$ (if forces enabled).
+\State Build initial cell list: $\texttt{cell\_list} \gets \texttt{build\_cells}(x^0,L_x,L_y,\max(R,r_{\mathrm{cut}}),\texttt{bc})$.
+
+\For{$n=0,1,\dots,n_{\max}-1$}
+
+  \If{$n \bmod \texttt{neighbor\_rebuild}=0$}
+    \State $\texttt{cell\_list} \gets \texttt{build\_cells}(x^n,L_x,L_y,\max(R,r_{\mathrm{cut}}),\texttt{bc})$.
+  \EndIf
+
+  \State $\mathcal{N}^n \gets \texttt{compute\_neighbors}(x^n,L_x,L_y,R,\texttt{bc},\texttt{cell\_list})$ \Comment{includes self}
+
+  \If{\texttt{forces.enabled}}
+    \State $F^n \gets \texttt{morse\_force}(x^n,L_x,L_y,\texttt{bc},\texttt{Cr},\texttt{Ca},\texttt{lr},\texttt{la},r_{\mathrm{cut}},\texttt{cell\_list})$.
+  \EndIf
+
+  \For{$i=1,\dots,N$}
+
+    \State $s \gets \sum_{j\in\mathcal{N}_i^n} p_j^n$.
+    \State $\bar p_i^n \gets s/\|s\|$ \Comment{alignment mean direction (renormalized)}
+
+    \If{\texttt{speed\_mode} is \texttt{constant\_with\_forces}}
+      \State $\widehat F_i^n \gets F_i^n/(\|F_i^n\|+\varepsilon)$.
+      \State $\tilde p_i^n \gets \bar p_i^n + \texttt{mu\_t}\,\widehat F_i^n$.
+      \State $\bar p_i^n \gets \tilde p_i^n/\|\tilde p_i^n\|$.
+    \EndIf
+
+    \State $\phi_i^n \gets \texttt{angle\_noise}(\texttt{rng},\texttt{noise.kind},\eta,\texttt{match\_variance})$.
+    \State $p_i^{n+1} \gets \texttt{rotation}(\phi_i^n)\,\bar p_i^n$.
+    \State $p_i^{n+1} \gets p_i^{n+1}/\|p_i^{n+1}\|$.
+
+    \If{\texttt{speed\_mode} is \texttt{variable}}
+      \State $v_i^{n+1} \gets v_i^n + \Delta t\,\texttt{mu\_t}\,F_i^n$.
+      \State $\tilde x_i^{n+1} \gets x_i^n + \Delta t\,v_i^{n+1}$.
+    \Else
+      \State $\tilde x_i^{n+1} \gets x_i^n + \Delta t\,v_0\,p_i^{n+1}$.
+    \EndIf
+
+    \State $(x_i^{n+1},\texttt{flips}_i)\gets \texttt{apply\_bc}(\tilde x_i^{n+1},L_x,L_y,\texttt{bc})$.
+    \If{\texttt{bc} is \texttt{reflecting}}
+      \State Flip reflected components of $p_i^{n+1}$ according to \texttt{flips}$_i$.
+    \EndIf
+
+  \EndFor
+
+  \If{$(n+1)$ is a multiple of \texttt{save\_every}}
+    \State Save frame $(x^{n+1},p^{n+1})$.
+  \EndIf
+
+\EndFor
+
+\State Store run metadata and (optionally) diagnostics.
+\end{algorithmic}
+}
+\end{breakablealgorithm}
+
+% -----------------------------------------------------------------------
+\section{Fast gridded Gaussian KDE}
+\label{sec:app_kde}
+% -----------------------------------------------------------------------
+
+\begin{breakablealgorithm}
+\caption{Fast gridded Gaussian KDE (histogram + Gaussian smoothing)}
+\label{alg:kde_hist_gauss}
+{\footnotesize
+\begin{algorithmic}[1]
+\Require Trajectory positions $\mathbf{x}(t)\in\mathbb{R}^{N\times 2}$ at time $t$,
+domain size $(L_x,L_y)$, grid resolution $(n_x,n_y)$,
+bandwidth $\sigma$ (in grid cells), boundary condition \texttt{bc} $\in\{\texttt{"periodic"},\texttt{"nonperiodic"}\}$
+\Ensure Density field $\rho(t)\in\mathbb{R}^{n_y\times n_x}$ (row-major: $y$ index first)
+\State $\Delta x\gets L_x/n_x$, $\Delta y\gets L_y/n_y$
+\State Extract arrays: $x\gets\mathbf{x}[:,0]$, $y\gets\mathbf{x}[:,1]$
+\If{\texttt{bc} $=$ \texttt{"periodic"}}
+  \State Wrap positions: $x\gets x\bmod L_x$, $y\gets y\bmod L_y$
+\EndIf
+\State Compute 2D histogram $H(t)\in\mathbb{R}^{n_y\times n_x}$ from $(y,x)$ using bin edges on $[0,L_y]\times[0,L_x]$
+\Comment{Axis convention check: a single particle at $(x,y)$ increments $H[\lfloor y/\Delta y\rfloor,\lfloor x/\Delta x\rfloor]$}
+\State Convert counts to number density: $\tilde\rho(t)\gets H(t)/(\Delta x\,\Delta y)$
+\If{\texttt{bc} $=$ \texttt{"periodic"}}
+  \State Smooth with periodic wrap: $\rho(t)\gets G_\sigma(\tilde\rho(t))$ using \texttt{mode="wrap"}
+\Else
+  \State Smooth with edge extension: $\rho(t)\gets G_\sigma(\tilde\rho(t))$ using \texttt{mode="nearest"}
+  \Comment{Note: \texttt{nearest} repeats edge values; this is not reflective padding.}
+\EndIf
+\State Compute mass: $M(t)\gets\sum_{a,b}\rho_{ab}(t)\,\Delta x\,\Delta y$
+\State Compute relative drift: $\varepsilon(t)\gets |M(t)-N|/N$
+\If{$\varepsilon(t) > 10^{-3}$}
+  \State \textbf{print} warning: mass deviation $\varepsilon(t)$ detected (typically indicates wrapping/binning errors)
+\EndIf
+\State \Return $\rho(t)$ and metadata $\{\sigma,n_x,n_y,L_x,L_y,\texttt{bc}\}$
+\end{algorithmic}
+}
+\end{breakablealgorithm}
+
+% -----------------------------------------------------------------------
+\section{Latent LSTM ROM}
+\label{sec:app_lstm}
+% -----------------------------------------------------------------------
+
+\begin{algorithm}[H]
+\caption{Latent LSTM ROM (\cv{LatentLSTMROM}): training and closed-loop rollout}
+\label{alg:lstm_rom}
+{\footnotesize
+\begin{algorithmic}[1]
+\Require Latent trajectories $\{y^{(c)}_k\}$, lag $p$ (\cv{lag}), horizon $H$
+\Ensure Closed-loop forecast $\{\widehat{\mathbf{z}}_{k_0+n}\}_{n=1}^{H}$
+
+\State \textbf{Windowing:} construct pairs
+  $(\mathbf{x}_k, \mathbf{z}_k)$ for $k=p{+}1,\ldots,K$,
+  with $\mathbf{x}_k=(\mathbf{z}_{k-p},\ldots,\mathbf{z}_{k-1})$.
+\State Split into train/validation; initialise LSTM weights.
+
+\State \textbf{Training} (Adam, lr${}=10^{-3}$)\textbf{:}
+\While{epoch $\le 300$ and no early stop (patience${}=30$)}
+  \State Sample mini-batch of size $B=256$.
+  \State Forward pass through \eqref{eq:lstm_gates}; apply LayerNorm to $\mathbf{h}_p$.
+  \State Compute $\widehat{\mathbf{z}}_k = \mathbf{z}_{k-1} + \Delta_k$ \quad (residual mode, \eqref{eq:lstm_residual}).
+  \State Backpropagate MSE loss; clip gradients at $1.0$.
+  \State Step \texttt{ReduceLROnPlateau} scheduler on validation loss.
+\EndWhile
+
+\State \textbf{Closed-loop rollout:}
+\State Set window $\mathbf{x}\gets\mathbf{x}_{k_0}$.
+\For{$n=1,\ldots,H$}
+  \State Predict $\widehat{\mathbf{z}}_{k_0+n}$ from $\mathbf{x}$ (residual mode).
+  \State Shift window; append $\widehat{\mathbf{z}}_{k_0+n}$.
+\EndFor
+\State \textbf{Lift} each $\widehat{\mathbf{z}}_{k_0+n}$ to physical space
+  via the POD basis (Chapter~\ref{ch:global_pod_pipeline}).
+\end{algorithmic}
+}
+\end{algorithm}
+
+% -----------------------------------------------------------------------
+\section{Global POD restriction--lifting pipeline}
+\label{sec:app_pod_pipeline}
+% -----------------------------------------------------------------------
+
+\begin{algorithm}[H]
+\caption{Global POD restriction--lifting pipeline.}
+\label{alg:pod_pipeline}
+{\footnotesize
+\begin{algorithmic}[1]
+\Require Training density movies $\{\rho^{(i)}(t_k)\}_{i=1}^M$, grid $(n_x,n_y)$,
+  latent dim $m$, subsample stride $s$
+\Ensure POD basis $U_m$, mean $\boldsymbol{\mu}$, shift data, latent trajectories
+  $\{y^{(i)}(t_k)\}$
+\Statex
+\Statex \textbf{--- Training (restriction) ---}
+\For{each run $i=1,\dots,M$}
+  \State Subsample: keep every $s$-th frame
+  \State Flatten: $x^{(i)}_k = \mathrm{vec}(\rho^{(i)}(t_k))\in\mathbb{R}^d$
+\EndFor
+\State Stack all runs: $\mathbf{X}_{\mathrm{raw}}\in\mathbb{R}^{T_{\mathrm{tot}}\times d}$
+  \Comment{\cv{np.vstack}}
+\State Compute reference $\rho_{\mathrm{ref}}$ (temporal mean of all frames)
+  \Comment{\cv{shift\_align}}
+\State Estimate per-frame shifts $(\Delta y_k,\Delta x_k)$ via FFT
+  cross-correlation (Eq.~\ref{eq:shift_xcorr})
+\State Apply shifts: $\rho_k\leftarrow\mathrm{roll}(\rho_k,\Delta y_k,\Delta x_k)$
+\State Transform: $\tilde\rho_k\leftarrow\sqrt{\rho_k+\varepsilon}$
+  \Comment{\cv{density\_transform: sqrt}}
+\State Compute mean: $\boldsymbol{\mu}=\tfrac{1}{T_{\mathrm{tot}}}\sum_k \tilde\rho_k$
+\State Centre: $\bar{X}=\mathbf{X}^\top-\boldsymbol{\mu}\mathbf{1}^\top$
+\State SVD: $\bar{X}=U\Sigma V^\top$; keep $U_m$ ($m$ columns)
+  \Comment{\cv{np.linalg.svd}}
+\State Restrict: $Y=U_m^\top(\mathbf{X}^\top-\boldsymbol{\mu}\mathbf{1}^\top)$
+\State Reshape $Y$ into per-run latent trajectories $\{y^{(i)}(t_k)\}$
+\Statex
+\Statex \textbf{--- Evaluation (lifting) ---}
+\State Forecast latent trajectory $\hat{y}(t_k)$ (MVAR or LSTM; Chapter~\ref{ch:latent_rom})
+\State Lift: $\hat{\tilde\rho}_k = U_m\,\hat{y}(t_k)+\boldsymbol{\mu}$
+\State Inverse transform: $\hat\rho_k = [\max(0,\hat{\tilde\rho}_k)]^2-\varepsilon$
+\State Optional mass postprocess: apply \eqref{eq:mass_postprocess_scale}
+  or \eqref{eq:mass_postprocess_simplex}
+  \Comment{\cv{mass\_postprocess: scale | simplex}}
+\State Undo shift: $\hat\rho_k\leftarrow\mathrm{roll}(\hat\rho_k,-\Delta y_k,-\Delta x_k)$
+\end{algorithmic}
+}
+\end{algorithm}

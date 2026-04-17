@@ -1,0 +1,291 @@
+\documentclass{report}
+\usepackage{bm}
+\newcommand{\xvec}{\bm{x}}
+\PassOptionsToPackage{table}{xcolor}          % must precede pgfplots which loads xcolor
+\usepackage{pgfplots}                        % for \addplot3 and related commands
+\pgfplotsset{samples=50}
+
+\newcommand{\yvec}{\mathbf{y}}
+
+% ===== Thesis look & layout =====
+\usepackage[
+  a4paper,
+  margin=0.7in,
+  includehead,
+  headheight=14pt,
+  headsep=8pt
+]{geometry}   
+
+\usepackage{setspace}                        % line spacing
+\usepackage{fancyhdr}                        % headers/footers
+\usepackage{titlesec}                        % section spacing/style
+\titleclass{\part}{top}                       % part starts a new page but allows content after heading
+\titleformat{\part}[display]
+  {\centering\normalfont\LARGE\bfseries}
+  {\partname\ \thepart}{12pt}{\Huge\centering}
+\titlespacing*{\part}{0pt}{0.28\textheight}{0pt}
+
+\titleformat{\chapter}[hang]
+  {\normalfont\Huge\bfseries}
+  {\thechapter}{1em}{}
+
+\titlespacing*{\chapter}
+  {0pt}{-25pt}{12pt}
+\usepackage{longtable}
+\usepackage{multicol}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}                         % clean, scalable serif font
+\usepackage{algorithmicx}                    % for algorithmic environment
+\usepackage{algorithm}                      % for algorithm environment
+\usepackage{algpseudocode}                  % for \If, \Else, \EndIf, etc.
+\usepackage{float}                          % for [H] float placement
+\usepackage[font=small,labelfont=bf,skip=3pt]{caption} % smaller captions
+\usepackage{microtype}                       % better kerning and justification
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{listings}
+
+% ===== Your existing packages =====
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc}
+\usepackage[acronym]{glossaries}
+\usepackage{amsfonts}
+\usepackage{enumitem}
+\usepackage{etoolbox}                        % for \patchcmd
+\usepackage[titles]{tocloft}                 % compact ToC spacing
+\setlength{\cftbeforechapskip}{2pt}          % space before chapter entries
+\setlength{\cftbeforesecskip}{1pt}           % space before section entries
+\setlength{\cftbeforepartskip}{3pt}          % space before part entries
+\usepackage[numbers,sort&compress]{natbib}
+
+% --- Code highlighting (best) ---
+\usepackage[table]{xcolor}
+\usepackage{minted}
+
+\definecolor{codebg}{HTML}{F6F8FA}
+
+\setminted{
+  fontsize=\scriptsize,
+  baselinestretch=1.0,
+  bgcolor=codebg,
+  fontfamily=tt,
+  breaklines=true,
+  breakanywhere=true,
+  linenos=true,
+  numbersep=6pt,
+  frame=lines,
+  framesep=4pt,
+  tabsize=2,
+  style=default  % or "friendly"
+}
+
+% Number by chapter (recommended for a thesis)
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{claim}[theorem]{Claim}
+
+% Remark-like environments (share counter with theorems)
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Code-variable shortcut (used in notation table and body text)
+\newcommand{\cv}[1]{{\ttfamily\scriptsize #1}}
+
+% ===== Document-wide styling =====
+\setstretch{1.15}                             % compact line spacing (saves ~15%)
+\setlength{\parindent}{1.0em}                 % paragraph indent
+\setlength{\parskip}{0.15em}                  % tiny skip (keeps it formal)
+\numberwithin{equation}{section}              % eqs as (section.eq)
+
+% Denser tables globally
+\renewcommand{\arraystretch}{0.90}
+
+% Tighten float spacing (reduce white gaps around figures/tables)
+\setlength{\textfloatsep}{6pt plus 2pt minus 2pt}   % top/bottom of page floats
+\setlength{\intextsep}{6pt plus 2pt minus 2pt}      % inline floats [h]
+\setlength{\floatsep}{6pt plus 2pt minus 2pt}       % between consecutive floats
+\setlength{\abovecaptionskip}{2pt}                   % above caption
+\setlength{\belowcaptionskip}{0pt}                   % below caption
+% Allow LaTeX to pack more floats per page
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.9}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\floatpagefraction}{0.80}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{5}
+% Section title formatting: bold, compact spacing
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{0.8em}{}
+\titleformat{\subsection}[runin]{\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}[runin]{\normalfont\normalsize\bfseries}{\thesubsubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{0.8ex plus 0.3ex minus 0.2ex}{0.5ex}
+\titlespacing*{\subsection}{0pt}{0.7ex plus 0.3ex minus 0.2ex}{0.5em}
+\titlespacing*{\subsubsection}{0pt}{0.6ex plus 0.2ex minus 0.2ex}{0.4em}
+
+% ToC depth: show only chapters and sections
+\setcounter{tocdepth}{1}
+\setcounter{secnumdepth}{3}
+
+% Compact enumeration / itemization globally
+\setlist{nosep,leftmargin=1.5em}
+
+% Compact bibliography
+\setlength{\bibsep}{1pt plus 0.5pt}
+
+% Hyperlinks (subtle)
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+% Header/footer style
+\pagestyle{fancy}
+\fancyhf{}                                   % clear default
+\lhead{\leftmark}                            % current section on left
+\rhead{\thepage}                             % page number on right
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% =========================
+% Breakable algorithms
+% =========================
+\makeatletter
+\newenvironment{breakablealgorithm}
+  {%
+    \begin{center}
+      \refstepcounter{algorithm}%
+      \hrule height .8pt depth 0pt \kern 2pt%
+      \renewcommand{\caption}[2][\relax]{%
+        {\raggedright\textbf{Algorithm~\thealgorithm.} ##2\par}%
+        \ifx\relax##1\relax
+        \else
+          \addcontentsline{loa}{algorithm}{\protect\numberline{\thealgorithm}##1}%
+        \fi
+        \kern 2pt\hrule\kern 2pt
+      }%
+  }
+  {%
+      \kern 2pt\hrule\relax%
+    \end{center}
+  }
+\makeatother
+
+% Denser algorithmic layout
+\algrenewcommand\algorithmicindent{0.7em}
+\makeatletter
+\patchcmd{\algorithmic}{\itemsep\z@}{\itemsep-0.7ex}{}{}
+\makeatother
+
+% ----------- Macros -----------
+\newcommand{\M}{\mathcal{M}}            % manifold
+\newcommand{\gradM}{\nabla_{\!\M}}      % surface gradient
+\newcommand{\divM}{\nabla_{\!\M}\!\cdot}% surface divergence
+\newcommand{\LapM}{\Delta_{\!\M}}       % Laplace-Beltrami
+\newcommand{\bvec}{\mathbf{b}}
+\newcommand{\Gmat}{\mathbf{G}}
+\newcommand{\Wmat}{\mathbf{W}}
+\newcommand{\uvec}{\mathbf{u}}
+\newcommand{\pvec}{\mathbf{p}}
+
+% ----------- Glossary (Acronyms) -----------
+\newacronym{wsindy}{WSINDy}{Weak-form Sparse Identification of Nonlinear Dynamics}
+\newacronym{mvar}{MVAR}{Multivariate Autoregression}
+\newacronym{mstls}{MSTLS}{Multi-Step Thresholded Least Squares}
+\newacronym{efrom}{EF-ROM}{Equation-Free Reduced-Order Model}
+\newacronym{lstms}{LSTMs}{Long Short-Term Memory}
+\newacronym{pod}{POD}{Proper Orthogonal Decomposition}
+\newacronym{svd}{SVD}{Singular Value Decomposition}
+
+\makeglossaries
+
+% ===== Title =====
+\title{Interpretable Weak-Form PDE Discovery for Interacting-Agent Densities\\
+from Noisy Trajectories: Benchmarking WSINDy Against Equation-Free Reduced-Order Models}
+
+\author{Eugenio D. Macias Orozco}
+\date{} % leave blank
+
+% ===========================================================================
+%                           DOCUMENT BODY
+% ===========================================================================
+\begin{document}
+
+% --- Title page ---
+\input{frontmatter/titlepage}
+
+% --- Roman-numbered prelims ---
+\pagenumbering{roman}
+
+\input{frontmatter/abstract}
+
+\vspace{1.5em}
+\tableofcontents
+
+\input{frontmatter/notation}
+
+\clearpage
+\pagenumbering{arabic}
+
+% ======================== CHAPTER 1 ========================
+\input{ch1_introduction/chapter}
+
+% ======================== PART I: EQUATION-FREE =========================
+\part{Equation-Free Reduced Order Modeling from Agent Simulations}
+
+\input{ch2_background/chapter}
+
+\input{ch6_experimental_protocol/chapter}
+
+\input{ch3_experimentation/chapter}
+
+\input{ch4_pod_pipeline/chapter}
+
+\input{ch5_latent_rom/chapter}
+
+\input{ch7_rom_results/chapter}
+
+% ========================= PART II: WSINDY ==============================
+\part{Weak-form PDE Discovery (WSINDy)}
+
+\input{ch8_wsindy_methodology/chapter}
+
+\input{ch9_wsindy_results/chapter}
+
+% ======================== CONCLUSION ========================
+\input{ch10_conclusion/chapter}
+
+% ======================== APPENDICES ========================
+\addtocontents{toc}{\protect\setcounter{tocdepth}{0}}   % show appendix chapters but hide their sections
+\appendix
+\raggedbottom
+% Tighten float spacing in appendices
+\setlength{\floatsep}{6pt plus 2pt minus 2pt}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{6pt plus 2pt minus 2pt}
+\input{appendices/config_catalogue}
+\input{appendices/full_regime_catalogue}
+\input{appendices/supplementary_figures}
+\input{appendices/mstls_algorithm}
+\input{appendices/etdrk4_algorithm}
+\input{appendices/detailed_algorithms}
+% config_schema merged into config_catalogue (Appendix A)
+% code_variable_map removed
+\input{appendices/studies_in_progress}
+
+% ======================== BIBLIOGRAPHY ========================
+\bibliographystyle{plain}
+{\small
+\setlength{\bibsep}{0pt plus 0.3pt}
+\bibliography{references}
+}
+
+\end{document}

@@ -1,0 +1,29 @@
+\chapter{Configuration Schema}
+\label{app:config_schema}
+Every experiment is fully specified by a single YAML file read at boot time.
+The schema below mixes global defaults with regime-specific
+overrides; only a subset of keys varies across the systematic regime files
+listed in Appendix~\ref{app:config_catalogue}.
+The schema mirrors an actual experiment configuration,
+annotated with allowed values.
+The EF-ROM keys (\cv{sim} through \cv{eval}) follow
+\cv{NDYN02\_flock.yaml}; the \cv{wsindy} block follows
+\cv{DYN1\_gentle\_wsindy.yaml}.
+The full suite of configurations is listed in Appendix~\ref{app:config_catalogue}
+and available in \texttt{configs/systematic/} and \texttt{configs/}.
+
+Each YAML file contains twelve top-level sections:
+\texttt{sim} (agent count, training horizon, domain geometry),
+\texttt{test\_sim} (forecast horizon),
+\texttt{model} (agent dynamics type and speed mode),
+\texttt{noise} (angular noise magnitude),
+\texttt{forces} (Morse attraction/repulsion parameters $C_a$, $C_r$, $\ell_a$, $\ell_r$),
+\texttt{alignment} (Vicsek radius and coupling strength),
+\texttt{train\_ic} and \texttt{test\_ic} (initial-condition family and distributional parameters),
+\texttt{rom} (POD rank, MVAR lag, LSTM architecture and training settings),
+\texttt{eval} (forecast metrics, bootstrap replicates, confidence level),
+\texttt{wsindy} (library scope, thresholding schedule, test-function parameters),
+and \texttt{experiment\_name} (unique run identifier).
+Full annotated schemas for all nine benchmark regimes are
+available in the repository at
+\url{https://github.com/eugenio-macias/wsindy-manifold/tree/main/configs}.

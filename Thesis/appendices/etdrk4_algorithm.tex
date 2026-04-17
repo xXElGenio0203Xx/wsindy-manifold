@@ -1,0 +1,73 @@
+\chapter{ETDRK4 Time Integration}
+\label{app:etdrk4}
+
+Discovered PDEs are integrated forward in time using the exponential
+time-differencing fourth-order Runge--Kutta scheme (ETDRK4) of
+Cox--Matthews, stabilised via the contour-integral trick of
+Kassam--Trefethen (2005).
+
+\paragraph{Linear--nonlinear splitting.}
+The PDE $u_t = F(u)$ is decomposed as $u_t = Lu + N(u)$, where
+$L$ collects all terms linear in~$u$ (e.g.\ diffusion $\alpha\Delta u$,
+advection $\beta\,\partial_x u$) and $N(u)$ is the nonlinear remainder.
+In Fourier space, $L$ has a diagonal multiplier
+$\hat L(k_x,k_y) = \sum_{m\in\mathcal{L}} w_m\,\sigma_m(k_x,k_y)$,
+where $\sigma_m$ is the symbol of operator~$m$: $\sigma_{\mathrm{lap}} = -(k_x^2+k_y^2)$,
+$\sigma_{d_x} = ik_x$, $\sigma_{d_{xx}} = -k_x^2$, etc.
+
+\paragraph{Contour-integral coefficients.}
+With $z = \Delta t\,\hat L$ and $M$ quadrature nodes
+$c_j = r\exp(2\pi i\, j/M)$ on a circle of radius~$r$ centred at each~$z$:
+\begin{align}
+  E   &= e^z, \qquad E_2 = e^{z/2}, \qquad
+  Q   = \frac{\Delta t}{2}\,\frac{1}{M}
+        \sum_{j=1}^{M}\frac{e^{z/2+c_j} - 1}{z/2+c_j}\,,
+  \label{eq:etdrk4_E} \\[4pt]
+  f_1 &= \Delta t\;\frac{1}{M}\sum_j
+         \frac{-4 - z_j + e^{z_j}(4 - 3z_j + z_j^2)}{z_j^3},
+  \label{eq:etdrk4_f1} \\
+  f_2 &= \Delta t\;\frac{1}{M}\sum_j
+         \frac{2 + z_j + e^{z_j}(-2 + z_j)}{z_j^3},
+  \label{eq:etdrk4_f2} \\
+  f_3 &= \Delta t\;\frac{1}{M}\sum_j
+         \frac{-4 - 3z_j - z_j^2 + e^{z_j}(4 - z_j)}{z_j^3},
+  \label{eq:etdrk4_f3}
+\end{align}
+where $z_j = z + c_j$.  Taking $M=64$ and $r=1$ removes the removable
+singularities at $z=0$ with machine-precision accuracy.
+
+\begin{breakablealgorithm}
+\caption{ETDRK4 time-stepping (one step, Fourier domain)}
+\label{alg:etdrk4}
+{\footnotesize
+\begin{algorithmic}[1]
+\Require Fourier-domain state $\hat u_n$, coefficients $(E,E_2,Q,f_1,f_2,f_3)$, nonlinear evaluator $\hat N(\cdot)$
+\Ensure $\hat u_{n+1}$
+
+\State $\hat N_1 \gets \hat N\bigl(\mathcal{F}^{-1}[\hat u_n]\bigr)$
+\State $\hat a \gets E_2\,\hat u_n + Q\,\hat N_1$
+\State $\hat N_2 \gets \hat N\bigl(\mathcal{F}^{-1}[\hat a]\bigr)$
+\State $\hat b \gets E_2\,\hat u_n + Q\,\hat N_2$
+\State $\hat N_3 \gets \hat N\bigl(\mathcal{F}^{-1}[\hat b]\bigr)$
+\State $\hat c \gets E_2\,\hat a + Q\,(2\hat N_3 - \hat N_1)$
+\State $\hat N_4 \gets \hat N\bigl(\mathcal{F}^{-1}[\hat c]\bigr)$
+\State $\hat u_{n+1} \gets E\,\hat u_n + f_1\,\hat N_1 + 2\,f_2\,(\hat N_2 + \hat N_3) + f_3\,\hat N_4$
+\end{algorithmic}
+}
+\end{breakablealgorithm}
+
+\noindent At each sub-stage $\hat N(\cdot)$ evaluates \emph{only} the nonlinear
+terms of the discovered PDE in physical space (pointwise products, powers,
+gradient products) and returns the result to Fourier space via FFT.
+The implementation is in \texttt{src/wsindy/integrators.py}
+(\cv{etdrk4\_integrate}).
+
+\paragraph{Stability.}
+The ETDRK4 scheme exactly integrates the linear part $e^{\Delta t L}$, so
+it is unconditionally stable for the linear subproblem whenever
+$\mathrm{Re}(\Delta t\,\hat{L}(\mathbf{k}))\le 0$ for all wavenumbers
+$\mathbf{k}$ (satisfied by diffusion and dissipation operators with
+negative-semidefinite symbols).  Nonlinear terms impose an effective
+CFL condition; empirically, $\Delta t = 0.01$--$0.05$ (corresponding to
+$\mathrm{CFL}\approx v_{\max}\Delta t/h\lesssim 0.5$) is stable for the
+Vicsek-type PDEs encountered in this work.

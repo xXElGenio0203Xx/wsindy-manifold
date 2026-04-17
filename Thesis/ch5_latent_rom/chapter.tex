@@ -1,0 +1,302 @@
+\chapter{Latent Reduced-Order Model: MVAR and LSTMs in POD Coordinates}
+\label{ch:latent_rom}
+
+This chapter describes the two latent-space time-steppers used in the
+restrict--evolve--lift pipeline of Chapter~\ref{ch:global_pod_pipeline}:
+a multivariate autoregressive model~(MVAR) and a long short-term memory
+network~(LSTM)~\cite{hochreiter1997lstm}.
+Both models operate on the $r$-dimensional POD coefficient
+vector~\cite{berkooz1993pod}
+$y(t_k)\in\mathbb{R}^r$ and produce a one-step-ahead prediction that is
+iterated in closed loop to generate long-horizon density forecasts.
+The purpose of this chapter is not to search for the best black-box
+predictor in the abstract.  Rather, it is to test whether shift alignment
+and POD produce a latent representation whose time evolution is effectively
+linear at forecast-relevant scales, or whether substantial nonlinear memory
+remains.  If MVAR performs well, that suggests alignment has removed a major
+source of apparent complexity; if LSTM materially outperforms MVAR, genuine
+nonlinear latent structure persists; and if both fail, the issue may be
+low-dimensionality itself rather than model class.
+
+%% ================================================================
+\section{MVAR(\texorpdfstring{$w$}{w}) model}
+\label{sec:mvar_definition}
+%% ================================================================
+
+Let $x(t)$ denote the macroscopic density field on a fixed grid, sampled at
+discrete times $t_k := t_0 + k\,\Delta t$ ($k = 0,1,2,\dots$) with effective sampling interval
+$\Delta t = 0.04\times 3 = 0.12$\,s.
+The restriction operator $\mathcal{R}$ (Chapter~\ref{ch:global_pod_pipeline}) maps
+$x(t_k)$ to a latent coordinate $y(t_k)\in\mathbb{R}^r$ with
+$r=19$.
+In this chapter we focus on learning a surrogate time-stepper for $y$.
+
+\subsection{Model class}
+We model the latent coordinates as a discrete-time vector autoregression with
+$w$ lags.
+For each training trajectory (``case'') $c$ we write
+\begin{equation}\label{eq:mvar_def}
+  y^{(c)}(t_k) \;=\; A_0 \;+\; \sum_{j=1}^{w} A_j\,y^{(c)}(t_{k-j})
+                 \;+\; \varepsilon(t_k),
+\end{equation}
+where $A_0\in\mathbb{R}^r$ is an intercept vector and
+$A_j\in\mathbb{R}^{r\times r}$ are lag-$j$ regression matrices~\cite{alvarez2025eqfree}.
+The residual $\varepsilon(t_k)\in\mathbb{R}^r$ is modelled as zero-mean
+white noise; this assumption motivates least-squares training but is not
+used for inference (we do point prediction).
+MVAR serves here as a hypothesis test: after shift alignment and POD, is
+the dominant latent evolution well approximated by a linear finite-memory
+map?
+
+\noindent\textbf{One-step predictor.}
+The corresponding one-step-ahead prediction is
+\begin{equation}\label{eq:mvar_predictor}
+  \hat y^{(c)}(t_k) \;=\; A_0 \;+\;
+  \sum_{j=1}^{w} A_j\,y^{(c)}(t_{k-j}).
+\end{equation}
+
+\subsection{Ridge-regularized training}\label{subsec:mvar_training}
+The unknown parameters $(A_0,\{A_j\}_{j=1}^w)$ are obtained by minimizing a ridge-penalized least-squares problem~\cite{wasserman2006all}:
+\begin{equation}\label{eq:mvar_ls_problem}
+  \min_{A_0,\{A_j\}_{j=1}^w}\;
+  \sum_{c=1}^{C}\;\sum_{k=w+1}^{K}
+  \bigl\|y^{(c)}(t_k)-\hat y^{(c)}(t_k)\bigr\|_2^2.
+\end{equation}
+
+\noindent\textbf{Vectorized regression form.}
+Define the stacked regressor
+\[
+  \phi^{(c)}_k \;:=\;
+  \begin{bmatrix}1\\[2pt] y^{(c)}(t_{k-1})\\ \vdots\\ y^{(c)}(t_{k-w})\end{bmatrix}
+  \!\in\mathbb{R}^{1+wr},
+\]
+and let
+$B\in\mathbb{R}^{(1+wr)\times r}$ collect the intercept and lag matrices
+so that $\hat y^{(c)}(t_k) = (\phi^{(c)}_k)^\top B$.
+Stacking all $N_{\mathrm{train}}=C(K-w)$ training pairs into matrices
+$X\in\mathbb{R}^{N_{\mathrm{train}}\times(1+wr)}$ and
+$Y\in\mathbb{R}^{N_{\mathrm{train}}\times r}$,
+ridge-regularized least squares solves
+\begin{equation}\label{eq:mvar_ridge}
+  \hat B \;=\; \arg\min_{B}\;\|Y - XB\|_F^2
+             \;+\;\alpha\,\|B_{2:}\|_F^2,
+\end{equation}
+where $B_{2:}$ excludes the intercept row from regularization and
+$\alpha>0$.
+The closed-form solution is
+\begin{equation}\label{eq:ridge_closed_form}
+  \hat B \;=\; (X^\top X + \alpha\,\Gamma)^{-1}\,X^\top Y,
+  \qquad
+  \Gamma = \mathrm{diag}(0,1,\dots,1).
+\end{equation}
+The intercept row is excluded from the penalty term,
+matching~\eqref{eq:ridge_closed_form}.
+
+\noindent\textbf{Baseline values.}
+In the baseline systematic comparison, the MVAR uses lag
+$w_{\mathrm{MVAR}}=5$ and ridge strength
+$\alpha=10^{-4}$.  At
+$\Delta t_{\mathrm{rom}}=0.12$\,s this lag window spans $0.6$\,s of
+physical time.  This is a compromise between capturing short-term latent
+dependence and keeping the regression well-conditioned; ridge
+regularization provides additional robustness.  Ridge regularisation
+improves numerical stability of the fit, but it does not by itself guarantee
+dynamical stability of the closed-loop rollout, which is determined by the
+companion spectrum (Section~\ref{subsec:mvar_rollout}).  When the LSTM lag is
+varied in dedicated ablations, the evaluation protocol uses a common
+forecast start determined by the largest enabled lag in the config.
+A formal unrestricted-VAR AIC/BIC study and an empirical lag sweep are
+reported in Section~\ref{sec:lag_selection}; the final lag is ultimately
+chosen on the basis of that end-to-end empirical comparison.
+
+\subsection{Closed-loop rollout}\label{subsec:mvar_rollout}
+For long-horizon forecasting the MVAR model is used in \emph{closed-loop}
+(autoregressive) mode: each one-step prediction is fed back as input for
+subsequent steps.
+
+\noindent\textbf{Rollout map.}
+Let the state of the autoregression be
+\[
+  z_k :=
+  \begin{bmatrix}
+    y(t_k)\\ y(t_{k-1})\\ \vdots\\ y(t_{k-w+1})
+  \end{bmatrix}\in\mathbb{R}^{wr}.
+\]
+The MVAR($w$) model induces an affine update
+\begin{equation}\label{eq:companion_update}
+  z_{k+1} = \mathcal{A}_{\mathrm{comp}}\, z_k + b_{\mathrm{comp}},
+\end{equation}
+where $\mathcal{A}_{\mathrm{comp}}\in\mathbb{R}^{wr\times wr}$ is the
+companion matrix with explicit block form
+\begin{equation}
+  \mathcal{A}_{\mathrm{comp}}
+  =
+  \begin{bmatrix}
+    A_1 & A_2 & \cdots & A_{w-1} & A_w \\
+    I_r & 0   & \cdots & 0       & 0   \\
+    0   & I_r & \cdots & 0       & 0   \\
+    \vdots & & \ddots &         & \vdots \\
+    0   & 0   & \cdots & I_r     & 0
+  \end{bmatrix},
+  \qquad
+  b_{\mathrm{comp}}
+  =
+  \begin{bmatrix} A_0 \\ 0 \\ \vdots \\ 0 \end{bmatrix},
+  \label{eq:companion_matrix}
+\end{equation}
+where $I_r\in\mathbb{R}^{r\times r}$ is the identity and
+$A_0\in\mathbb{R}^r$ the intercept; the top block row contains
+$(A_1,\dots,A_w)$ and the subdiagonal contains identity ``shift'' blocks.
+Errors compound through recursion, so closed-loop metrics are the primary
+evaluation tool (Chapter~\ref{ch:exp_protocol_metrics}).
+
+\noindent\textbf{Restrict--evolve--lift forecast.}
+In the full pipeline the autoregressive forecast operates on physical-space
+densities:
+\begin{equation}\label{eq:closed_loop_forecast}
+  \hat x^{(c)}(t_k) \;=\;
+  \mathcal{L}\!\Bigl(
+    \Phi_{\mathrm{ROM}}\!\bigl(
+      \mathcal{R}(\hat x^{(c)}(t_{k-1})),\dots,
+      \mathcal{R}(\hat x^{(c)}(t_{k-w}))
+    \bigr)
+  \Bigr),
+\end{equation}
+where $\mathcal{R}$ and $\mathcal{L}$ are the restriction and lifting
+operators of Chapter~\ref{ch:global_pod_pipeline}, and $\Phi_{\mathrm{ROM}}$ is
+either the MVAR or LSTM time-stepper.
+The forecast is initialized with the first $w$ true (restricted) snapshots
+and iterated for all remaining time steps.
+
+\noindent\textbf{Stability.}
+Closed-loop performance depends on the spectral radius
+$\rho(\mathcal{A}_{\mathrm{comp}}) < 1$,
+which is a sufficient condition for bounded rollout of the homogeneous part.
+Ridge regularization shrinks coefficients and therefore tends to improve
+stability margins.
+
+\noindent\textbf{Optional spectral-radius scaling.}
+An optional post-fit stabilization step
+uniformly scales down coefficient matrices when
+$\rho(\mathcal{A}_{\mathrm{comp}})$ exceeds the threshold.
+This should be regarded as a modified model rather than a harmless
+stabilisation, because it perturbs the learned dynamics.
+In preliminary experiments it degraded forecast quality by over-damping
+transient dynamics, so it is \emph{disabled} in all experimental runs.
+
+\noindent\textbf{Parameter count.}\label{subsec:mvar_identifiability}
+Each of the $r$ output dimensions is regressed on $w$ lagged $r$-vectors
+plus a bias, giving $p_{\mathrm{MVAR}} = r + w\,r^2$ free parameters.
+With $r{=}19$ and $w{=}5$ this yields $p_{\mathrm{MVAR}} = 1{,}824$,
+fitted from $N_{\mathrm{train}} = C(K{-}w)$ samples across all training
+trajectories; ridge regularisation keeps the effective parameter-to-data
+ratio manageable.
+
+%% ================================================================
+\section{LSTM latent surrogate}
+\label{sec:lstm_surrogate}
+%% ================================================================
+
+The LSTM serves as the \emph{nonlinear} latent time-stepper in the EF-ROM
+benchmark.
+It is introduced here as a flexible nonlinear comparator on the same latent
+representation, not as an end in itself.
+Because the LSTM has roughly $116\times$ more parameters than MVAR
+(Section~\ref{subsec:mvar_identifiability}), any LSTM advantage is hard to
+attribute purely to nonlinear structure versus overfitting capacity; the
+LSTM's role is therefore \emph{diagnostic} rather than competitive.
+Specifically:
+\begin{itemize}[nosep]
+  \item MVAR failure suggests either instability or low-dimensional mismatch.
+  \item LSTM improvement over MVAR would suggest genuine nonlinear latent memory.
+  \item LSTM non-improvement despite massive extra capacity is positive evidence
+        that nonlinear expressivity is not the main bottleneck.
+\end{itemize}
+
+\noindent\textbf{Sequence-to-one formulation.}
+Let $\mathbf{z}_k\in\mathbb{R}^d$ denote the POD coefficient vector at
+time $t_k$ ($d = r = 19$).
+A $p$-step autoregressive surrogate learns the one-step map
+\begin{equation}\label{eq:lstm_seq_problem}
+  \mathbf{z}_{k} \;\approx\;
+  f_\theta\!\bigl(\mathbf{z}_{k-1},\ldots,\mathbf{z}_{k-p}\bigr),
+  \qquad k = p{+}1,\ldots,K,
+\end{equation}
+where $f_\theta$ is a parameterized nonlinear model.
+LSTMs are preferred over vanilla RNNs because the gated cell state
+mitigates vanishing/exploding gradients, which matters when the latent
+series exhibits long transients or regime shifts.
+
+\noindent\textbf{LSTM architecture.}
+Given an input window
+$\mathbf{x}_k = (\mathbf{z}_{k-p},\ldots,\mathbf{z}_{k-1})
+\in\mathbb{R}^{p\times d}$,
+the LSTM processes the sequence through forget, input, and output gates
+that regulate information flow into the cell state~$\mathbf{c}_\tau$ and
+hidden state~$\mathbf{h}_\tau$ (gate equations in
+Eq.~\eqref{eq:lstm_gates}, Appendix~\ref{app:supplementary_figures}).
+The final hidden state is passed through LayerNorm~\cite{ba2016layernorm} before a linear readout.
+
+\noindent\textbf{Residual (delta) prediction.}
+In all experiments, the network uses residual prediction, so
+the output layer predicts a \emph{correction} $\Delta_k$ and the final
+prediction is
+\begin{equation}\label{eq:lstm_residual}
+  \widehat{\mathbf{z}}_{k} \;=\;
+  \mathbf{z}_{k-1} \;+\; \Delta_k,
+  \qquad
+  \Delta_k := \mathbf{W}_y\,\mathrm{LayerNorm}(\mathbf{h}_{p}) + \mathbf{b}_y.
+\end{equation}
+This residual connection anchors the prediction to the most recent input
+state, which improves stability during closed-loop rollout.
+
+\noindent\textbf{Training objective and configuration.}
+The LSTM is trained via one-step MSE on sliding windows of
+ground-truth latent states, optimised with Adam~\cite{kingma2014adam}; early stopping,
+gradient clipping, and a
+learning-rate scheduler are used during training.
+Full hyperparameters are listed in
+Table~\ref{tab:lstm_config} (Appendix~\ref{app:supplementary_figures}).
+
+\noindent\textbf{Parameter count.}
+Each LSTM layer of hidden dimension~$h$ contributes
+$4(d_{\mathrm{in}}h + h^2) + 8h$ weights (four gates $\times$
+input-to-hidden, hidden-to-hidden, and two biases).
+With $d{=}r{=}19$, $h{=}128$, $L{=}2$ layers, plus LayerNorm ($2h$) and
+a linear readout ($hd+d$), the total is
+$p_{\mathrm{LSTM}} = 76{,}288 + 132{,}096 + 256 + 2{,}451 = 211{,}091$---roughly
+$116\times$ the MVAR count of $1{,}824$, a ratio that will become relevant
+when interpreting forecast quality in Chapter~\ref{ch:rom_results}.
+
+\noindent\textbf{Closed-loop forecasting.}
+After training, we forecast by recursively feeding predictions back into
+the input window:
+$(\mathbf{z}_{k-p},\ldots,\mathbf{z}_{k-1})
+\mapsto \widehat{\mathbf{z}}_{k}
+\mapsto (\mathbf{z}_{k-p+1},\ldots,\mathbf{z}_{k-1},\widehat{\mathbf{z}}_{k})
+\mapsto\cdots$
+This closed-loop evaluation matches the restrict--evolve--lift protocol of
+\eqref{eq:closed_loop_forecast}.
+Unlike MVAR, the LSTM has no eigenvalue-based stability certificate;
+stability is monitored empirically via rollout diagnostics
+(boundedness of POD coefficients and mass drift after lifting).
+
+\noindent\textbf{Algorithmic summary.}
+Algorithm~\ref{alg:lstm_rom}
+(Appendix~\ref{app:detailed_algorithms}) summarises the LSTM ROM pipeline.
+
+\noindent\textbf{Comparison to MVAR.}
+MVAR offers fast closed-form training and transparent stability analysis
+(companion-matrix spectral radius), while LSTM provides nonlinear
+capacity at the cost of more hyperparameters and weaker a~priori rollout
+guarantees.
+In crowd-dynamics EF-ROM benchmarks, linear MVARs can match or outperform
+LSTMs in predictive accuracy while being lower-complexity and more
+interpretable~\cite{alvarez2025eqfree}.
+
+The comparison in Chapter~\ref{ch:rom_results} should therefore be
+interpreted primarily as evidence about the effective geometry of the
+aligned latent dynamics---whether they are primarily linear but
+potentially unstable, substantially nonlinear, or insufficiently
+low-dimensional for either surrogate to capture over long
+horizons---rather than as a leaderboard-style predictor comparison.

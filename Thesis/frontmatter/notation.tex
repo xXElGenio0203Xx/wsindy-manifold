@@ -1,0 +1,151 @@
+\chapter*{Notation and Symbols}
+\addcontentsline{toc}{chapter}{Notation and Symbols}
+
+\noindent
+{\small Principal mathematical symbols used throughout this thesis.}
+
+\smallskip
+\begin{multicols}{2}
+{\footnotesize
+\renewcommand{\arraystretch}{0.78}
+\setlength{\tabcolsep}{2pt}
+
+\noindent\textbf{Geometry and Domains}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\Omega=[0,L_x]\!\times\![0,L_y]$ & Computational domain \\
+$\Gamma$ & Boundary of $\Omega$ \\
+$n_x, n_y$ & Density-grid resolution \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{Simulation Parameters}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$N$ & Number of particles \\
+$T_{\mathrm{sim}}$ & Simulation duration (s) \\
+$\Delta t$ & Simulation time-step \\
+$v_0$ & Particle speed \\
+$\eta$ & Angular-noise strength \\
+$R$ & Alignment interaction radius \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{Fields and Densities}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\rho(t,x,y)$ & Agent density field \\
+$p_x,\;p_y$ & Polarisation flux \\
+$\Phi(t,x,y)$ & Morse potential field \\
+$W(r)$ & Morse interaction kernel \\
+$C_a,\;C_r$ & Attraction / repulsion strengths \\
+$\ell_a,\;\ell_r$ & Attraction / repulsion scales \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{Differential Operators}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\partial_t$ & Time derivative \\
+$\nabla,\;\nabla\!\cdot$ & Gradient / divergence \\
+$\Delta$ & Laplacian \\
+$\Delta^2$ & Biharmonic operator \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{Shift Alignment}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\rho_{\mathrm{ref}}$ & Reference density \\
+$(\Delta y_t,\Delta x_t)$ & Per-frame pixel shifts \\
+$\tilde{\rho}$ & Aligned density field \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{Data and Density Estimation}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\{\mathbf{x}_i(t)\}$ & Agent trajectories \\
+$\{\mathbf{v}_i(t)\}$ & Agent velocities \\
+$\sigma_h$ & KDE bandwidth \\
+$g(\cdot)$ & Density transform \\
+$\epsilon$ & Numerical offset \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{POD / SVD}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\mathbf{X}$ & Snapshot matrix \\
+$\overline{\mathbf{X}}$ & Temporal mean field \\
+$\mathbf{U}\boldsymbol{\Sigma}\mathbf{V}^{\!\top}$ & SVD factorisation \\
+$\mathbf{U}_r$ & POD basis (first $r$ columns) \\
+$r$ & Truncation rank \\
+$\xi$ & Energy threshold (0.995) \\
+$\mathbf{y}(t)$ & Latent coordinates \\
+$M$ & Number of training runs \\
+$\Delta_r$ & Temporal subsampling factor \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{MVAR Forecasting}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$p$ & VAR lag order \\
+$\alpha$ & Ridge regularisation \\
+$\mathbf{A}^{(1)},\dots,\mathbf{A}^{(p)}$ & VAR coefficient matrices \\
+$\mathbf{c}$ & VAR intercept / bias \\
+$\mathbf{C}$ & Companion matrix ($pd\!\times\!pd$) \\
+$R^2_{\mathrm{train}}$ & Training $R^2$ \\
+\end{tabular}
+
+\columnbreak
+
+\noindent\textbf{WSINDy (Weak-form PDE Discovery)}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\psi(t,x,y)$ & Compact test function \\
+$\ell_t,\;\ell_x,\;\ell_y$ & Test-function half-widths \\
+$q_t,\;q_x,\;q_y$ & Test-function exponents \\
+$s_t,\;s_x,\;s_y$ & Query-point strides \\
+$\mathbf{G}$ & Weak-form design matrix \\
+$\mathbf{b}$ & Weak-form RHS \\
+$\mathbf{w}$ & Sparse coefficient vector \\
+$\hat{\lambda}$ & MSTLS threshold \\
+$\mathbf{s}$ & Column-norm scaling \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{WSINDy Library}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$(\mathcal{L}_j,\;f_j)$ & (Operator, feature) pair \\
+$f_j(U)$ & Nonlinear feature \\
+$\mathcal{L}_j$ & Differential operator \\
+$p_{\max}$ & Max polynomial power \\
+$\mathbf{m}$ & Active-term mask \\
+$\tilde{\Pi}_m$ & Dominant-balance ratio \\
+$S(\boldsymbol{\ell})$ & Model-selection score \\
+$P_j$ & Cross-scale inclusion freq.\ \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{ETDRK4 Time Integration}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\hat{L}(k_x,k_y)$ & Linear Fourier multiplier \\
+$\hat{N}(u)$ & Nonlinear Fourier multiplier \\
+$k_x,\;k_y$ & Wavenumber grids \\
+$E=e^{\Delta t\,\hat{L}}$ & Full-step exponential \\
+$E_2=e^{\Delta t\,\hat{L}/2}$ & Half-step exponential \\
+$Q$ & $\varphi_1$ weight \\
+$f_1,\;f_2,\;f_3$ & Cox--Matthews weights \\
+\end{tabular}
+
+\vspace{3pt}\noindent\textbf{Metrics and Diagnostics}\\[-2pt]
+\rule{\columnwidth}{0.4pt}\\[2pt]
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.58\columnwidth}@{}}
+$\Psi_{\mathrm{pol}}^n$ & Polarisation order parameter \\
+$R^2$ & Coeff.\ of determination \\
+$R^2_{\mathrm{fc}}$ & Forecast-window mean $R^2$ \\
+$R^2_{\mathrm{wf}}$ & Weak-form $R^2$ \\
+$R^2_{\mathrm{wf},\rho}$, $R^2_{\mathrm{wf},p}$ & Per-equation wf-$R^2$ \\
+$R^2(t)$ & Time-resolved $R^2$ \\
+$\mathrm{RMSE}$ & Root-mean-squared error \\
+$\sigma_{\mathrm{rel}}$ & Relative error \\
+$\Delta M$ & Mass conservation error \\
+$\mathcal{T}_{\mathrm{train}},\;\mathcal{T}_{\mathrm{test}}$ & Train / test intervals \\
+\end{tabular}
+}
+\end{multicols}

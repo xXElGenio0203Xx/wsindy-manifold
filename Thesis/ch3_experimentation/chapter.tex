@@ -1,0 +1,292 @@
+\chapter{Experimentation}
+\label{ch:experimentation}
+
+\section{Parameter choices and dynamics regimes}
+\label{sec:params_fixed}
+
+The experiment catalogue separates four sources of modelling difficulty.
+Table~\ref{tab:main_regimes} lists the nine \emph{primary benchmark regimes}
+that carry the main-text analysis in Chapters~\ref{ch:rom_results}
+and~\ref{ch:wsindy_results}: five constant-speed (CS) regimes spanning
+gas, blackhole, supernova, crystal, and pure-Vicsek behaviours, plus four
+variable-speed (VS) diagnostic variants.
+For the EF-ROM branch, these regimes test the limits of shift-aligned POD
+and latent autoregression under increasing structural complexity.
+For the WSINDy branch, they test whether weak-form identification can
+recover the correct dominant mechanisms (diffusion, attraction, repulsion,
+alignment) in each regime.
+The remaining configurations in the systematic catalogue
+(Appendix~\ref{app:full_regime_catalogue}) provide supplementary coverage
+of force-parameter sweeps and D'Orsogna outcome-targeted families; they are
+used for robustness checks but are not central to the main argument.
+
+To keep comparisons across learning models meaningful, we fix a core set of
+numerical and grid parameters across the full pipeline
+(Table~\ref{tab:fixed_params}) and vary only the physics and stochastic knobs
+that define each dynamics regime.  All configuration files are provided in the accompanying repository.
+
+\begin{table}[ht]
+\centering\small
+\caption{Fixed parameters shared by all dynamics regimes and pipeline stages.}
+\label{tab:fixed_params}
+\begin{tabular}{lll}
+\hline
+Parameter & Value & Code key \\
+\hline
+Number of particles $N$                    & 300                         & \cv{N} \\
+Domain size $L_x = L_y$                    & 25                & \cv{Lx}, \cv{Ly} \\
+Boundary conditions                        & periodic          & \cv{bc} \\
+Time step $\Delta t$                        & 0.04\,s           & \cv{dt} \\
+Training horizon $T_{\mathrm{train}}$       & 20\,s (500 steps)  & \cv{T} \\
+Test horizon $T_{\mathrm{test}}$            & 200\,s            & \cv{test\_sim.T} \\
+Interaction radius $R$                      & 4.0               & \cv{R} \\
+KDE grid resolution $n_x \times n_y$       & $64 \times 64$    & \cv{nx}, \cv{ny} \\
+KDE bandwidth                               & 5.0 grid cells    & \cv{bandwidth} \\
+Snapshot subsampling stride                 & 3                 & \cv{subsample} \\
+Effective ROM time step $\Delta t_{\mathrm{ROM}}$ & $0.12\,$s       & $= \Delta t \times \text{subsample}$ \\
+Fixed POD modes $m$                         & 19                & \cv{fixed\_modes} \\
+Density transform                           & $\sqrt{\cdot}$    & \cv{density\_transform} \\
+Shift alignment                             & enabled (mean ref) & \cv{shift\_align} \\
+Mass post-processing                        & scale             & \cv{mass\_postprocess} \\
+\hline
+\end{tabular}
+\end{table}
+
+The fixed choices in Table~\ref{tab:fixed_params} are shared experimental settings
+rather than per-regime optima.  They are held constant so that later
+differences in ROM or WSINDy performance can be attributed primarily to
+the dynamics rather than to retuning of coarse-graining, reduction, or
+lifting.  In particular, the KDE bandwidth $\sigma{=}5.0$~grid cells was
+selected heuristically to balance feature resolution with noise
+suppression; a systematic study of the coupling between
+coarse-graining scale and identified coefficients remains a subject for
+future inquiry (Section~\ref{sec:future_work}).
+
+The regime catalogue is designed to separate four distinct sources of
+difficulty: coherent transport speed, stochastic disorder, strong nonlocal
+clustering, and state-dependent speed modulation.  Each regime family varies
+one of these axes while holding the others fixed, so that performance
+differences in later chapters can be attributed to specific physical
+mechanisms.
+
+\subsection{NDYN regimes (physics-knob variations)}
+\label{subsec:ndyn_regimes}
+
+Fourteen \emph{NDYN} regimes isolate individual physics knobs---speed, noise
+strength, attraction/repulsion amplitude, force length scale, and speed
+mode---while holding the others at moderate baseline values.
+The repository defines 14 NDYN configurations, of which 11 non-duplicate
+entries are retained in the final systematic catalogue
+(Appendix~\ref{app:full_regime_catalogue}).
+All use Morse
+forces except NDYN08, which disables forces
+entirely (pure Vicsek alignment~\cite{vicsek1995vicsek}).
+
+Pure-alignment and weak-force constant-speed regimes are expected to be the
+most favourable for shift-aligned POD and compact latent autoregression,
+because their density movies are dominated by a single coherent translation
+that the preprocessing largely removes.  Strong-clustering and
+variable-speed regimes, by contrast, are expected to stress both latent
+linearity and sparse closure discovery: the former introduces near-singular
+density spikes, while the latter decouples speed from heading and thereby
+inflates the effective latent dimension.
+
+\subsection{DO regimes (outcome-targeted variations)}
+\label{subsec:do_regimes}
+
+A second set of fourteen \emph{DO} (dynamics-outcome) regimes holds speed
+$v_0{=}3$, noise $\eta{=}0.2$, and interaction parameters fixed except for
+the repulsion coefficient~$C_r$ and repulsion length~$\ell_r$.  This
+sweep targets specific collective behaviours---collective swarms, single and
+double mills, double rings, and escape patterns---following the D'Orsogna
+classification~\cite{dorsogna2006morse}.  The full DO catalogue is provided
+in Appendix~\ref{app:full_regime_catalogue}.
+
+\subsection{Primary benchmark regimes}
+\label{subsec:main_regimes}
+
+The main-text analysis in Chapters~\ref{ch:rom_results}
+and~\ref{ch:wsindy_results} focuses on nine regimes that span the key
+behavioural axes (disorder, attraction, repulsion, equilibrium, alignment only)
+in both constant-speed~(CS) and variable-speed~(VS) variants.
+Table~\ref{tab:main_regimes} lists these regimes with their governing
+parameters; the complete systematic catalogue (11~non-duplicate NDYN
++ 14~DO, most with VS counterparts; 37 produced usable results) is provided in
+Appendix~\ref{app:full_regime_catalogue}.
+
+\begin{table}[ht]
+\centering
+\caption{Primary benchmark regimes used for the main-text analysis.
+  Speed mode is constant-with-forces for CS variants and
+  variable for VS variants.  Shared parameters:
+  $\mu_t{=}0.3$, $r_{\mathrm{cut}}{=}5\max(\ell_r,\ell_a)$; see
+  Table~\ref{tab:fixed_params} for the remaining fixed settings.}
+\label{tab:main_regimes}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrrl}
+\hline
+Label & Nickname & $v_0$ & $\eta$ & $C_a$ & $C_r$ & $\ell_a$ & $\ell_r$ & Behaviour \\
+\hline
+NDYN04      & gas          & 3.0 & 1.5  & 0.5  & 0.2  & 1.5 & 0.5 & disordered gas \\
+NDYN04\_VS  & gas (VS)     & 3.0 & 1.5  & 0.5  & 0.2  & 1.5 & 0.5 & variable-speed gas \\
+NDYN05      & blackhole    & 4.0 & 0.15 & 20.0 & 0.05 & 1.5 & 0.3 & near-singular spike \\
+NDYN05\_VS  & blackhole (VS)& 4.0 & 0.15 & 20.0 & 0.05 & 1.5 & 0.3 & variable-speed collapse \\
+NDYN06      & supernova    & 3.0 & 0.15 & 0.05 & 15.0 & 1.5 & 0.5 & explosive repulsion \\
+NDYN06\_VS  & supernova (VS)& 3.0 & 0.15 & 0.05 & 15.0 & 1.5 & 0.5 & variable-speed explosion \\
+NDYN07      & crystal      & 2.0 & 0.1  & 3.0  & 3.0  & 2.0 & 0.5 & balanced equilibrium \\
+NDYN07\_VS  & crystal (VS) & 2.0 & 0.1  & 3.0  & 3.0  & 2.0 & 0.5 & variable-speed equilibrium \\
+NDYN08      & pure Vicsek  & 3.0 & 0.3  & ---  & ---  & --- & --- & alignment only \\
+\hline
+\end{tabular}}%  end resizebox
+\end{table}
+
+\noindent\textbf{Variable-speed variants.}
+\label{subsec:vs_variants}
+Most NDYN and DO configurations have a companion \emph{\_VS} variant
+that changes exactly one parameter:
+the speed mode from constant-with-forces to variable.  In
+variable-speed mode, Morse forces modulate agent \emph{speed} as well as
+heading, producing non-constant flux fields.  NDYN08 (pure Vicsek, no forces)
+and NDYN14 (already variable-speed) have no \_VS counterpart.
+
+%% ---------------------------------------------------------------------------
+\section{Initial condition families}
+\label{sec:ic_families}
+
+To probe ROM robustness beyond a single ``typical'' microscopic state, we
+generate ensembles of trajectories from four qualitatively different
+\emph{initial position} distributions.  The intent is to
+(i)~span a range of macroscopic organisations (homogeneous, localised,
+symmetric, multi-modal) and (ii)~induce distinct transient regimes under the
+\emph{same} simulator and numerical settings.  All particles evolve on the
+periodic domain $\Omega=[0,L_x]\times[0,L_y]$.
+
+\paragraph{Common velocity initialisation.}
+Across all IC families we draw random headings so that differences in dynamics
+are driven by the initial \emph{spatial} configuration:
+\begin{equation}
+  \theta_i \sim \mathcal{U}(0,2\pi),\qquad
+  \mathbf{v}_i(0)=v_0(\cos\theta_i,\sin\theta_i)^\top,\qquad i=1,\dots,N,
+  \label{eq:ic_vel_init}
+\end{equation}
+so $\|\mathbf{v}_i(0)\|=v_0$ for all particles and the initial polarisation is
+close to zero in expectation.
+
+\paragraph{Uniform IC.}
+\label{subsec:ic_uniform}
+The uniform family represents a maximum-entropy
+baseline with no imposed spatial structure:
+\begin{equation}
+  \mathbf{x}_i(0)\sim \mathcal{U}(\Omega), \qquad i=1,\dots,N,
+  \label{eq:ic_uniform_def}
+\end{equation}
+equivalently $x_i\sim\mathcal{U}(0,L_x)$ and $y_i\sim\mathcal{U}(0,L_y)$
+independently.  The expected coarse density is spatially constant,
+$\mathbb{E}[\rho(\mathbf{r},0)] = N/(L_xL_y)$.  Uniform ICs serve both as
+training diversity and as the baseline for generalisation comparisons.
+
+\paragraph{Single Gaussian IC.}
+\label{subsec:ic_gaussian}
+
+The single-Gaussian family produces a localised
+``blob'' with controllable centre and spread:
+\begin{equation}
+  \mathbf{x}_i(0)\sim \mathcal{N}(\boldsymbol{\mu},\sigma^2 I_2),
+  \qquad i=1,\dots,N.
+  \label{eq:ic_gaussian_def}
+\end{equation}
+The centre $\boldsymbol{\mu}=(\mu_x,\mu_y)$ is drawn from a $4\times 4$ grid
+of interior positions and
+$\sigma^2$ is varied across three values, yielding
+$4\times 4\times 3=48$ parameter combinations with 2 samples each,
+giving 96~training runs per regime.
+
+\paragraph{Ring IC.}
+\label{subsec:ic_ring}
+
+The ring family enforces rotational symmetry at
+$t{=}0$ and typically generates vortex-like macroscopic patterns.  Let
+$\mathbf{c}=(L_x/2,\,L_y/2)$ be the domain centre.  Angles and radii are
+sampled in polar coordinates:
+\begin{equation}
+  \theta_i \sim \mathcal{U}(0,2\pi),\qquad
+  r_i \sim \mathcal{N}(R_{\mathrm{ring}},\,\sigma_r^2),
+  \label{eq:ic_ring_polar}
+\end{equation}
+and mapped to Cartesian positions
+$\mathbf{x}_i(0)=\mathbf{c}+r_i(\cos\theta_i,\sin\theta_i)^\top$, then
+wrapped into~$\Omega$ via modulo.  Training enumerates five radii and
+four widths with 4 samples each, yielding $5\times 4\times 4=80$~training
+runs per regime.
+
+\paragraph{Two-cluster Gaussian IC.}
+\label{subsec:ic_two_clusters}
+
+The two-cluster family generates a bimodal initial
+distribution as an equal-weight mixture of two isotropic Gaussians:
+\begin{equation}
+  p(\mathbf{x})
+  =\tfrac12\,\mathcal{N}(\boldsymbol{\mu}_1,\sigma^2 I_2)
+  +\tfrac12\,\mathcal{N}(\boldsymbol{\mu}_2,\sigma^2 I_2),
+  \label{eq:ic_two_clusters_mix}
+\end{equation}
+implemented by sampling $N_1=\lfloor N/2\rfloor$ particles from the first
+component and $N_2=N-N_1$ from the second.  The centres are placed
+symmetrically about the domain midpoint, separated horizontally by distance~$d$:
+\begin{equation}
+  \boldsymbol{\mu}_1=\Big(\tfrac{L_x}{2}-\tfrac{d}{2},\,\tfrac{L_y}{2}\Big),
+  \qquad
+  \boldsymbol{\mu}_2=\Big(\tfrac{L_x}{2}+\tfrac{d}{2},\,\tfrac{L_y}{2}\Big).
+  \label{eq:ic_two_clusters_centers}
+\end{equation}
+Default values are $d=L_x/3$ and $\sigma=\min(L_x,L_y)/8$.  After sampling,
+positions are wrapped into~$\Omega$ via modulo.  Training enumerates
+four separations and three widths with 7 samples each, yielding
+$4\times 3\times 7=84$~training runs per regime.
+
+%% ---------------------------------------------------------------------------
+\noindent\textbf{Training--test split summary.}
+\label{subsec:train_test_split}
+Table~\ref{tab:ic_split} summarises the per-regime dataset composition.
+The four held-out test runs are intended as balanced regime-level diagnostic
+stress tests across IC families, not as a Monte Carlo estimate of
+out-of-sample uncertainty; they probe whether each model class preserves
+fidelity under qualitatively different initial spatial organisations.
+Every
+regime (NDYN and DO alike) uses the identical IC schedule, so the total
+training set comprises $340 \times 25 = 8{,}500$ simulations across the
+25~base regimes in the experiment catalogue, each with a companion variable-speed variant where applicable.
+
+\begin{table}[htbp]
+\centering
+\caption{Training and test runs per dynamics regime.}
+\label{tab:ic_split}
+\begin{tabular}{lrr}
+\hline
+IC family & Training runs & Test runs \\
+\hline
+Gaussian     & 96 & 1 \\
+Uniform      & 80 & 1 \\
+Ring         & 80 & 1 \\
+Two-clusters & 84 & 1 \\
+\hline
+\textbf{Total} & \textbf{340} & \textbf{4} \\
+\hline
+\end{tabular}
+\end{table}
+
+Each run is assigned a unique identifier from which a deterministic RNG seed
+is derived, ensuring exact reproducibility.  The density movies produced by
+these simulations feed both modeling branches.  For the EF-ROM pipeline they
+are assembled into a global snapshot matrix for POD basis construction, as
+described in Chapter~\ref{ch:global_pod_pipeline}.  For WSINDy, the same
+regime-specific training and test simulations are retained in physical space
+and converted into density and auxiliary multi-fields for weak-form regression.
+
+These IC families expose specific modelling biases:
+uniform ICs probe spurious structure formation; Gaussian ICs test localised
+transport; ring ICs test rotationally organised dynamics not reducible to
+translation; and two-cluster ICs test interaction between separated peaks.
+Ring and two-cluster ICs are expected to be harder for the shift-aligned
+POD pipeline, since translational alignment does not resolve all coherent
+spatial organisation.

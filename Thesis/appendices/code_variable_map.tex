@@ -1,0 +1,152 @@
+% ------------------------------------------------------------------
+%  Appendix: Symbol-to-Code-variable map
+% ------------------------------------------------------------------
+\chapter{Symbol-to-Code-Variable Map}
+\label{app:code_variables}
+
+\noindent
+Table~\ref{tab:code_map} lists the Python variable names used in the
+\texttt{wsindy-manifold} repository for every mathematical symbol defined in
+the Notation table.
+
+\setlength{\LTpre}{4pt}
+\setlength{\LTpost}{0pt}
+\renewcommand{\arraystretch}{0.82}
+
+{\small
+\begin{longtable}{%
+  @{}p{0.22\textwidth}
+  p{0.48\textwidth}
+  p{0.22\textwidth}@{}}
+\caption{Symbol-to-code-variable correspondence for the
+\texttt{wsindy-manifold} repository.}
+\label{tab:code_map}\\
+\toprule
+\textbf{Symbol} & \textbf{Name / Role} & \textbf{Code variable} \\
+\midrule
+\endfirsthead
+
+\toprule
+\textbf{Symbol} & \textbf{Name / Role} & \textbf{Code variable} \\
+\midrule
+\endhead
+
+\midrule
+\multicolumn{3}{r}{\emph{(Continued on next page)}}\\
+\bottomrule
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+% --- Geometry and Domains ---
+\multicolumn{3}{l}{\textbf{Geometry and Domains}}\\
+$\Omega=[0,L_x]\times[0,L_y]$ & Rectangular computational domain & \cv{Lx, Ly} \\
+$\Gamma$ & Boundary of $\Omega$ & \cv{bc} \\
+$n_x, n_y$ & Density-grid resolution & \cv{DENSITY\_NX, DENSITY\_NY} \\
+
+% --- Simulation Parameters ---
+\multicolumn{3}{l}{\textbf{Simulation Parameters}}\\
+$N$ & Number of particles & \cv{N} \\
+$T_{\mathrm{sim}}$ & Simulation duration (s) & \cv{T} \\
+$\Delta t$ & Simulation time-step & \cv{dt} \\
+$v_0$ & Particle speed & \cv{speed} \\
+$\eta$ & Angular-noise strength & \cv{eta} \\
+$R$ & Alignment interaction radius & \cv{R} \\
+
+% --- Fields and Densities ---
+\multicolumn{3}{l}{\textbf{Fields and Densities}}\\
+$\rho(t,x,y)$ & Agent density field & \cv{rho} \\
+$p_x(t,x,y),\;p_y(t,x,y)$ & Polarisation flux & \cv{px, py} \\
+$\Phi(t,x,y)$ & Morse potential field & \cv{Phi} \\
+$W(r)$ & Morse interaction kernel & \cv{W} \\
+$C_a,\;C_r$ & Attraction / repulsion strengths & \cv{Ca, Cr} \\
+$\ell_a,\;\ell_r$ & Attraction / repulsion length scales & \cv{la, lr} \\
+
+% --- Differential Operators ---
+\multicolumn{3}{l}{\textbf{Differential Operators}}\\
+$\Delta = \partial_{xx}+\partial_{yy}$ & Laplacian & \cv{lap} \\
+$\Delta^2$ & Biharmonic operator & \cv{bilap} \\
+
+% --- Shift Alignment ---
+\multicolumn{3}{l}{\textbf{Shift Alignment}}\\
+$\rho_{\mathrm{ref}}$ & Reference density for alignment & \cv{ref} \\
+$(\Delta y_t,\Delta x_t)$ & Per-frame integer pixel shifts & \cv{shifts} \\
+$\tilde{\rho}(t,x,y)$ & Aligned density field & \cv{aligned} \\
+$\hat{\rho}_{\mathrm{ref}},\;\hat{\rho}_{\mathrm{target}}$ & FFTs of reference / target density & \cv{F\_ref, F\_target} \\
+
+% --- Data and Density Estimation ---
+\multicolumn{3}{l}{\textbf{Data and Density Estimation}}\\
+$\{\mathbf{x}_i(t)\}_{i=1}^N$ & Agent trajectories & \cv{traj} \\
+$\{\mathbf{v}_i(t)\}_{i=1}^N$ & Agent velocities & \cv{vel} \\
+$\sigma_h$ & KDE bandwidth & \cv{bandwidth} \\
+$g(\cdot)$ & Density transform & \cv{density\_transform} \\
+$\epsilon$ & Numerical offset for log/sqrt & \cv{density\_transform\_eps} \\
+
+% --- POD / SVD ---
+\multicolumn{3}{l}{\textbf{POD / SVD}}\\
+$\mathbf{X}$ & Snapshot matrix & \cv{X\_all} \\
+$\overline{\mathbf{X}}$ & Temporal mean field & \cv{X\_mean} \\
+$\mathbf{X}'$ & Mean-centred snapshots & \cv{X\_centered} \\
+$\mathbf{U}\boldsymbol{\Sigma}\mathbf{V}^{\!\top}$ & SVD factorisation & \cv{U, S, Vt} \\
+$\mathbf{U}_r$ & POD basis (first $r$ columns) & \cv{U\_r} \\
+$r$ & Truncation rank & \cv{R\_POD} \\
+$\xi$ & Energy threshold & \cv{TARGET\_ENERGY} \\
+$\mathbf{y}(t)$ & Latent coordinates & \cv{X\_latent} \\
+$M$ & Number of training runs & \cv{M} \\
+$\Delta_r$ & Temporal subsampling factor & \cv{ROM\_SUBSAMPLE} \\
+
+% --- MVAR ---
+\multicolumn{3}{l}{\textbf{MVAR Forecasting}}\\
+$p$ & VAR lag order & \cv{P\_LAG} \\
+$\alpha$ & Ridge regularisation parameter & \cv{RIDGE\_ALPHA} \\
+$\mathbf{A}^{(1)},\dots,\mathbf{A}^{(p)}$ & VAR coefficient matrices & \cv{A\_matrices} \\
+$\mathbf{c}$ & VAR intercept / bias & \cv{intercept} \\
+$\mathbf{C}$ & Companion matrix & \cv{C} \\
+$\rho_{\max}$ & Stability threshold & \cv{eigenvalue\_threshold} \\
+$R^2_{\mathrm{train}}$ & Training $R^2$ & \cv{r2\_train} \\
+
+% --- WSINDy ---
+\multicolumn{3}{l}{\textbf{WSINDy (Weak-form PDE Discovery)}}\\
+$\psi(t,x,y)$ & Test function & \cv{psi} \\
+$\ell_t,\;\ell_x,\;\ell_y$ & Test-function half-widths & \cv{ellt, ellx, elly} \\
+$q_t,\;q_x,\;q_y$ & Test-function polynomial exponents & \cv{pt, px, py} \\
+$s_t,\;s_x,\;s_y$ & Query-point strides & \cv{stride\_t, stride\_x, stride\_y} \\
+$\mathbf{G}$ & Weak-form design matrix & \cv{G} \\
+$\mathbf{b}$ & Weak-form RHS & \cv{b} \\
+$\mathbf{w}$ & Sparse coefficient vector & \cv{w} \\
+$\hat{\lambda}$ & MSTLS sparsification threshold & \cv{lambda\_hat} \\
+$\mathbf{s}$ & Column-norm scaling factors & \cv{col\_scale} \\
+\textsc{MSTLS} & Multi-step thresholded LS & \cv{mstls()} \\
+
+% --- WSINDy Library ---
+\multicolumn{3}{l}{\textbf{WSINDy Library}}\\
+$(\mathcal{L}_j,\;f_j)$ & (Operator, feature) pair & \cv{library\_terms} \\
+$f_j(U)$ & Nonlinear feature & \cv{features} \\
+$\mathcal{L}_j$ & Differential operator & \cv{operators} \\
+$p_{\max}$ & Maximum polynomial power & \cv{max\_poly} \\
+$\mathbf{m}$ & Binary active-term mask & \cv{active\_mask} \\
+$\tilde{\Pi}_m$ & Normalised dominant-balance ratio & \cv{Pi\_tilde} \\
+$S(\boldsymbol{\ell})$ & Composite model-selection score & \cv{S\_score} \\
+$P_j$ & Cross-scale inclusion frequency & \cv{inclusion\_prob} \\
+
+% --- ETDRK4 ---
+\multicolumn{3}{l}{\textbf{ETDRK4 Time Integration}}\\
+$\hat{L}(k_x,k_y)$ & Fourier multiplier (linear) & \cv{L\_hat} \\
+$\hat{N}(u)$ & Fourier multiplier (nonlinear) & \cv{N\_hat} \\
+$k_x,\;k_y$ & Wavenumber grids & \cv{KX, KY} \\
+$E=e^{\Delta t\,\hat{L}}$ & Full-step exponential & \cv{E} \\
+$E_2=e^{\Delta t\,\hat{L}/2}$ & Half-step exponential & \cv{E2} \\
+$Q$ & Intermediate-stage $\varphi_1$ weight & \cv{Q} \\
+$f_1,\;f_2,\;f_3$ & Cox--Matthews final-stage weights & \cv{f1, f2, f3} \\
+
+% --- Metrics ---
+\multicolumn{3}{l}{\textbf{Metrics and Diagnostics}}\\
+$R^2$ & Coefficient of determination & \cv{r2\_pod} \\
+$R^2_{\mathrm{wf}}$ & Weak-form $R^2$ & \cv{R2\_wf} \\
+$R^2(t)$ & Time-resolved $R^2$ & \cv{r2\_time} \\
+$\mathrm{RMSE}$ & Root-mean-squared error & \cv{rmse} \\
+$\sigma_{\mathrm{rel}}$ & Relative error & \cv{rel\_error} \\
+$\Delta M$ & Mass conservation error & \cv{mass\_error} \\
+\end{longtable}
+}
