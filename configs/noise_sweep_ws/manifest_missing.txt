@@ -1,0 +1,4 @@
+configs/noise_sweep_ws/NDYN04_gas_eta0p15.yaml
+configs/noise_sweep_ws/NDYN05_blackhole_eta0p05.yaml
+configs/noise_sweep_ws/NDYN05_blackhole_eta0p15.yaml
+configs/noise_sweep_ws/NDYN06_supernova_eta0p50.yaml

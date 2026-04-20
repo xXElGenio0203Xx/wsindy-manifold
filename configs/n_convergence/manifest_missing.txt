@@ -1,0 +1,2 @@
+configs/n_convergence/NDYN08_pure_vicsek_N0500.yaml
+configs/n_convergence/NDYN08_pure_vicsek_N1000.yaml
