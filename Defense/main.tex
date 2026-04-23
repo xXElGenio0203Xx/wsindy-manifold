@@ -1,0 +1,154 @@
+% ======================================================================
+%  Defense Presentation — Beamer
+%  Shift-Aligned ROMs and Weak-Form PDE Discovery
+%  Eugenio D. Macias Orozco — Brown University — 2026
+% ======================================================================
+\documentclass[aspectratio=169, 11pt]{beamer}
+
+% ---------- Theme ----------
+\usetheme{metropolis}
+
+% ── Color palette ────────────────────────────────────────────────────────────
+\definecolor{BrownPrimary}{HTML}{4E3629}   % dark brown
+\definecolor{BrownAccent}{HTML}{C00404}    % red accent
+\definecolor{BrownGold}{HTML}{C09A6B}      % warm gold
+\definecolor{BrownLight}{HTML}{FAF7F5}     % near-white warm
+\definecolor{BrownMid}{HTML}{C4A882}       % light tan (progress bar track)
+
+% ── Structural / frame colours ───────────────────────────────────────────────
+\setbeamercolor{palette primary}{bg=BrownPrimary, fg=white}
+\setbeamercolor{frametitle}{bg=BrownPrimary, fg=white}
+\setbeamercolor{title separator}{fg=BrownGold}
+\setbeamercolor{progress bar}{fg=BrownAccent, bg=BrownMid}
+\setbeamercolor{background canvas}{bg=white}
+\setbeamercolor{normal text}{fg=BrownPrimary!95!black, bg=white}
+\setbeamercolor{alerted text}{fg=BrownAccent}
+\setbeamercolor{structure}{fg=BrownPrimary}
+
+% ── Item / enumerate bullets ─────────────────────────────────────────────────
+\setbeamercolor{item}{fg=BrownAccent}
+\setbeamercolor{subitem}{fg=BrownGold}
+\setbeamercolor{subsubitem}{fg=BrownPrimary!60}
+\setbeamertemplate{itemize item}{\color{BrownAccent}\small$\blacksquare$}
+\setbeamertemplate{itemize subitem}{\color{BrownGold}\footnotesize$\blacktriangleright$}
+\setbeamertemplate{itemize subsubitem}{\color{BrownPrimary!60}\tiny$\bullet$}
+
+% ── Block environments ────────────────────────────────────────────────────────
+\setbeamercolor{block title}{bg=BrownPrimary, fg=white}
+\setbeamercolor{block body}{bg=BrownPrimary!7, fg=BrownPrimary!90!black}
+\setbeamercolor{block title alerted}{bg=BrownAccent, fg=white}
+\setbeamercolor{block body alerted}{bg=BrownAccent!8}
+\setbeamercolor{block title example}{bg=BrownGold!80!BrownPrimary, fg=white}
+\setbeamercolor{block body example}{bg=BrownGold!10}
+\setbeamerfont{block title}{series=\bfseries, size=\normalsize}
+
+% ── Typography ────────────────────────────────────────────────────────────────
+\setbeamerfont{frametitle}{size=\large, series=\bfseries}
+\setbeamerfont{title}{size=\Large, series=\bfseries}
+\setbeamerfont{subtitle}{size=\normalsize}
+\setbeamerfont{author}{size=\normalsize}
+\setbeamerfont{institute}{size=\small}
+\setbeamerfont{caption}{size=\scriptsize}
+\setbeamerfont{caption name}{series=\bfseries, size=\scriptsize}
+\setbeamerfont{footnote}{size=\tiny}
+
+% ---------- Packages ----------
+\usepackage{amsmath,amssymb}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{appendixnumberbeamer}
+\usepackage{multirow}
+\usepackage{colortbl}
+
+% ---------- Figure paths (reuse thesis figures, no duplication) ----------
+\graphicspath{%
+  {../thesis/ch3_experimentation/figures/}%
+  {../Thesis_Figures/}%
+  {../Thesis_Figures/kde_snapshots/}%
+  {../Thesis/ch3_experimentation/figures/}%
+}
+
+% ---------- Macros (from Thesis) ----------
+\newcommand{\M}{\mathcal{M}}
+\newcommand{\gradM}{\nabla_{\!\M}}
+\newcommand{\divM}{\nabla_{\!\M}\!\cdot}
+\newcommand{\LapM}{\Delta_{\!\M}}
+\newcommand{\bvec}{\mathbf{b}}
+\newcommand{\Gmat}{\mathbf{G}}
+\newcommand{\Wmat}{\mathbf{W}}
+\newcommand{\uvec}{\mathbf{u}}
+\newcommand{\pvec}{\mathbf{p}}
+\newcommand{\xvec}{\bm{x}}
+\newcommand{\yvec}{\mathbf{y}}
+\newcommand{\cv}[1]{{\ttfamily\scriptsize #1}}
+
+% ---------- Metadata ----------
+\title{Shift-Aligned Reduced-Order Models and\\
+Weak-Form PDE Discovery for\\
+Interacting-Agent Densities}
+\subtitle{Honors Thesis Defense}
+\author{Eugenio D.\ Macias Orozco}
+\institute{Division of Applied Mathematics, Brown University\\[4pt]
+Advisor: Prof.\ Bj\"orn Sandstede \quad
+Second Reader: Prof.\ Ian Wong}
+\date{April 2026}
+
+% ---------- Navigation / footline ----------
+\setbeamertemplate{navigation symbols}{}
+
+% Suppress metropolis auto-generated section title frames
+\AtBeginSection{}
+
+% ======================================================================
+\begin{document}
+
+% --- Title + outline ---
+\input{frontmatter/titlepage}
+
+% --- Part I framing ---
+\section{Motivation \& Background}
+\input{ch1_introduction/slides}
+\input{ch2_background/slides}
+
+\section{Experimental Design}
+\input{ch3_experimentation/slides}
+
+\section{EF-ROM Pipeline}
+\input{ch6_experimental_protocol/slides}
+\input{ch4_pod_pipeline/slides}
+\input{ch5_latent_rom/slides}
+
+\section{ROM Results}
+\input{ch7_rom_results/slides}
+
+% --- Part II framing ---
+\section{WSINDy Methodology}
+\input{ch8_wsindy_methodology/slides}
+
+\section{WSINDy Results}
+\input{ch9_wsindy_results/slides}
+
+% --- Conclusion ---
+\section{Conclusion}
+\input{ch10_conclusion/slides}
+
+% --- References ---
+\iffalse
+\begin{frame}[allowframebreaks]{References}
+  \footnotesize
+  \bibliographystyle{plainnat}
+  \bibliography{references}
+\end{frame}
+\fi
+
+% --- Backup slides ---
+\appendix
+\input{backup/slides}
+
+\end{document}

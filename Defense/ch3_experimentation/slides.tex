@@ -1,0 +1,133 @@
+% ======================================================================
+%  Ch3 — Experimentation: Benchmark Regimes
+% ======================================================================
+
+\iffalse
+\begin{frame}[shrink=12]{Primary Benchmark Regimes}
+\centering
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lllrrrrrrl}
+\toprule
+Label & Nickname & Mode & $v_0$ & $\eta$ & $C_a$ & $C_r$ & $\ell_a$ & $\ell_r$ & Behaviour \\
+\midrule
+NDYN04      & gas        & CS & 3.0 & 1.5  & 0.5  & 0.2  & 1.5 & 0.5 & disordered gas \\
+NDYN04\_VS  & gas        & VS & 3.0 & 1.5  & 0.5  & 0.2  & 1.5 & 0.5 & variable-speed gas \\
+NDYN05      & blackhole  & CS & 4.0 & 0.15 & 20.0 & 0.05 & 1.5 & 0.3 & near-singular collapse \\
+NDYN05\_VS  & blackhole  & VS & 4.0 & 0.15 & 20.0 & 0.05 & 1.5 & 0.3 & variable-speed collapse \\
+NDYN06      & supernova  & CS & 3.0 & 0.15 & 0.05 & 15.0 & 1.5 & 0.5 & explosive repulsion \\
+NDYN06\_VS  & supernova  & VS & 3.0 & 0.15 & 0.05 & 15.0 & 1.5 & 0.5 & variable-speed explosion \\
+NDYN07      & crystal    & CS & 2.0 & 0.1  & 3.0  & 3.0  & 2.0 & 0.5 & balanced equilibrium \\
+NDYN07\_VS  & crystal    & VS & 2.0 & 0.1  & 3.0  & 3.0  & 2.0 & 0.5 & variable-speed equilibrium \\
+NDYN08      & pure Vicsek& CS & 3.0 & 0.3  & ---  & ---  & --- & --- & alignment only \\
+\bottomrule
+\end{tabular}}
+
+\medskip
+\begin{itemize}
+  \item The nine main-text regimes isolate disorder, attraction, repulsion, equilibrium, and state-dependent speed.
+  \item The VS variants change exactly one modelling choice: the speed mode switches from constant-with-forces to variable.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[shrink=8]{Dataset Design: Four Initial-Condition Families}
+\begin{columns}[T]
+\column{0.58\textwidth}
+\textbf{Shared velocity initialization}
+\[
+  \theta_i \sim \mathcal{U}(0,2\pi),
+  \qquad
+  \mathbf{v}_i(0)=v_0(\cos\theta_i,\sin\theta_i)^\top .
+\]
+
+\textbf{Spatial families}
+\begin{align*}
+  \mathbf{x}_i(0) &\sim \mathcal{U}(\Omega)
+  && \text{uniform}, \\
+  \mathbf{x}_i(0) &\sim \mathcal{N}(\boldsymbol{\mu},\sigma^2 I_2)
+  && \text{single Gaussian}, \\
+  \theta_i &\sim \mathcal{U}(0,2\pi), \quad
+  r_i \sim \mathcal{N}(R_{\mathrm{ring}},\sigma_r^2)
+  && \text{ring}, \\
+  p(\mathbf{x})
+  &=
+  \tfrac12\mathcal{N}(\boldsymbol{\mu}_1,\sigma^2 I_2)
+  +
+  \tfrac12\mathcal{N}(\boldsymbol{\mu}_2,\sigma^2 I_2)
+  && \text{two-cluster}.
+\end{align*}
+
+\smallskip
+These ICs stress homogeneous, localised, rotationally organised, and bimodal density structure under the same simulator.
+
+\column{0.38\textwidth}
+\centering
+\scriptsize
+\begin{tabular}{lrr}
+\toprule
+IC family & Train & Test \\
+\midrule
+Gaussian     & 96 & 1 \\
+Uniform      & 80 & 1 \\
+Ring         & 80 & 1 \\
+Two-clusters & 84 & 1 \\
+\midrule
+\textbf{Total} & \textbf{340} & \textbf{4} \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\small
+\begin{itemize}
+  \item 340 train + 4 held-out tests per regime
+  \item same split for EF-ROM and WSINDy
+  \item one test run per IC family
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}[shrink=8]{What Is Held Fixed Across the Benchmark}
+\small
+\begin{columns}[T]
+\column{0.54\textwidth}
+\[
+  \Delta t_{\mathrm{ROM}}
+  =
+  \Delta t \times \text{subsample}
+  =
+  0.04 \times 3
+  =
+  0.12\ \mathrm{s},
+  \qquad
+  m=19.
+\]
+
+\begin{itemize}
+  \item periodic domain, $N=300$, $64\times 64$ KDE grid
+  \item bandwidth $\sigma=5.0$ grid cells
+  \item shift alignment enabled for every ROM run
+  \item $\sqrt{\cdot}$ density transform used for both MVAR and LSTM
+  \item mass rescaling applied after lifting
+\end{itemize}
+
+\column{0.40\textwidth}
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+Quantity & Value \\
+\midrule
+$L_x=L_y$ & 25 \\
+$\Delta t$ & 0.04 s \\
+$T_{\mathrm{train}}$ & 20 s \\
+$T_{\mathrm{test}}$ & 200 s \\
+Stride & 3 \\
+POD rank & 19 \\
+\bottomrule
+\end{tabular}
+\end{columns}
+
+\medskip
+The thesis keeps these settings fixed so later performance differences can be attributed to the regime physics rather than to per-regime retuning.
+\end{frame}
+\fi

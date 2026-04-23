@@ -1,0 +1,362 @@
+% ======================================================================
+%  Ch9 — WSINDy Results
+% ======================================================================
+
+\iffalse
+\begin{frame}[shrink=8]{Identification Quality Is Measured in Weak Form}
+\small
+\textbf{Weak-form fit}
+\[
+  R^2_{\mathrm{wf}}
+  =
+  1-
+  \frac{\|\mathbf{b}-\mathbf{G}\mathbf{w}^*\|_2^2}
+       {\|\mathbf{b}\|_2^2}
+\]
+
+\textbf{Term importance}
+\[
+  \Pi_m
+  =
+  |w_m^*|\frac{\|\mathbf{G}_{:,m}\|_2}{\|\mathbf{b}\|_2},
+  \qquad
+  \tilde\Pi_m
+  =
+  \Pi_m / \max_j \Pi_j .
+\]
+
+\textbf{Operational strong-identification criteria from the thesis}
+\begin{itemize}
+  \item continuity backbone coefficient in $[-1.01,-0.95]$
+  \item physically plausible retained signs
+  \item backbone terms stable across six support-scale triplets
+  \item $R^2_{\mathrm{wf},\rho}>0.99$ and momentum quality high enough to support the mechanism pattern
+\end{itemize}
+
+\[
+  \text{strong identification}
+  \not\Rightarrow
+  \text{adequate closure}
+\]
+\end{frame}
+
+\begin{frame}{WSINDy Headline: Forecast Quality vs Identification Quality}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_headline_summary.pdf}
+\end{frame}
+\fi
+
+\begin{frame}[shrink=34]{Per-Regime Identification Verdict}
+\centering
+\normalsize$R^2_{\mathrm{wf},\rho} = 1 - \|\mathbf{b}_\rho - \mathbf{G}_\rho\mathbf{w}^*_\rho\|^2\,/\,\|\mathbf{b}_\rho\|^2$\\[0.4em]
+\small
+\begin{tabular}{lcccl}
+\toprule
+\textbf{Regime} & $R^2_{\mathrm{wf},\rho}$ & $R^2_{\mathrm{wf},p}$ & \textbf{Closure} & \textbf{Verdict} \\
+\midrule
+gas (CS)        & 0.9998 & 0.69 & partial    & \cellcolor{green!25}strong \\
+blackhole (CS)  & 0.9995 & 0.79 & partial    & \cellcolor{green!25}strong \\
+supernova (CS)  & 0.9990 & 0.34 & inadequate & \cellcolor{yellow!40}moderate \\
+crystal (CS)    & 0.9999 & 0.58 & partial    & \cellcolor{green!25}strong \\
+pure Vicsek     & 1.0000 & 0.82 & adequate   & \cellcolor{green!25}strong \\
+\midrule
+gas\_VS         & 0.9990 & 0.74 & partial    & \cellcolor{green!25}strong \\
+blackhole\_VS   & 0.9520 & 0.21 & inadequate & \cellcolor{orange!35}partial \\
+supernova\_VS   & 0.9970 & 0.39 & inadequate & \cellcolor{yellow!40}moderate \\
+crystal\_VS     & 0.9999 & 0.86 & inadequate & \cellcolor{green!25}strong \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\begin{itemize}
+  \item The continuity backbone is recovered in all nine regimes.
+  \item The main deterioration is in the momentum equations, not in the density equation.
+  \item Closure is reported separately because identification and rollout can decouple.
+\end{itemize}
+\smallskip
+{\footnotesize\textbf{Verdict key:}\enspace $\checkmark\checkmark$~\textbf{strong}\enspace $\checkmark$~\textbf{moderate}\enspace $\sim$~\textbf{partial}/\textbf{adequate}\enspace $\times$~\textbf{inadequate}}
+\smallskip
+{\small\textbf{Strong ID:} $\;$\texttt{div\_p} coeff $\in[-1.01,-0.95]$;\;$R^2_{\mathrm{wf},\rho}>0.99$;\; plausible signs;\; support stable across 6 test-function scales}
+\end{frame}
+
+\begin{frame}[shrink=10]{Pure Vicsek: WSINDy Validates against Kinetic Theory}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Mean-field kinetic theory predicts:}
+\[
+  \partial_t\rho + v_0\nabla\!\cdot\mathbf{p} = 0
+\]
+\[
+  (p_x)_t = \underbrace{\beta\,\partial_x\rho}_{\text{pressure}}
+           + \underbrace{\delta\,\nabla\!\cdot(p_x\mathbf{p})}_{\text{self-advection}}
+\]
+{\small $W\equiv 0$ (no Morse), $\beta=v_0^2/\bar\rho$, $\delta=v_0$}
+\column{0.50\textwidth}
+\textbf{WSINDy recovers (no tuning):}
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p}
+\]
+\[
+  (p_x)_t = \beta\,\partial_x\rho + \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+{\small $R^2_{\mathrm{wf},\rho}=1.000,\enspace R^2_{\mathrm{wf},p}=0.82$}\\[0.3em]
+{\small Normalised balance: $\Pi_{\delta}=1.000,\;\Pi_{\beta}=0.963$}\\[0.1em]
+{\small No spurious Morse term selected ($\Pi_{\Phi}<\lambda$).}
+\end{columns}
+\centering\medskip\large\textbf{Correct leading-order mechanism recovery from data alone.}
+\end{frame}
+
+\begin{frame}[shrink=4]{Gas Regime: Discovered PDE}
+\large\centering
+\textbf{Density equation}
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi)
+\]
+\textbf{Momentum equation}
+\[
+  (p_x)_t = \beta\,\partial_x\rho + \nu\,\Delta p_x + \gamma\,\rho\,\partial_x\Phi + \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+\normalsize\medskip
+$R^2_{\mathrm{wf},\rho}=0.9998$,\quad $R^2_{\mathrm{wf},p}=0.69$\\[0.3em]
+\small\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{llc}
+\toprule
+\textbf{Term} & \textbf{Physics} & $\Pi_m/\Pi_{\max}$ \\
+\midrule
+$\rho\,\partial_x\Phi$ & Morse aggregation & 1.000 \\
+$\partial_x\rho$ & pressure & 0.852 \\
+$\nabla\!\cdot(p_x\mathbf{p})$ & self-advection & 0.418 \\
+$\Delta p_x$ & diffusion & 0.128 \\
+\bottomrule
+\end{tabular}\quad
+{\small $\Pi_m = |w_m^*|\,\|\mathbf{G}_{:,m}\|_2/\|\mathbf{b}\|_2$}
+\end{frame}
+
+% ---- NEW: dominant balance ratios ----
+\iffalse
+\begin{frame}[shrink=6]{Dominant Balance: Term Importance Hierarchy}
+\small
+\textbf{Normalised contribution of term $m$}
+\[
+  \Pi_m
+  =
+  |w_m^*|\,\frac{\|\mathbf{G}_{:,m}\|_2}{\|\mathbf{b}\|_2},
+  \qquad
+  \tilde\Pi_m = \Pi_m / \max_j \Pi_j .
+\]
+
+\medskip
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Gas (CS) — momentum $p_x$}
+\centering\small
+\begin{tabular}{lc}
+\toprule
+Term & $\tilde\Pi$ \\
+\midrule
+\texttt{rho\_dx\_Phi}   & $1.000$ \\
+\texttt{dx\_rho}        & $0.852$ \\
+\texttt{div\_px\_p}     & $0.418$ \\
+\texttt{lap\_px}        & $0.128$ \\
+\texttt{p\_sq\_px}      & $0.021$ \\
+\bottomrule
+\end{tabular}
+
+\column{0.48\textwidth}
+\textbf{Pure Vicsek — momentum $p_x$}
+\centering\small
+\begin{tabular}{lc}
+\toprule
+Term & $\tilde\Pi$ \\
+\midrule
+\texttt{div\_px\_p}     & $1.000$ \\
+\texttt{dx\_rho}        & $0.963$ \\
+\bottomrule
+\end{tabular}
+
+\medskip\footnotesize
+Morse absent $\Rightarrow$ pressure+advection only.
+Library correctly identifies no Morse term.
+\end{columns}
+
+\medskip
+Morse forcing ($\texttt{rho\_dx\_Phi}$) dominates in attraction regimes;
+pure Vicsek is purely pressure-and-self-advection.
+\end{frame}
+\fi
+
+\iffalse
+\begin{frame}[shrink=10]{Representative Discovered PDEs}
+\footnotesize
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Gas}
+\[
+  \rho_t
+  =
+  -c_1\nabla\!\cdot\mathbf{p}
+  -c_2\nabla\!\cdot(\rho\nabla\Phi)
+\]
+\[
+  (p_x)_t
+  =
+  \beta\,\partial_x\rho
+  +
+  \nu\,\Delta p_x
+  +
+  \gamma\,\rho\,\partial_x\Phi
+  +
+  \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+
+\textbf{Blackhole}
+\[
+  \rho_t
+  =
+  -c_1\nabla\!\cdot\mathbf{p}
+  +
+  \epsilon\,\Delta\rho
+  +
+  \zeta\,\Delta(\rho^2)
+\]
+\[
+  (p_x)_t
+  =
+  \nu\,\Delta p_x
+  +
+  \gamma\,\rho\,\partial_x\Phi
+  +
+  \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+
+\column{0.48\textwidth}
+\textbf{Supernova}
+\[
+  \rho_t
+  =
+  -c_1\nabla\!\cdot\mathbf{p}
+\]
+\[
+  (p_x)_t
+  =
+  -\alpha\,p_x
+  +
+  \gamma\,\rho\,\partial_x\Phi
+  +
+  \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+
+\textbf{Pure Vicsek}
+\[
+  \rho_t
+  =
+  -c_1\nabla\!\cdot\mathbf{p}
+\]
+\[
+  (p_x)_t
+  =
+  \beta\,\partial_x\rho
+  +
+  \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+\end{columns}
+
+\medskip
+The $p_y$ equation is symmetric under $x\leftrightarrow y$.
+\end{frame}
+\fi
+
+\iffalse
+\begin{frame}[shrink=5]{Identified Mechanisms by Regime}
+\footnotesize
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Gas (CS):} continuity $+$ Morse aggregation $+$ self-advection
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi)
+\]
+\[
+  (p_x)_t = \beta\,\partial_x\rho + \nu\,\Delta p_x + \gamma\,\rho\partial_x\Phi + \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+\textbf{Blackhole (CS):} Morse collapse $+$ diffusion, missing saturation
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p} + \epsilon\,\Delta\rho + \zeta\,\Delta(\rho^2)
+\]
+\textbf{Crystal (CS):} balanced Morse $+$ pressure
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi)
+\]
+
+\column{0.50\textwidth}
+\textbf{Pure Vicsek:} pressure $+$ self-advection, \emph{no Morse}
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p}
+\]
+\[
+  (p_x)_t = \beta\,\partial_x\rho + \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+\textbf{Supernova (CS):} repulsive Morse $+$ drag
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p}
+\]
+\[
+  (p_x)_t = -\alpha\,p_x + \gamma\,\rho\,\partial_x\Phi + \delta\,\nabla\!\cdot(p_x\mathbf{p})
+\]
+
+\end{columns}
+\end{frame}
+\fi
+
+\iffalse
+\begin{frame}{Density Equation: Cross-Regime Term Selection}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_regime_heatmap_rho.pdf}
+\end{frame}
+\fi
+
+\begin{frame}{Momentum Equation: Cross-Regime Term Selection}
+\centering
+\includegraphics[width=\textwidth,height=0.74\textheight,keepaspectratio]{thesis_regime_heatmap_px.pdf}\\[4pt]
+{\small\textbf{Self-advection and pressure are universal; Morse forcing discriminates attraction/repulsion regimes.}}
+\end{frame}
+
+\iffalse
+\begin{frame}{Identified Coefficient Magnitudes: Cross-Regime View}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_wsindy_coefficients.pdf}
+\end{frame}
+\fi
+
+\begin{frame}[shrink=4]{Identification Success, Closure Failure}
+\begin{columns}[T]
+\column{0.54\textwidth}
+\normalsize
+\textbf{What WSINDy finds:} sparse effective laws with $R^2_{\mathrm{wf},\rho}{>}0.999$:
+\[
+  \rho_t \approx -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi).
+\]
+Under autonomous rollout, the attractive feedback loop is:
+\[
+  \rho\uparrow
+  \Rightarrow
+  |\nabla\Phi|\uparrow
+  \Rightarrow
+  \rho\,\partial_x\Phi\uparrow
+  \Rightarrow
+  \text{further aggregation}
+\]
+\textbf{Missing:} a saturation/congestion term to arrest the feedback.\\[0.5em]
+\begin{itemize}\normalsize\setlength{\itemsep}{0.3em}
+  \item Gas \& crystal: \textbf{strong} id, \textbf{partial} closure
+  \item Blackhole (CS): \textbf{strong} id, \textbf{partial} closure
+  \item Pure Vicsek: \textbf{strong} id, \textbf{adequate} closure
+  \item Blackhole VS: \textbf{partial} id, \textbf{inadequate} closure
+\end{itemize}
+\column{0.44\textwidth}
+\centering
+{\small x-slices through density peak: top = truth, bottom = unclosed rollout}\\[-1pt]
+{\footnotesize\textit{(1D synthetic slice through $\rho$ peak; qualitative blowup pattern holds in 2D)}}
+\includegraphics[width=\textwidth,height=0.62\textheight,keepaspectratio]{thesis_closure_blowup.pdf}\\[-2pt]
+{\scriptsize \textbf{Id is strong} ($R^2_{\mathrm{wf},\rho}{>}0.999$) --- missing saturation causes blowup}
+\end{columns}
+\end{frame}

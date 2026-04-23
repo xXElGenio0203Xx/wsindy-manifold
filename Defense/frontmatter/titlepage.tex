@@ -1,0 +1,87 @@
+% --- Title slide ---
+{
+\setbeamertemplate{footline}{}
+\setbeamertemplate{navigation symbols}{}
+\begin{frame}[noframenumbering,plain]
+  % Full dark-brown background
+  \begin{tikzpicture}[remember picture, overlay]
+    \fill[BrownPrimary]
+      (current page.south west) rectangle (current page.north east);
+    % Gold accent stripe across the bottom
+    \fill[BrownGold]
+      ([yshift=0.055\paperheight]current page.south west)
+      rectangle
+      ([yshift=0.080\paperheight]current page.south east);
+    % Thin red hairline just above gold stripe
+    \fill[BrownAccent]
+      ([yshift=0.077\paperheight]current page.south west)
+      rectangle
+      ([yshift=0.082\paperheight]current page.south east);
+  \end{tikzpicture}
+
+  \vspace*{0.18cm}
+
+  % Seal
+  \IfFileExists{brown_seal.png}{%
+    \includegraphics[height=1.90cm]{brown_seal.png}%
+  }{%
+    \IfFileExists{../brown_seal.png}{%
+      \includegraphics[height=1.90cm]{../brown_seal.png}%
+    }{}%
+  }
+
+  \vspace{0.22cm}
+  % Thin gold rule
+  {\color{BrownGold}\rule{0.72\textwidth}{0.6pt}}
+
+  \vspace{0.20cm}
+  {\color{white}\Large\bfseries
+    Shift-Aligned Reduced-Order Models and\\[0.15em]
+    Weak-Form PDE Discovery for\\[0.15em]
+    Interacting-Agent Densities from Noisy Trajectories}
+
+  \vspace{0.22cm}
+  {\color{BrownGold!80!white}\normalsize Honors Thesis Defense}
+
+  \vspace{0.28cm}
+  % Thin white rule before author block
+  {\color{white!40!BrownPrimary}\rule{0.55\textwidth}{0.3pt}}
+
+  \vspace{0.16cm}
+  {\color{white}\normalsize Eugenio D.\ Macias Orozco}\\[0.10cm]
+  {\color{white!75!BrownPrimary}\small
+    Division of Applied Mathematics,\ Brown University}\\[0.06cm]
+  {\color{white!65!BrownPrimary}\small
+    Advisor: Prof.\ Bj\"orn Sandstede\enspace·\enspace
+    Second Reader: Prof.\ Ian Wong\enspace·\enspace
+    April 2026}
+\end{frame}
+}
+
+% --- Outline suppressed for 20-min talk ---
+\iffalse
+\begin{frame}{Outline}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\large
+\begin{enumerate}\setlength{\itemsep}{0.45em}
+  \item \textbf{Motivation \& Background}
+  \item \textbf{Experimental Design}
+  \item \textbf{EF-ROM Pipeline}
+  \item \textbf{ROM Results}
+  \item \textbf{WSINDy Methodology}
+  \item \textbf{WSINDy Results}
+  \item \textbf{Conclusion}
+\end{enumerate}
+\column{0.43\textwidth}
+\small\color{gray}\vspace{0.9em}
+Closure problem, KDE fields\\[0.3em]
+Nine regimes, IC families\\[0.3em]
+Shift-align, POD, MVAR/LSTM\\[0.3em]
+Forecast accuracy, VS limit\\[0.3em]
+Weak-form SINDy, MSTLS\\[0.3em]
+PDE identification, closure gap\\[0.3em]
+~
+\end{columns}
+\end{frame}
+\fi

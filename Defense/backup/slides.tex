@@ -1,0 +1,336 @@
+% ======================================================================
+%  Backup Slides (for Q&A)
+% ======================================================================
+
+\begin{frame}[noframenumbering]{Backup Slides}
+  \centering\Large
+  Additional material for discussion
+\end{frame}
+
+% ------ Backup A: Density coefficient cross-table ------
+\begin{frame}[noframenumbering,shrink=2]{Density Equation: Identified Coefficients Across All Regimes}
+\footnotesize\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l ccccc|cccc}
+\toprule
+\textbf{Term} & \textbf{gas} & \textbf{BH} & \textbf{SN} & \textbf{CR} & \textbf{PV} & \textbf{gVS} & \textbf{BH\_VS} & \textbf{SN\_VS} & \textbf{CR\_VS} \\
+\midrule
+\texttt{div\_p}
+  & $-0.994$ & $-0.986$ & $-0.984$ & $-1.001$ & $-0.995$
+  & $-0.987$ & $-0.950$ & $-0.978$ & $-0.991$ \\
+\texttt{div\_rho\_gradPhi}
+  & $-0.008$ & $-2{\times}10^{-4}$ & --- & $-2{\times}10^{-4}$ & ---
+  & $-0.006$ & $-3{\times}10^{-4}$ & --- & $-8{\times}10^{-4}$ \\
+\texttt{lap\_rho}  & --- & $+0.007$ & --- & --- & --- & --- & --- & --- & --- \\
+\texttt{lap\_rho2} & --- & $-0.027$ & --- & --- & $+0.018$ & --- & --- & $+0.008$ & --- \\
+\texttt{lap\_p\_sq}& --- & $+0.002$ & --- & --- & $-0.002$ & --- & $-3{\times}10^{-5}$ & $-4{\times}10^{-4}$ & --- \\
+\bottomrule
+\end{tabular}}
+\medskip
+\texttt{div\_p} $\approx -1$ is the universal continuity backbone.
+\end{frame}
+
+% ------ Backup B: Momentum coefficient cross-table ------
+\begin{frame}[noframenumbering,shrink=2]{Momentum Equation: Identified Coefficients Across All Regimes}
+\footnotesize\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l ccccc|cccc}
+\toprule
+\textbf{Term} & \textbf{gas} & \textbf{BH} & \textbf{SN} & \textbf{CR} & \textbf{PV}
+              & \textbf{gVS} & \textbf{BH\_VS} & \textbf{SN\_VS} & \textbf{CR\_VS} \\
+\midrule
+\texttt{px}            & --- & --- & $-0.219$ & --- & --- & $-0.014$ & --- & $-0.077$ & --- \\
+\texttt{p\_sq\_px}     & $4{\times}10^{-4}$ & $8{\times}10^{-5}$ & $+0.002$ & $+0.001$ & ---
+                       & --- & --- & $-0.008$ & $-6{\times}10^{-5}$ \\
+\texttt{dx\_rho}       & $-3.173$ & --- & --- & $-2.179$ & $-0.840$ & $-4.379$ & --- & $-1.819$ & --- \\
+\texttt{lap\_px}       & $-0.023$ & $-0.048$ & --- & --- & --- & $-0.037$ & $-0.117$ & $-0.043$ & $-0.162$ \\
+\texttt{rho\_dx\_Phi}  & $+0.916$ & $-0.005$ & $+0.214$ & $+0.104$ & ---
+                       & $+1.331$ & $-0.033$ & $-0.181$ & $-0.043$ \\
+\texttt{div\_px\_p}    & $-0.348$ & $-0.369$ & $-0.499$ & $-0.399$ & $-0.693$
+                       & $-0.486$ & $-0.161$ & $-1.419$ & $-0.495$ \\
+\texttt{dx\_rho2}      & --- & --- & --- & --- & --- & --- & $-0.342$ & --- & --- \\
+\bottomrule
+\end{tabular}}
+\medskip
+\texttt{rho\_dx\_Phi} sign: $+$ attraction, $-$ repulsion. \texttt{div\_px\_p} universally retained.
+\end{frame}
+
+% ------ Backup 1: Full Regime Parameters ------
+\begin{frame}[noframenumbering,shrink=12]{Full Regime Parameter Table}
+\centering
+{\footnotesize
+\begin{tabular}{llrrrrrrl}
+\toprule
+Label & Nickname & $v_0$ & $\eta$ & $C_a$ & $C_r$ & $\ell_a$ & $\ell_r$ & Behaviour \\
+\midrule
+NDYN04      & gas          & 3.0 & 1.5  & 0.5  & 0.2  & 1.5 & 0.5 & disordered gas \\
+NDYN04\_VS  & gas (VS)     & 3.0 & 1.5  & 0.5  & 0.2  & 1.5 & 0.5 & variable-speed gas \\
+NDYN05      & blackhole    & 4.0 & 0.15 & 20.0 & 0.05 & 1.5 & 0.3 & near-singular spike \\
+NDYN05\_VS  & blackhole (VS)& 4.0 & 0.15 & 20.0 & 0.05 & 1.5 & 0.3 & variable-speed collapse \\
+NDYN06      & supernova    & 3.0 & 0.15 & 0.05 & 15.0 & 1.5 & 0.5 & explosive repulsion \\
+NDYN06\_VS  & supernova (VS)& 3.0 & 0.15 & 0.05 & 15.0 & 1.5 & 0.5 & variable-speed explosion \\
+NDYN07      & crystal      & 2.0 & 0.1  & 3.0  & 3.0  & 2.0 & 0.5 & balanced equilibrium \\
+NDYN07\_VS  & crystal (VS) & 2.0 & 0.1  & 3.0  & 3.0  & 2.0 & 0.5 & variable-speed equilibrium \\
+NDYN08      & pure Vicsek  & 3.0 & 0.3  & ---  & ---  & --- & --- & alignment only \\
+\bottomrule
+\end{tabular}
+}
+
+\bigskip
+Shared: $N{=}300$, $L{=}25$, $\Delta t{=}0.04$\,s,
+$R{=}4.0$, KDE $64{\times}64$, $\sigma{=}5.0$ grid cells,
+stride${=}3$ ($\Delta t_{\text{ROM}}{=}0.12$\,s), $r{=}19$ POD modes.
+\end{frame}
+
+% ------ Backup 3: Eigenvalue Spectra ------
+\begin{frame}[noframenumbering,shrink=4]{MVAR Companion Matrix Eigenvalue Spectra}
+\centering
+\includegraphics[width=0.75\textwidth]{appE_eigenvalue_spectra.pdf}
+
+\medskip
+Post-hoc spectral radius clamping stabilizes 2--3 modes but does not recover forecast accuracy --- the loss is structural, not a stability artifact.
+\end{frame}
+
+% ------ Backup 5: Noise Robustness ------
+\begin{frame}[noframenumbering,shrink=8]{Noise Robustness (Appendix)}
+\centering
+\includegraphics[width=0.82\textwidth,height=0.74\textheight,keepaspectratio]{noise_coeff_stability.pdf}
+
+\medskip
+Completed noise-sweep WSINDy runs retain the same continuity backbone and a
+highly stable active set across the tested noise amplitudes.
+\end{frame}
+
+% ------ Backup 7: MSTLS Algorithm ------
+\begin{frame}[noframenumbering]{MSTLS Algorithm: Sequential Thresholding}
+
+\begin{enumerate}
+  \item \textbf{Initialize:} OLS fit $\hat{\mathbf{w}} = \Gmat^\dagger\bvec$
+  \item \textbf{Compute} dominant-balance ratios:
+    $\Pi_m = \frac{|w_m|\,\|\mathbf{g}_m\|_2}{\|\bvec\|_2}$
+  \item \textbf{Threshold:} set $w_m{=}0$ if $\Pi_m < \alpha\,\max_j\Pi_j$ \quad ($\alpha{=}0.1$)
+  \item \textbf{Re-fit} on active support: $\hat{\mathbf{w}}_{\mathcal{S}} = \Gmat_{\mathcal{S}}^\dagger\bvec$
+  \item \textbf{Iterate} steps 2--4 until support stabilizes
+  \item \textbf{Cross-scale:} repeat for 6 support-scale triplets, retain intersection
+\end{enumerate}
+
+\bigskip
+Dominant-balance criterion (Callaham et al.\ 2021) normalizes by column norm, preventing large-scale terms from dominating.
+\end{frame}
+
+% ======================================================================
+%  Q&A Backup: slides removed from main deck
+% ======================================================================
+
+% ------ Q&A: Closure Problem Definition ------
+\begin{frame}[noframenumbering,shrink=6]{From Agents to PDEs: The Closure Problem}
+\small
+From microscopic trajectories the thesis observes $\mathbf{q}=(\rho,p_x,p_y,\Phi)$
+with $\Phi=W*\rho$.
+The density must satisfy a \textbf{conservation law}:
+\[ \partial_t\rho + \nabla\!\cdot\mathbf{j}=0. \]
+The \textbf{closure problem}: identify an effective flux law
+$\mathbf{j}_{\boldsymbol\theta}[\rho,\mathbf{p},\Phi]$
+such that the above matches data.
+
+\medskip Scalar density alone does not close: alignment survives in $\mathbf{p}$; Morse interactions survive in $\Phi$.
+\end{frame}
+
+% ------ Q&A: MVAR Math ------
+\iffalse
+\begin{frame}[noframenumbering,shrink=8]{MVAR in Aligned POD Coordinates}
+\footnotesize
+\[ \yvec(t_k)=A_0+\sum_{j=1}^{w}A_j\,\yvec(t_{k-j})+\varepsilon(t_k), \qquad w=5,\;r=19 \]
+Ridge fit: $\hat B=(X^\top X+\alpha\Gamma)^{-1}X^\top Y$, $\alpha=10^{-4}$.
+Closed-loop rollout via companion matrix; $\rho(\mathcal{A}_{\mathrm{comp}})<1$ favours bounded rollout.
+\[ p_{\mathrm{MVAR}}=r+wr^2=19+5\cdot19^2=1{,}824. \]
+\begin{itemize}
+  \item Interpretable linear finite-memory hypothesis in latent space
+  \item Effective lag window $= 0.6$\,s; closed-form training; runtime $<1$\,min
+\end{itemize}
+\end{frame}
+\fi
+
+% ------ Q&A: LSTM Architecture ------
+\iffalse
+\begin{frame}[noframenumbering,shrink=8]{LSTM as a Nonlinear Diagnostic}
+\footnotesize
+2-layer LSTM, hidden width $h=128$, LayerNorm + residual readout.
+\[ p_{\mathrm{LSTM}}=211{,}091 \approx 116\times p_{\mathrm{MVAR}}. \]
+\begin{itemize}
+  \item Used as a nonlinear comparator, not the primary thesis model
+  \item If LSTM does not beat MVAR, aligned latent dynamics are near-linear
+\end{itemize}
+\end{frame}
+\fi
+
+% ------ Q&A: Shift Predictability ------
+\iffalse
+\begin{frame}[noframenumbering]{Shift Predictability Is the Structural Ceiling}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_shift_ar.pdf}
+\end{frame}
+\fi
+
+% ------ Q&A: Forecast Degradation ------
+\begin{frame}[noframenumbering]{Forecast Degradation Over Time}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_r2_degradation.pdf}
+\end{frame}
+
+% ------ Q&A: Full Degradation Suite (moved from main deck) ------
+\begin{frame}[noframenumbering,shrink=6]{$R^2$ Degradation Over Time: Full Experiment Suite}
+\centering
+{\small Faint traces = individual runs;\enspace bold = median;\enspace shading = IQR.\enspace Diverged LSTM runs ($R^2<{-}2$) clipped at axis.}\\[4pt]
+\includegraphics[width=\textwidth,height=0.74\textheight,keepaspectratio]{appF_r2_degradation_combined.pdf}\\[3pt]
+{\small \textbf{Blue (MVAR):} median stays near 1 for CS, degrades for VS.\quad
+\textbf{Red (LSTM):} higher variance across all groups; faster degradation on VS and blackhole.}
+\end{frame}
+
+% ------ New Backup 1: Mass Preservation ------
+\begin{frame}[noframenumbering]{Mass Preservation under Linear POD}
+\centering
+\normalsize
+\textbf{Theorem (linear POD preserves mass)}\\[0.8em]
+If $\mathbf{x}_k = U_m\mathbf{y}_k + \boldsymbol{\mu}$ and $\mathbf{1}^\top U_m = \mathbf{0}$ (mean-centred basis), then
+\[
+  \mathbf{1}^\top\mathbf{x}_k = \mathbf{1}^\top\boldsymbol{\mu} = M_0 \quad\forall\,k,
+\]
+so the lifted reconstruction has the same total mass as the training mean.
+
+\medskip
+\begin{itemize}
+  \item In practice, the $\sqrt{\cdot}$ transform breaks linearity: reconstruction requires mass rescaling $\mathcal{S}_{M_0}$.
+  \item Mass overshoot in any lifted snapshot is $\le 0.3\%$ in all tested regimes.
+\end{itemize}
+\end{frame}
+
+% ------ New Backup 2: Weak-Form Design Matrix Assembly ------
+\begin{frame}[noframenumbering,shrink=4]{Weak-Form Design Matrix Assembly}
+\small
+\[
+  b_k = -\!\!\sum_{i,j,n}\!\!\partial_t\psi_k(x_i,y_j,t_n)\cdot u_{ij}^n\;\Delta x\,\Delta y\,\Delta t,
+\]
+\[
+  G_{k,m} = \!\!\sum_{i,j,n}\!\!(\mathcal{L}_m^*[\psi_k])(x_i,y_j,t_n)\cdot f_m(u_{ij}^n)\;\Delta x\,\Delta y\,\Delta t.
+\]
+\medskip
+\begin{itemize}
+  \item Separable test functions $\psi_k = \phi_x\phi_y\phi_t$ make convolutions efficient via FFT.
+  \item The resulting system $\mathbf{b}=\mathbf{G}\mathbf{w}$ is tall-and-thin: many weak-integral constraints, few candidate library terms.
+  \item Test-centre locations $(x_k^0,y_k^0,t_k^0)$ are sampled uniformly inside the spatio-temporal domain.
+\end{itemize}
+\end{frame}
+
+% ------ New Backup 3: Dominant-Balance Thresholding ------
+\begin{frame}[noframenumbering]{Dominant-Balance Thresholding (MSTLS)}
+\normalsize
+Term $m$ is retained if its normalised contribution exceeds the threshold:
+\[
+  \Pi_m = \frac{|w_m|\;\|\mathbf{G}_{:,m}\|_2}{\|\mathbf{b}\|_2},
+  \qquad
+  \hat\lambda \;\le\; \Pi_m \;\le\; \tfrac{1}{\hat\lambda}.
+\]
+\medskip
+Steps:
+\begin{enumerate}
+  \item OLS initialisation: $\hat{\mathbf{w}} = \mathbf{G}^\dagger\mathbf{b}$
+  \item Compute $\Pi_m$ for all terms; threshold at $\hat\lambda\cdot\max_j\Pi_j$
+  \item Re-fit on active support; iterate until support stabilises
+  \item Repeat for 6 support-scale triplets; retain intersection
+\end{enumerate}
+\end{frame}
+
+% ------ New Backup 4: Synthetic Closure with Saturation ------
+\begin{frame}[noframenumbering,shrink=4]{Synthetic Closure Model: the Missing Saturation}
+\normalsize
+\textbf{From WSINDy (identified):}\quad $R^2_{\mathrm{wf},\rho} > 0.99$
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi)
+\]
+\textbf{For stable autonomous rollout (needed):}
+\[
+  \rho_t = -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi) - \gamma\,\Delta(\rho^2)
+\]
+The $-\gamma\,\Delta(\rho^2)$ term is a nonlinear diffusion that arrests the Morse aggregation feedback
+$\rho\uparrow\;\Rightarrow\;|\nabla\Phi|\uparrow\;\Rightarrow\;$ blowup.
+
+\medskip
+\begin{itemize}
+  \item The saturation term is sub-dominant in the training window: $\Pi_\gamma < \hat\lambda$ (correctly thresholded away).
+  \item Strong weak-form fit and failed rollout are therefore \emph{compatible}.
+  \item Richer library or kernel-based closure could capture saturation; left for future work.
+\end{itemize}
+\end{frame}
+
+% ------ Q&A: Quantitative MVAR vs LSTM table ------
+\iffalse
+\begin{frame}[noframenumbering,shrink=8]{Quantitative Comparison: Accuracy, Cost, and Stability}
+\small
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{MVAR} & \textbf{LSTM} \\
+\midrule
+Trainable parameters & 1{,}824 & 211{,}091 \\
+Median train time & $<1$ min & $\sim 45$ min \\
+Median $R^2$ (CS+PV) & 0.995 & 0.585 \\
+Median $R^2$ (VS) & 0.425 & $-0.052$ \\
+\bottomrule
+\end{tabular}
+\medskip\begin{itemize}
+  \item Bottleneck is aligned transport structure, not network size or mild latent instability
+  \item VS variants clip only a few unstable modes; error remains high regardless
+\end{itemize}
+\end{frame}
+\fi
+
+% ------ Q&A: Identification Quality Metric ------
+\begin{frame}[noframenumbering,shrink=8]{Identification Quality Is Measured in Weak Form}
+\small
+\[ R^2_{\mathrm{wf}}=1-\frac{\|\mathbf{b}-\mathbf{G}\mathbf{w}^*\|_2^2}{\|\mathbf{b}\|_2^2}, \qquad \Pi_m=|w_m^*|\frac{\|\mathbf{G}_{:,m}\|_2}{\|\mathbf{b}\|_2} \]
+Strong-identification criteria: continuity backbone in $[-1.01,-0.95]$; plausible signs; backbone stable across 6 scale triplets; $R^2_{\mathrm{wf},\rho}>0.99$.
+\[ \text{strong identification}\not\Rightarrow\text{adequate closure} \]
+\end{frame}
+
+% ------ Q&A: WSINDy Headline Figure ------
+\begin{frame}[noframenumbering]{WSINDy Headline: Forecast Quality vs Identification Quality}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_headline_summary.pdf}
+\end{frame}
+
+% ------ Q&A: Dominant Balance ------
+\begin{frame}[noframenumbering,shrink=6]{Dominant Balance: Term Importance Hierarchy}
+\small
+Gas momentum: \texttt{rho\_dx\_Phi} $\tilde\Pi=1.0$, \texttt{dx\_rho} $0.85$, \texttt{div\_px\_p} $0.42$ (Morse dominates).\\
+Pure Vicsek: \texttt{div\_px\_p} $\tilde\Pi=1.0$, \texttt{dx\_rho} $0.96$ (no Morse term --- exactly correct).
+\medskip
+Morse forcing dominates in attraction regimes; pure Vicsek is purely pressure-and-self-advection.
+\end{frame}
+
+% ------ Q&A: Momentum Heatmap ------
+\begin{frame}[noframenumbering]{Momentum Equation: Cross-Regime Term Selection}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_regime_heatmap_px.pdf}
+\end{frame}
+
+% ------ Q&A: Coefficient Magnitudes ------
+\iffalse
+\begin{frame}[noframenumbering]{Identified Coefficient Magnitudes: Cross-Regime View}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_wsindy_coefficients.pdf}
+\end{frame}
+\fi
+
+% ------ Q&A: KDE visual ------
+\iffalse
+\begin{frame}[noframenumbering]{KDE Coarse-Graining to Multi-Field Data}
+\centering
+\includegraphics[width=\textwidth,height=0.88\textheight]{kde_DO_DM01_dmill_C09_l05.pdf}
+\end{frame}
+\fi
+
+% ------ Q&A: Test function footprint ------
+\begin{frame}[noframenumbering]{Test-Function Footprint Sets the Effective Model Scale}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{fig8_test_footprint_2d.pdf}
+\end{frame}

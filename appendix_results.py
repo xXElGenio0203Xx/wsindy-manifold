@@ -47,12 +47,45 @@ CATALOGUE_PRODUCTION_OVERRIDE = {
     "NDYN08_pure_vicsek_thesis_final": (0.654, 0.229),
 }
 
+# Some catalogue rows were exported under split experiment names rather than the
+# canonical appendix row name. Use those recovered sources before falling back
+# to log-only recovery.
+CATALOGUE_SPLIT_ROM_SOURCES = {
+    "NDYN06_supernova_VS_thesis_final": {
+        "mvar": ("NDYN06_supernova_VS_thesis_final",),
+        "lstm": ("NDYN06_supernova_VS_lstm", "NDYN06_supernova_VS_thesis_final"),
+    },
+    "NDYN07_crystal_thesis_final": {
+        "mvar": ("NDYN07_crystal_wsindy_v3", "NDYN07_crystal_thesis_final"),
+        "lstm": ("NDYN07_crystal_lstm", "NDYN07_crystal_thesis_final"),
+    },
+    "NDYN07_crystal_VS_thesis_final": {
+        "mvar": ("NDYN07_crystal_VS_wsindy_v3", "NDYN07_crystal_VS_thesis_final"),
+        "lstm": ("NDYN07_crystal_VS_lstm", "NDYN07_crystal_VS_thesis_final"),
+    },
+    "NDYN08_pure_vicsek_thesis_final": {
+        "mvar": ("NDYN08_pure_vicsek_thesis_final",),
+        "lstm": ("NDYN08_pure_vicsek_lstm", "NDYN08_pure_vicsek_thesis_final"),
+    },
+}
+
+# These values were recovered from completed Oscar slurm logs after the scratch
+# output directories had been removed. For each completed ROM pipeline log, the
+# first rollout R^2 line is the MVAR result and the second is the LSTM result.
+CATALOGUE_LOG_ROM_METRICS = {
+    "DO_EC01_esccol_C2_l3": {"mvar_mean": 0.6550, "lstm_mean": 0.3143},
+    "DO_EU02_escuns_C3_l3": {"mvar_mean": 0.7627, "lstm_mean": 0.6705},
+    "NDYN10_shortrange": {"mvar_mean": -0.3588, "lstm_mean": -277.9054},
+}
+
 # This list is the intended appendix row set, not an inference from local files.
 CATALOGUE_EXPERIMENTS = (
     "DO_CS01_swarm_C01_l05",
     "DO_CS01_swarm_C01_l05_VS",
     "DO_CS02_swarm_C05_l3",
+    "DO_CS02_swarm_C05_l3_VS",
     "DO_CS03_swarm_C09_l3",
+    "DO_CS03_swarm_C09_l3_VS",
     "DO_DM01_dmill_C09_l05",
     "DO_DM01_dmill_C09_l05_VS",
     "DO_DR01_dring_C01_l01",
@@ -239,12 +272,26 @@ def load_json(path: Path | None) -> dict | None:
         return json.load(handle)
 
 
+def summary_rom_metric(experiment: str, model: str, *, category: str | None = None) -> float | None:
+    summary_path = find_local_file(experiment, "summary.json", category=category)
+    payload = load_json(summary_path)
+    if payload is None:
+        return None
+    return parse_float(payload.get(model, {}).get("mean_r2_test"))
+
+
 def extract_rom_metrics(experiment: str, *, category: str | None = None) -> dict[str, float | None]:
     mvar_path = find_local_file(experiment, "MVAR/test_results.csv", category=category)
     lstm_path = find_local_file(experiment, "LSTM/test_results.csv", category=category)
+    mvar_mean = mean_csv_field(mvar_path, "r2_reconstructed")
+    lstm_mean = mean_csv_field(lstm_path, "r2_reconstructed")
+    if mvar_mean is None:
+        mvar_mean = summary_rom_metric(experiment, "mvar", category=category)
+    if lstm_mean is None:
+        lstm_mean = summary_rom_metric(experiment, "lstm", category=category)
     return {
-        "mvar_mean": mean_csv_field(mvar_path, "r2_reconstructed"),
-        "lstm_mean": mean_csv_field(lstm_path, "r2_reconstructed"),
+        "mvar_mean": mvar_mean,
+        "lstm_mean": lstm_mean,
         "mvar_gaussian": csv_field_for_test_id(mvar_path, "r2_reconstructed", test_id="0"),
     }
 
@@ -308,15 +355,49 @@ def format_eta(row: NoiseRow) -> str:
     return row.eta_display
 
 
+def first_available_rom_metric(
+    experiments: Iterable[str],
+    field: str,
+    *,
+    default_category: str | None = None,
+) -> float | None:
+    for experiment in experiments:
+        category = default_category if experiment in CATALOGUE_EXPERIMENTS else None
+        metrics = extract_rom_metrics(experiment, category=category)
+        value = metrics[field]
+        if value is not None:
+            return value
+    return None
+
+
+def extract_catalogue_rom_metrics(experiment: str) -> dict[str, float | None]:
+    if experiment in CATALOGUE_PRODUCTION_OVERRIDE:
+        mvar_mean, lstm_mean = CATALOGUE_PRODUCTION_OVERRIDE[experiment]
+        return {"mvar_mean": mvar_mean, "lstm_mean": lstm_mean}
+
+    split_sources = CATALOGUE_SPLIT_ROM_SOURCES.get(experiment)
+    if split_sources is not None:
+        mvar_mean = first_available_rom_metric(split_sources.get("mvar", (experiment,)), "mvar_mean", default_category="catalogue")
+        lstm_mean = first_available_rom_metric(split_sources.get("lstm", (experiment,)), "lstm_mean", default_category="catalogue")
+    else:
+        metrics = extract_rom_metrics(experiment, category="catalogue")
+        mvar_mean = metrics["mvar_mean"]
+        lstm_mean = metrics["lstm_mean"]
+
+    log_metrics = CATALOGUE_LOG_ROM_METRICS.get(experiment, {})
+    if mvar_mean is None:
+        mvar_mean = log_metrics.get("mvar_mean")
+    if lstm_mean is None:
+        lstm_mean = log_metrics.get("lstm_mean")
+    return {"mvar_mean": mvar_mean, "lstm_mean": lstm_mean}
+
+
 def catalogue_rows() -> list[dict[str, object]]:
     rows = []
     for experiment in CATALOGUE_EXPERIMENTS:
-        if experiment in CATALOGUE_PRODUCTION_OVERRIDE:
-            mvar_mean, lstm_mean = CATALOGUE_PRODUCTION_OVERRIDE[experiment]
-        else:
-            metrics = extract_rom_metrics(experiment, category="catalogue")
-            mvar_mean = metrics["mvar_mean"]
-            lstm_mean = metrics["lstm_mean"]
+        metrics = extract_catalogue_rom_metrics(experiment)
+        mvar_mean = metrics["mvar_mean"]
+        lstm_mean = metrics["lstm_mean"]
         rows.append(
             {
                 "experiment": experiment,
@@ -346,6 +427,12 @@ def noise_rows() -> list[dict[str, object]]:
                 break
 
         ws_metrics = extract_wsindy_metrics(row.ws_experiment)
+        if ws_metrics["rho_r2"] is None:
+            for candidate in row.rom_candidates:
+                ws_fallback = extract_wsindy_metrics(candidate)
+                if ws_fallback["rho_r2"] is not None:
+                    ws_metrics = ws_fallback
+                    break
         rows.append(
             {
                 "regime": row.regime,
@@ -389,6 +476,11 @@ def unique_sync_targets() -> dict[str, str]:
     targets: dict[str, str] = {}
     for experiment in CATALOGUE_EXPERIMENTS:
         targets[experiment] = "catalogue"
+    for split_sources in CATALOGUE_SPLIT_ROM_SOURCES.values():
+        for experiments in split_sources.values():
+            for experiment in experiments:
+                if experiment not in CATALOGUE_EXPERIMENTS:
+                    targets.setdefault(experiment, "support")
     for row in NOISE_ROWS:
         for experiment in row.rom_candidates:
             targets.setdefault(experiment, "noise")

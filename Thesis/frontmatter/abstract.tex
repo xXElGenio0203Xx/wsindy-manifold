@@ -26,8 +26,9 @@ additional closure fields beyond density and polarisation flux.
 On the forecasting side, the $116\!\times$ parameter-count gap between
 MVAR ($1{,}824$ parameters) and LSTM ($211{,}091$) does not yield
 proportional accuracy gains: MVAR achieves forecast $R^2>0.99$ on the
-strongest constant-speed regimes (CS\,+\,PV median~$0.994$), while
-variable-speed variants degrade sharply (VS median~$0.425$), exposing a
+strongest constant-speed regimes (CS\,+\,PV median~$0.995$), while
+variable-speed variants degrade sharply
+(VS median~$0.425$ for MVAR, $-0.052$ for LSTM), exposing a
 shift-predictability bottleneck that neither model class overcomes.
 Together, these findings delineate the boundary between what is
 identifiable and what is predictable from coarse-grained
@@ -41,7 +42,9 @@ collective-motion data.%
 I am grateful to my thesis advisor, Prof.\ Björn Sandstede, for his
 guidance throughout this project, and to my second reader,
 Prof.\ Ian~Wong.
-I thank the Center for Computation and Visualization (CCV) at Brown
-University for providing access to the OSCAR high-performance computing
-cluster, on which all particle simulations, ROM training, WSINDy fitting,
-and ETDRK4 rollout computations were performed.
+I thank the Center for Computation and Visualization
+(CCV) at Brown University for providing access to
+the OSCAR high-performance computing
+cluster, on which all particle simulations,
+ROM training, WSINDy fitting, and ETDRK4 rollout computations were
+performed.

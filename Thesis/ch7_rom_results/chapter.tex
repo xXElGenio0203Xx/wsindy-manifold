@@ -1,7 +1,7 @@
 \chapter{ROM Results: MVAR vs LSTM}
 \label{ch:rom_results}
 
-This chapter presents the reduced-order modelling results for MVAR and LSTM~\cite{hochreiter1997lstm}
+This chapter presents the reduced-order modelling results for MVAR and LSTM
 applied to the equation-free density ROM\@.  The \emph{primary benchmark}
 comprises five constant-speed (CS) regimes plus a pure alignment
 baseline (\texttt{NDYN04\_gas}, \texttt{NDYN05\_blackhole},
@@ -29,13 +29,14 @@ Appendix~\ref{app:supplementary_figures}.
 \label{sec:ch7_shift_dynamics}
 % -----------------------------------------------------------------------
 
-Accordingly, the forecast task studied here is not full transport
+Because the sPOD alignment step removes bulk translation before latent-space
+modelling, the forecast task studied here is not full transport
 prediction in lab coordinates, but density-shape prediction after removal
 of bulk translation.
 
 The MVAR has relatively low statistical complexity in the
 aligned latent space, whereas the LSTM must estimate a substantially more
-flexible temporal map from the same finite set of windows---an asymmetry
+flexible temporal map from the same finite set of windows, an asymmetry
 worth bearing in mind when interpreting nonlinear modelling gains.
 Figure~\ref{fig:ch7_svd_decay} shows the singular-value spectra of the
 aligned snapshot matrices across all nine benchmark regimes.
@@ -89,7 +90,7 @@ displacement signal $\|\boldsymbol{\Delta}(t)\|$ for each regime.
 The left panel traces $\overline{\boldsymbol{\Delta}}(t)$ in the
 $(\Delta y,\Delta x)$ plane.  All regimes stay within $\pm 4$--$6$ grid
 cells; gas and pure Vicsek~\cite{vicsek1995vicsek} trace smooth persistent loops, whereas
-variable-speed blackhole traces a near-memoryless random walk---indicating
+variable-speed blackhole traces a near-memoryless random walk, indicating
 that bulk translation is no longer a sufficient coherent-motion summary.
 
 \noindent\textbf{Shift autocorrelation.}
@@ -235,7 +236,7 @@ forecaster capacity.
 
 \paragraph{Summary of quantitative findings.}
 MVAR dominates the CS\,+\,PV primary benchmark (median
-$R^2{=}0.994$) and remains positive on every VS regime (median
+$R^2{=}0.995$) and remains positive on every VS regime (median
 $0.425$).  LSTM adds no systematic benefit: its median CS\,+\,PV
 $R^2$ is $0.585$, and it falls negative on two of four VS regimes.
 The failure pattern is fully explained by the shift-predictability
@@ -310,7 +311,7 @@ Trainable parameters              & 1\,824       & 211\,091      \\
 Training time (median)            & $<1$\,min    & $\sim$45\,min \\
 \midrule
 \multicolumn{3}{l}{\textit{Primary benchmark (CS\,+\,PV)}} \\
-\quad Median test $R^2$           & 0.994        & 0.585         \\
+\quad Median test $R^2$           & 0.995        & 0.585         \\
 \quad Best-case test $R^2$                 & 0.996\,(gas, crystal)  & 0.996\,(gas)  \\
 \quad Worst-case test $R^2$        & 0.654\,(PV)  & 0.229\,(PV)         \\
 \midrule
@@ -346,7 +347,7 @@ Chapter~\ref{ch:latent_rom}, which was disabled during training because
 it perturbs all eigenvalues indiscriminately
 (Section~\ref{subsec:mvar_identifiability}).  The projection in
 Equation~\eqref{eq:eigenvalue_projection} is a minimal post-hoc
-correction applied only at evaluation time: it neutralises the few
+correction applied only at evaluation time~\cite{gillis2019neareststable}: it neutralises the few
 unstable modes without altering the fitted dynamics of the stable
 majority.
 Gas and pure Vicsek are naturally stable ($\rho(\mathbf{A})<1$),
@@ -358,7 +359,7 @@ shift structure.  Companion-matrix eigenvalue spectra are reported in
 Appendix~\ref{app:supplementary_figures}
 (Figure~\ref{fig:appE_stability}).
 
-\paragraph{LSTM: cost without benefit.}
+\paragraph{LSTM overhead without forecast gain.}
 \label{sec:ch7_lstm_modes}
 
 LSTM training is one to two orders of magnitude more expensive than MVAR
@@ -437,7 +438,7 @@ $R^2>0.95$ at a fraction of LSTM cost.
 
 Three negative results follow.  Variable-speed regimes defeat any
 single-reference alignment strategy.  LSTM's nonlinear capacity does not
-overcome the shift-predictability bottleneck---on every regime where MVAR
+overcome the shift-predictability bottleneck: on every regime where MVAR
 struggles, LSTM performs equally poorly or worse.  Finally, the
 $116\times$ parameter ratio of LSTM over MVAR yields no proportionate
 gain on this benchmark.
@@ -453,5 +454,5 @@ Part~II addresses this gap: WSINDy operates directly on the density and
 polarisation fields, producing sparse symbolic PDEs whose terms correspond
 to physically interpretable flux mechanisms.  By comparing the discovered
 equation structure across CS and VS variants of the same regime, we can
-extract structural information about which mechanisms are active---and
-thereby ask questions that no amount of ROM forecasting can answer.
+extract structural information about which mechanisms are active,
+thereby asking questions that no amount of ROM forecasting can answer.

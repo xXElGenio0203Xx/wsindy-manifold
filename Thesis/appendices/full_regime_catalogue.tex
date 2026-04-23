@@ -5,8 +5,8 @@ This appendix collects all systematic experiment configurations,
 together with their dynamics parameters and summary
 $R^2$ for MVAR and LSTM\@.  Of the 54 YAML configurations in
 \texttt{configs/systematic/}, six were excluded before running
-(three near-duplicate base regimes---NDYN03, NDYN11,
-NDYN12---and their VS counterparts), leaving 48 candidates.
+(three near-duplicate base regimes, NDYN03, NDYN11,
+NDYN12, and their VS counterparts), leaving 48 candidates.
 The table also includes tier-1 sensitivity variants and
 preprocessing ablations where available.  The nine primary benchmark
 regimes from Chapters~\ref{ch:rom_results} and~\ref{ch:wsindy_results}
@@ -26,8 +26,7 @@ give the governing parameters.
 \begin{table}[htbp]
 \centering
 \caption{Mean test $R^2$ for MVAR and LSTM across all systematic experiments.
-Bold = nine main-text regimes; ---$^\dagger$ = LSTM diverged ($R^2<{-}2$);
---- = not yet available.}
+Bold = nine main-text regimes; ---$^\dagger$ = LSTM diverged ($R^2<{-}2$).}
 \label{tab:full_regime_catalogue}
 \input{appendices/catalogue_table_generated}
 \end{table}
@@ -122,8 +121,7 @@ clipped at the axis boundary.}
 \label{sec:regime_wsindy_extended}
 % -----------------------------------------------------------------------
 
-WSINDy identification was performed only on the nine primary benchmark
-regimes (Chapter~\ref{ch:wsindy_results}); extending the identification
-pipeline to the remaining configurations is left for future work
-(Section~\ref{sec:future_work}).  The EF-ROM forecast $R^2$ values for
-all regimes are recorded in Table~\ref{tab:full_regime_catalogue} above.
+WSINDy identification was performed on the nine primary benchmark
+regimes (Chapter~\ref{ch:wsindy_results}).  The EF-ROM forecast $R^2$
+values for all regimes are recorded in
+Table~\ref{tab:full_regime_catalogue} above.

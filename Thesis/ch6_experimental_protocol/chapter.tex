@@ -31,14 +31,14 @@ Figure~\ref{fig:pipeline_stages}.
     },
     arr/.style={-{Stealth[length=3pt]}, semithick}
   ]
-  \node[stage]                  (s1) {\textbf{1.}~Generate training data --- 340 Vicsek--Morse trajectories, 4~IC families};
-  \node[stage, below=of s1]     (s2) {\textbf{2.}~Build shared POD basis --- shift-align, $\sqrt{\cdot}$-transform, truncated SVD $\to$ $r$ modes};
-  \node[stage, below=of s2]     (s3) {\textbf{3.}~Build latent dataset --- project $\to$ $y(t)\in\mathbb{R}^r$, subsample$\,{=}\,3$, construct $(X,Y)$ pairs};
+  \node[stage]                  (s1) {\textbf{1.}~Generate training data: 340 Vicsek--Morse trajectories, 4~IC families};
+  \node[stage, below=of s1]     (s2) {\textbf{2.}~Build shared POD basis: shift-align, $\sqrt{\cdot}$-transform, truncated SVD $\to$ $r$ modes};
+  \node[stage, below=of s2]     (s3) {\textbf{3.}~Build latent dataset: project $\to$ $y(t)\in\mathbb{R}^r$, subsample$\,{=}\,3$, construct $(X,Y)$ pairs};
   \node[stage, below=of s3]     (s4) {\textbf{4.}~Train MVAR \& LSTM on shared latent dataset (Chapter~\ref{ch:latent_rom})};
-  \node[stage, below=of s4]     (s5) {\textbf{5.}~Generate test data --- 4 held-out trajectories (one per IC family)};
-  \node[stage, below=of s5]     (s6) {\textbf{6.}~Evaluate MVAR \& LSTM --- condition, forecast, lift, compute metrics};
-  \node[stage, below=of s6]  (s7) {\textbf{7.}~WSINDy PDE discovery --- same train split, raw-field weak systems, MSTLS};
-  \node[stage, below=of s7]  (s8) {\textbf{8.}~WSINDy evaluation --- identification diagnostics, cross-scale stability selection, targeted closure stress test};
+  \node[stage, below=of s4]     (s5) {\textbf{5.}~Generate test data: 4 held-out trajectories (one per IC family)};
+  \node[stage, below=of s5]     (s6) {\textbf{6.}~Evaluate MVAR \& LSTM: condition, forecast, lift, compute metrics};
+  \node[stage, below=of s6]  (s7) {\textbf{7.}~WSINDy PDE discovery: same train split, raw-field weak systems, MSTLS};
+  \node[stage, below=of s7]  (s8) {\textbf{8.}~WSINDy evaluation: identification diagnostics, cross-scale stability selection, targeted closure stress test};
   %% arrows
   \draw[arr] (s1) -- (s2);
   \draw[arr] (s2) -- (s3);
@@ -59,7 +59,7 @@ Stages~1 and~5 share a common upstream: the same
 Vicsek--Morse~\cite{vicsek1995vicsek,dorsogna2006morse} simulations,
 KDE-based coarse-grained fields, and train/test split.
 Stages~2--6 build a shift-aligned~\cite{reiss2018shifted_pod} POD latent
-dataset and learn MVAR and LSTM~\cite{hochreiter1997lstm} evolution maps;
+dataset and learn MVAR and LSTM evolution maps;
 stages~7--8 bypass POD and apply
 MSTLS~\cite{minor2025mstls}/stability-selection~\cite{meinshausen2010stability}
 weak-form regression on the same trajectories, with
@@ -84,7 +84,7 @@ space: density and auxiliary fields are computed on each run and then
 converted into weak-form regression constraints.
 
 \noindent\textbf{Test set.}
-Four runs---one per IC family---are generated at held-out IC parameters
+Four runs (one per IC family) are generated at held-out IC parameters
 (e.g.\ a Gaussian centred at $(12.5,12.5)$ rather than the training grid
 positions) and simulated for $T_{\mathrm{test}}$ (Table~\ref{tab:fixed_params}).
 They are never seen during POD construction, latent-model fitting, or WSINDy
@@ -106,7 +106,7 @@ physical fields rather than a lagged latent window.
 \label{sec:lag_selection}
 
 The MVAR lag order $w$ determines how many past latent frames the model
-uses for prediction.  We evaluate BIC, HQIC, and AIC~\cite{wasserman2006all} on unrestricted
+uses for prediction.  We evaluate BIC, HQIC, and AIC on unrestricted
 VAR($w$) models for $w=1,\dots,100$ on every regime.
 For reference, the information-theoretically optimal lags on a
 representative DO catalogue regime (DO\_CS01, collective swarm; see
@@ -150,7 +150,7 @@ All metrics compare predicted densities $\hat{\boldsymbol{\rho}}^n$ against
 ground truth $\boldsymbol{\rho}^n$ over the forecast window
 $\mathcal{T}_{\mathrm{fc}} = \{n_0, n_0{+}1, \dots, n_1\}$, where $n_0$
 is the forecast start index and $n_1$ is the terminal index.
-Let $d = N_x N_y$ denote the number of spatial grid points.
+Let $d = n_x n_y$ denote the number of spatial grid points.
 
 \noindent\textbf{Coefficient of determination ($R^2$).}
 \label{subsec:r2_time}
@@ -168,7 +168,7 @@ time~$n$.  We report the mean over the forecast window,
 $R^2_{\mathrm{fc}} = |\mathcal{T}_{\mathrm{fc}}|^{-1}\sum_{n\in\mathcal{T}_{\mathrm{fc}}} R^2(n)$,
 as the primary scalar metric.
 Because the null model in~\eqref{eq:r2_snapshot} is the per-snapshot
-spatial mean~$\bar\rho^n$---a single scalar per frame---$R^2$ values
+spatial mean~$\bar\rho^n$ (a single scalar per frame), so $R^2$ values
 near~$1$ indicate that the predictor tracks the full spatial structure,
 not merely the global density level.  For nearly uniform density fields,
 however, the denominator becomes small and $R^2$ can be dominated by
@@ -222,8 +222,8 @@ helps distinguish regime-level structural failures that may not be fully
 visible from density-space~$R^2$ alone.
 
 \noindent\textbf{Metric hierarchy by branch.}
-For the EF-ROM branch, forecast accuracy metrics---particularly
-$R^2_{\mathrm{fc}}$ and the relative errors~\eqref{eq:rel_errors}---are
+For the EF-ROM branch, forecast accuracy metrics, particularly
+$R^2_{\mathrm{fc}}$ and the relative errors~\eqref{eq:rel_errors}, are
 primary evaluation targets.  For the WSINDy branch, these same metrics are
 reported for completeness and as consistency checks under ETDRK4 rollout,
 but the primary criteria are identification-oriented: sparsity of the
@@ -238,7 +238,7 @@ At the baseline comparison settings
 ($r{=}19$, $w_{\mathrm{MVAR}}{=}w_{\mathrm{LSTM}}{=}5$, hidden width
 $h{=}128$, $L{=}2$ LSTM layers), the MVAR has
 $p_{\mathrm{MVAR}} = w\,r^2 + r = 1{,}824$ trainable parameters, while the
-LSTM has $p_{\mathrm{LSTM}} = 211{,}091$---a roughly $116\times$
+LSTM has $p_{\mathrm{LSTM}} = 211{,}091$, a roughly $116\times$
 ratio.  This count compares raw learnable parameters, not effective
 degrees of freedom: LSTM weight sharing across time steps and the
 recurrent bottleneck mean that the effective capacity gap is smaller

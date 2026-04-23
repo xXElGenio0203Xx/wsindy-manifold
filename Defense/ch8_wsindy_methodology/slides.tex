@@ -1,0 +1,217 @@
+% ======================================================================
+%  Ch8 — WSINDy Methodology
+% ======================================================================
+
+\begin{frame}[shrink=24]{WSINDy: Move Derivatives Off the Noisy Data}
+\normalsize
+
+\textbf{Target PDE}\quad $u_t=\sum_{m=1}^{M} w_m\,\mathcal{L}_m[f_m(u)]$
+
+\smallskip
+\textbf{Test functions:} separable compactly supported bumps
+\[
+  \psi_k(x,y,t)=\phi\!\Bigl(\tfrac{x-x_k^0}{\ell_x}\Bigr)\phi\!\Bigl(\tfrac{y-y_k^0}{\ell_y}\Bigr)\phi\!\Bigl(\tfrac{t-t_k^0}{\ell_t}\Bigr),
+  \qquad \phi(s)=\bigl(1-s^2\bigr)_+^q
+\]
+\textbf{Weak form on $Q_k$:}
+\[
+  b_k := -\int_{Q_k} u\,\partial_t\psi_k
+  = \sum_{m}w_m\!\int_{Q_k}\!\mathcal{L}_m^*[\psi_k]\,f_m(u) =: \sum_m G_{km}w_m
+\]
+System: $\mathbf{b}=\mathbf{G}\mathbf{w}$, solved by $\mathbf{w}^*=\mathrm{MSTLS}(\mathbf{G},\mathbf{b},\lambda)$.
+
+\smallskip
+\begin{itemize}
+  \item \textbf{Derivatives act on $\psi_k$}, not on the noisy field $u$ --- integration by parts (IBP):
+  \begin{itemize}
+    \item[$\circ$] temporal boundary terms vanish: $\psi_k$ has compact support in $t$
+    \item[$\circ$] spatial boundary terms vanish: domain is periodic
+  \end{itemize}
+  \item \textbf{MSTLS:} keep term $j$ if $\hat\lambda\le\Pi_j\le 1/\hat\lambda$,\quad $\Pi_j = |\tilde{w}_j|\,\|\tilde{G}_{:,j}\|_2/\|\mathbf{b}\|_2$.
+  \item $R^2_{\mathrm{wf},\rho} = 1 - \|\mathbf{b}_\rho - \mathbf{G}_\rho\mathbf{w}^*_\rho\|^2 / \|\mathbf{b}_\rho\|^2$.
+\end{itemize}
+\end{frame}
+
+\iffalse
+\begin{frame}[shrink=4]{Weak-System Assembly}
+\footnotesize
+\textbf{Regression quantities}
+\[
+  b_k := -\int_{Q_k} u\,\partial_t\psi_k,
+  \qquad
+  G_{km}:=\int_{Q_k}\mathcal{L}_m^*[\psi_k]\,f_m(u)
+\]
+so the regression problem is simply
+\[
+  \mathbf{b}=\mathbf{G}\mathbf{w}.
+\]
+
+\smallskip
+\begin{itemize}
+  \item Separable bumps make the weak integrals efficient through FFT-based convolutions.
+  \item The resulting system is tall and thin: many weak constraints, comparatively few candidate terms.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[shrink=8]{Test Functions Define the Effective Model Scale}
+\small
+\[
+  \psi(x,y,t)=\phi_x(x)\phi_y(y)\phi_t(t)
+\]
+with one-dimensional compactly supported bumps
+\[
+  \phi_i(s)
+  =
+  \begin{cases}
+    \left(1-\dfrac{s^2}{(\ell_i\Delta_i)^2}\right)^{q_i},
+    & |s|\le \ell_i\Delta_i, \\[6pt]
+    0, & \text{otherwise},
+  \end{cases}
+  \qquad
+  i\in\{x,y,t\}.
+\]
+
+\begin{itemize}
+  \item The three relevant scales are the microscopic interaction length, the KDE bandwidth $h$, and the weak support widths $(\ell_x,\ell_y,\ell_t)$.
+  \item Larger $\ell$ reduces variance but smears sharp gradients; smaller $\ell$ preserves fine structure but weakens noise averaging.
+  \item The discovered PDE is therefore conditional on the chosen coarse-graining and test-function scales.
+\end{itemize}
+\end{frame}
+\fi
+
+\iffalse
+\begin{frame}{Test-Function Footprint Sets the Effective Model Scale}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{fig8_test_footprint_2d.pdf}
+\end{frame}
+\fi
+
+\iffalse
+\begin{frame}{Scale Sensitivity: KDE Bandwidth vs Identified Coefficients}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{fig9_4_bandwidth_limitation.pdf}
+\end{frame}
+
+\begin{frame}[shrink=10]{Multi-Field Library for Vicsek--Morse Dynamics}
+\small
+
+\textbf{Three coupled equations are identified:}
+\[
+  \rho_t,\qquad (p_x)_t,\qquad (p_y)_t
+\]
+
+\medskip
+\begin{columns}[T]
+\column{0.48\textwidth}
+{\small
+\textbf{Density equation}
+\begin{itemize}
+  \item \texttt{div\_p}: $\nabla\!\cdot \mathbf{p}$
+  \item \texttt{lap\_rho}, \texttt{lap\_rho2}, \texttt{lap\_rho3}: $\Delta\rho$, $\Delta(\rho^2)$, $\Delta(\rho^3)$
+  \item \texttt{div\_rho\_gradPhi}: $\nabla\!\cdot(\rho\nabla\Phi)$
+  \item \texttt{lap\_p\_sq}: $\Delta(|\mathbf{p}|^2)$
+\end{itemize}
+}
+
+\column{0.48\textwidth}
+{\small
+\textbf{Momentum equations}
+\begin{itemize}
+  \item \texttt{px}, \texttt{p\_sq\_px}: $p_x$, $|\mathbf{p}|^2p_x$
+  \item \texttt{dx\_rho}, \texttt{dx\_rho2}: $\partial_x\rho$, $\partial_x(\rho^2)$
+  \item \texttt{lap\_px}, \texttt{bilap\_px}: $\Delta p_x$, $\Delta^2 p_x$
+  \item \texttt{rho\_dx\_Phi}: $\rho\,\partial_x\Phi$
+  \item \texttt{div\_px\_p}: $\nabla\!\cdot(p_x\mathbf{p})$
+\end{itemize}
+}
+\end{columns}
+
+\medskip
+The library is physically motivated: it can recover transport,
+pressure, diffusion, self-advection, and Morse interaction effects, but
+it does \emph{not} encode an explicit variable-speed saturation law.
+\end{frame}
+
+\begin{frame}{MSTLS and Automated Support-Scale Selection}
+\footnotesize
+\begin{columns}[T]
+\column{0.52\textwidth}
+\textbf{Column preconditioning}
+\[
+  \tilde G_{:,j}=G_{:,j}/\|G_{:,j}\|_2
+\]
+
+\smallskip
+\textbf{Dominant-balance thresholding}
+\[
+  \Pi_j
+  =
+  \frac{|\tilde w_j|\;\|\tilde G_{:,j}\|_2}{\|\mathbf{b}\|_2},
+  \qquad
+  \hat\lambda \le \Pi_j \le \frac{1}{\hat\lambda}
+\]
+
+\smallskip
+Iterate least-squares $\rightarrow$ threshold $\rightarrow$ re-fit until the active set stabilizes.
+
+\column{0.44\textwidth}
+\textbf{Support-scale sweep}
+\[
+  \begin{aligned}
+  S(\boldsymbol{\ell})
+  &=
+  L_{\mathrm{norm}}
+  + \alpha\frac{n_{\mathrm{active}}}{M} \\
+  &\quad
+  + \beta \max\!\bigl(0,\log_{10}\kappa-\log_{10}\kappa_0\bigr)
+  \end{aligned}
+\]
+
+\smallskip
+\begin{itemize}
+  \item sweep candidate $(\ell_t,\ell_x,\ell_y)$ triplets
+  \item penalize dense models and ill-conditioned design matrices
+  \item retain terms that survive across the selected scales
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}[shrink=6]{Strong-Form Rollout Is a Closure Stress Test}
+\small
+\textbf{Recovered PDE evaluated in physical space}
+\[
+  u_t(x,y)
+  =
+  \sum_{m\in\mathcal{A}} w_m\,\mathcal{L}_m[f_m(u)](x,y).
+\]
+
+\textbf{Linear--nonlinear split}
+\[
+  u_t = L u + N(u),
+  \qquad
+  \hat L(k_x,k_y)
+  =
+  \sum_{m\in\mathcal{A}_{\mathrm{lin}}}
+  w_m\,\sigma_m(k_x,k_y),
+\]
+where $\sigma_m$ is the Fourier symbol of $\mathcal{L}_m$.
+
+\textbf{Integrator}
+\begin{itemize}
+  \item ETDRK4 when linear terms are present
+  \item RK4 fallback when no linear terms are present
+  \item spectral differentiation on the periodic domain
+\end{itemize}
+
+\medskip
+\begin{itemize}
+  \item Variable-speed saturation is \emph{not} explicitly represented in the library.
+  \item Hence rollout can fail even when weak-form identification is structurally strong.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Design Matrix Condition Numbers Across Scales}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_condition_numbers.pdf}
+\end{frame}
+\fi

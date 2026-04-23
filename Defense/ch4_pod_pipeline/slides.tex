@@ -1,0 +1,137 @@
+% ======================================================================
+%  Ch4 — Shift-Aligned POD Pipeline
+% ======================================================================
+
+\iffalse
+\begin{frame}[shrink=6]{Shift-Aligned POD Pipeline}
+
+\centering
+\begin{tikzpicture}[
+    node distance=0.40cm,
+    pipestep/.style={draw, rounded corners=2pt, minimum width=11.5cm,
+      minimum height=0.55cm, font=\small, align=center, fill=blue!6},
+    arr/.style={-{Stealth[length=3pt]}, thick}
+  ]
+  \node[pipestep]                  (s1) {\textbf{1.} Vectorise \& stack density snapshots into $\mathbf{X}\in\mathbb{R}^{n\times T}$};
+  \node[pipestep, below=of s1]    (s2) {\textbf{2.} Shift-align via FFT cross-correlation on periodic torus};
+  \node[pipestep, below=of s2]    (s3) {\textbf{3.} Transform: $\tilde{\mathbf{X}} = \sqrt{\mathbf{X}_{\mathrm{aligned}} + \varepsilon}$};
+  \node[pipestep, below=of s3]    (s4) {\textbf{4.} Center: subtract temporal mean $\overline{\mathbf{X}}$};
+  \node[pipestep, below=of s4]    (s5) {\textbf{5.} Truncated SVD $\to$ POD basis $\mathbf{U}_r$, $r{=}19$ modes};
+  \node[pipestep, below=of s5]    (s6) {\textbf{6.} Restrict: $\yvec(t) = \mathbf{U}_r^\top\tilde{\mathbf{x}}(t)$ \quad Lift: $\hat{\mathbf{x}}(t) = \mathbf{U}_r\yvec(t) + \overline{\mathbf{X}}$};
+  \draw[arr] (s1) -- (s2);
+  \draw[arr] (s2) -- (s3);
+  \draw[arr] (s3) -- (s4);
+  \draw[arr] (s4) -- (s5);
+  \draw[arr] (s5) -- (s6);
+\end{tikzpicture}
+
+\medskip
+Snapshot matrix $X_{\mathrm{raw}}\in\mathbb{R}^{T_{\mathrm{tot}}\times d}$,
+shift group $G=\mathbb{Z}_{n_y}\times\mathbb{Z}_{n_x}$, fixed truncation $m=19$.
+\end{frame}
+
+\begin{frame}[shrink=12]{Shift Alignment as Symmetry Reduction}
+\small
+\textbf{Reference frame}
+\[
+  \rho_{\mathrm{ref}}
+  =
+  \frac{1}{T_{\mathrm{tot}}}\sum_{k=1}^{T_{\mathrm{tot}}}\rho_k .
+\]
+
+\textbf{Periodic cross-correlation}
+\[
+  C_k(\boldsymbol{\delta})
+  =
+  \left\langle
+    \rho_{\mathrm{ref}},
+    \mathcal{T}_{\boldsymbol{\delta}}\rho_k
+  \right\rangle,
+  \qquad
+  \boldsymbol{\delta}_k^*
+  =
+  \arg\max_{\boldsymbol{\delta}\in G} C_k(\boldsymbol{\delta}),
+\]
+with $G=\mathbb{Z}_{n_y}\times\mathbb{Z}_{n_x}$ the discrete translation group.
+
+\textbf{FFT evaluation}
+\[
+  C_k(\boldsymbol{\delta})
+  =
+  \mathcal{F}^{-1}\!\Bigl[
+    \mathcal{F}[\rho_{\mathrm{ref}}]
+    \odot
+    \overline{\mathcal{F}[\rho_k]}
+  \Bigr](\boldsymbol{\delta}),
+\]
+so all candidate shifts are scored in $O(n\log n)$ time.
+
+\medskip
+\begin{itemize}
+  \item Alignment quotients out coherent bulk translation and maps the snapshot manifold to a cross-section of $\mathcal{M}/G$.
+  \item Integer-pixel shifts avoid interpolation artefacts on the periodic lattice.
+  \item What remains is the intrinsic shape dynamics that POD is meant to compress.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[shrink=10]{Restriction, Lifting, and Mass Admissibility}
+\small
+\textbf{Variance-stabilising transform}
+\[
+  \tilde\rho = \sqrt{\rho+\varepsilon},
+  \qquad
+  \varepsilon = 10^{-10}.
+\]
+
+\textbf{Restriction to latent coordinates}
+\[
+  \mathbf{y}
+  =
+  \mathcal{R}(\mathbf{x})
+  :=
+  U_m^\top(\mathbf{x}-\boldsymbol{\mu}),
+  \qquad
+  \mathbf{x}=\mathrm{vec}(\tilde\rho).
+\]
+
+\textbf{Lifting back to the transformed field}
+\[
+  \hat{\mathbf{x}}
+  =
+  \mathcal{L}(\mathbf{y})
+  :=
+  U_m\,\mathbf{y}+\boldsymbol{\mu}.
+\]
+
+\textbf{Inverse transform and mass repair}
+\[
+  \hat\rho = [\max(0,\hat{\mathbf{x}})]^2-\varepsilon,
+  \qquad
+  \mathcal{S}_{M_0}(\hat\rho)
+  =
+  \hat\rho\,
+  \frac{M_0}{\sum_{j=1}^{d}\hat\rho_j}.
+\]
+
+\begin{itemize}
+  \item The inverse spatial shift $(-\Delta y_k,-\Delta x_k)$ is applied after lifting.
+  \item The fixed truncation $m=19$ is deliberately held constant across regimes for fair comparison.
+  \item Mass repair is mild in practice but necessary because the $\sqrt{\cdot}$ transform is nonlinear.
+ \end{itemize}
+\end{frame}
+\fi
+
+\begin{frame}[shrink=4]{Shift Alignment Halves the Effective Rank}
+\centering
+\includegraphics[width=\textwidth,height=0.40\textheight,keepaspectratio]{thesis_svd_decay.pdf}\\[2pt]
+\small$\tilde\rho = \sqrt{\rho+\varepsilon},\;\varepsilon=10^{-10}$\quad (variance-stabilising transform\ before SVD);\quad $\widetilde{X}\in\mathbb{R}^{d\times T}$\\[3pt]
+\normalsize
+$\boldsymbol{\delta}_k^* = \arg\max_{\boldsymbol{\delta}\in G}C_k(\boldsymbol{\delta}),\quad
+C_k(\boldsymbol{\delta})=\langle\rho_{\mathrm{ref}},\,\mathcal{T}_{\boldsymbol{\delta}}\rho_k\rangle$\\[0.25em]
+\small$\mathcal{E}(m) = \dfrac{\sum_{i=1}^m \sigma_i^2}{\sum_{i=1}^M \sigma_i^2},\quad m{=}19:\;\mathcal{E}(19)=0.976\qquad\bigl(r_{\mathrm{eff}}^{\mathrm{raw}}\approx 38,\;r_{\mathrm{eff}}^{\mathrm{aligned}}=19\bigr)$
+\medskip
+\small\centering
+$\mathbf{y}=U_m^\top(\tilde{\mathbf{x}}-\boldsymbol{\mu})\;$ [\textbf{restrict}]$\qquad$
+$\hat{\tilde{\mathbf{x}}}=U_m\mathbf{y}+\boldsymbol{\mu}\;$ [\textbf{lift}]$\qquad$
+$\hat\rho=[\max(0,\hat{\tilde{\mathbf{x}}})]^2-\varepsilon\;$ [\textbf{invert}]
+\end{frame}

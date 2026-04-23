@@ -1,0 +1,2632 @@
+{
+  "catalogue": [
+    {
+      "experiment": "DO_CS01_swarm_C01_l05",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.9202733856327621,
+        "mvar_mean": 0.9489522701920224
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_CS01_swarm_C01_l05_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.7021447245779909,
+        "mvar_mean": 0.5936127294483214
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_CS02_swarm_C05_l3",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.10923013276260579,
+        "mvar_mean": 0.09443562867376123
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_CS02_swarm_C05_l3_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -5435.3885704742615,
+        "mvar_mean": -0.37548125413422406
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_CS03_swarm_C09_l3",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.13017852271147642,
+        "mvar_mean": 0.2276103059948766
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_CS03_swarm_C09_l3_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.10716251856137657,
+        "mvar_mean": -0.3050743643611043
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_DM01_dmill_C09_l05",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -5.437158004661935e-05,
+        "mvar_mean": 0.9920308312355723
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_DM01_dmill_C09_l05_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.9088530231107538,
+        "mvar_mean": 0.806550388472027
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_DR01_dring_C01_l01",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.6124590066411826,
+        "mvar_mean": 0.952961570126295
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_DR01_dring_C01_l01_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.6947116399415608,
+        "mvar_mean": 0.5376734825188265
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_DR02_dring_C09_l09",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.9843469508198122,
+        "mvar_mean": 0.9841810877427224
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_DR02_dring_C09_l09_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.8380811231354228,
+        "mvar_mean": 0.5736143049296029
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_EC01_esccol_C2_l3",
+      "local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.3143,
+        "mvar_mean": 0.655
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_EC02_esccol_C3_l05",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.48977619116456655,
+        "mvar_mean": 0.4227718026214552
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_EC02_esccol_C3_l05_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -141.1504734935911,
+        "mvar_mean": 0.13284359775754404
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_ES01_escsym_C3_l09",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.025997569901919926,
+        "mvar_mean": 0.628670206524147
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_ES01_escsym_C3_l09_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.40936611229445885,
+        "mvar_mean": -0.003932194546207135
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_EU01_escuns_C2_l2",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.4365512824169395,
+        "mvar_mean": 0.44586233136289055
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_EU01_escuns_C2_l2_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.014652029456919013,
+        "mvar_mean": 0.10186300061378134
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_EU02_escuns_C3_l3",
+      "local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.6705,
+        "mvar_mean": 0.7627
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_SM01_mill_C05_l01",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.20629801074272486,
+        "mvar_mean": 0.9917413372854592
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_SM01_mill_C05_l01_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.8396526126142665,
+        "mvar_mean": 0.4826707532439646
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_SM02_mill_C3_l01",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.9364002888521117,
+        "mvar_mean": 0.9387790548607978
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_SM02_mill_C3_l01_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -1.1411693795549622,
+        "mvar_mean": 0.2516003534187508
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_SM03_mill_C2_l05",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.17841081195403702,
+        "mvar_mean": 0.9903232547091445
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "DO_SM03_mill_C2_l05_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -1.1202934847310884,
+        "mvar_mean": 0.5570681645900567
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN01_crawl",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.1326068984854109,
+        "mvar_mean": 0.9798181006531244
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN01_crawl_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.18668960264435117,
+        "mvar_mean": 0.6759995071007368
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN02_flock",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.4153821804084471,
+        "mvar_mean": 0.9557252901035983
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN02_flock_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.4648406037238192,
+        "mvar_mean": 0.27100953459461163
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN04_gas_VS_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.11,
+        "mvar_mean": 0.558
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN04_gas_VS_tier1_bic",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.701557938893087,
+        "mvar_mean": 0.49109544586817677
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN04_gas_VS_tier1_w5",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.11016040320308612,
+        "mvar_mean": 0.4098063765807616
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN04_gas_preproc_sqrt_none",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.9898648621995472,
+        "mvar_mean": null
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "not finished"
+    },
+    {
+      "experiment": "NDYN04_gas_preproc_sqrt_scale",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.9501765336690393,
+        "mvar_mean": null
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "not finished"
+    },
+    {
+      "experiment": "NDYN04_gas_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.996,
+        "mvar_mean": 0.996
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN04_gas_tier1_bic",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.6756627954138067,
+        "mvar_mean": 0.9885210732519137
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN04_gas_tier1_w5",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.6571583402036806,
+        "mvar_mean": 0.9896960204536513
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN05_blackhole_VS_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.214,
+        "mvar_mean": 0.704
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN05_blackhole_VS_tier1_bic",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": -1.483853518784888,
+        "mvar_mean": -1.269216739396078
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN05_blackhole_VS_tier1_w5",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": -2.1980562557424173,
+        "mvar_mean": -1.040427882120415
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN05_blackhole_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.992,
+        "mvar_mean": 0.994
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN05_blackhole_tier1_bic",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.9869651152609785,
+        "mvar_mean": 0.9924996283182485
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN05_blackhole_tier1_w5",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.7908297193890772,
+        "mvar_mean": 0.9925110911529502
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN06_supernova_VS_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.163,
+        "mvar_mean": 0.244
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN06_supernova_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.508,
+        "mvar_mean": 0.683
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN06_supernova_tier1_bic",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.2905946890076148,
+        "mvar_mean": 0.527846965766721
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN06_supernova_tier1_w5",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": -1.2888117307281197,
+        "mvar_mean": 0.6830619671451468
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN07_crystal_VS_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.779,
+        "mvar_mean": 0.292
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN07_crystal_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.585,
+        "mvar_mean": 0.996
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN08_pure_vicsek_thesis_final",
+      "local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.229,
+        "mvar_mean": 0.654
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN09_longrange",
+      "local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": null,
+        "mvar_mean": null
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "not finished"
+    },
+    {
+      "experiment": "NDYN10_shortrange",
+      "local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "recovered_metrics": {
+        "lstm_mean": -277.9054,
+        "mvar_mean": -0.3588
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN10_shortrange_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -96.70342253835929,
+        "mvar_mean": 0.40186283085556307
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN13_chaos",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": 0.8514040237258849,
+        "mvar_mean": 0.9736214488359255
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN13_chaos_VS",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -0.592057357498518,
+        "mvar_mean": 0.2895194464657125
+      },
+      "remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN14_varspeed",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "recovered_metrics": {
+        "lstm_mean": -36.371449770014586,
+        "mvar_mean": 0.286850503606443
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    }
+  ],
+  "host": "oscar",
+  "n_convergence": [
+    {
+      "experiment": "NDYN08_pure_vicsek_N0050",
+      "label": "N=50",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN08_pure_vicsek_N0100",
+      "label": "N=100",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN08_pure_vicsek_N0200",
+      "label": "N=200",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN08_pure_vicsek_N0300",
+      "label": "N=300",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN08_pure_vicsek_N0500",
+      "label": "N=500",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    },
+    {
+      "experiment": "NDYN08_pure_vicsek_N1000",
+      "label": "N=1000",
+      "local": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "remote": {
+        "LSTM/test_results.csv": true,
+        "MVAR/test_results.csv": true,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "status": "ready locally"
+    }
+  ],
+  "noise": [
+    {
+      "label": "Gas eta=0.15",
+      "rom_candidates": {
+        "NDYN04_gas_eta0p15": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta0p15_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": true,
+          "WSINDy/test_results.csv": true,
+          "summary.json": true
+        }
+      },
+      "rom_remote": {
+        "NDYN04_gas_eta0p15": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta0p15_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": true,
+          "WSINDy/test_results.csv": true,
+          "summary.json": true
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Gas eta=0.50",
+      "rom_candidates": {
+        "NDYN04_gas_eta0p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta0p50_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN04_gas_eta0p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta0p50_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Gas eta=1.00",
+      "rom_candidates": {
+        "NDYN04_gas_eta1p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta1p00_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": true,
+          "WSINDy/test_results.csv": true,
+          "summary.json": true
+        }
+      },
+      "rom_remote": {
+        "NDYN04_gas_eta1p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta1p00_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": true,
+          "WSINDy/test_results.csv": true,
+          "summary.json": true
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Gas eta=1.50",
+      "rom_candidates": {
+        "NDYN04_gas_eta1p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta1p50_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN04_gas_eta1p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta1p50_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Gas eta=2.00",
+      "rom_candidates": {
+        "NDYN04_gas_eta2p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta2p00_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN04_gas_eta2p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN04_gas_eta2p00_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Blackhole eta=0.05",
+      "rom_candidates": {
+        "NDYN05_blackhole_eta0p05": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta0p05_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN05_blackhole_eta0p05": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta0p05_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": false,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Blackhole eta=0.15",
+      "rom_candidates": {
+        "NDYN05_blackhole_eta0p15": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta0p15_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN05_blackhole_eta0p15": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta0p15_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": false,
+        "summary.json": false
+      }
+    },
+    {
+      "label": "Blackhole eta=0.50",
+      "rom_candidates": {
+        "NDYN05_blackhole_eta0p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta0p50_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": true,
+          "WSINDy/test_results.csv": true,
+          "summary.json": true
+        }
+      },
+      "rom_remote": {
+        "NDYN05_blackhole_eta0p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta0p50_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": true,
+          "WSINDy/test_results.csv": true,
+          "summary.json": true
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Blackhole eta=1.00",
+      "rom_candidates": {
+        "NDYN05_blackhole_eta1p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta1p00_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN05_blackhole_eta1p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta1p00_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Blackhole eta=1.50",
+      "rom_candidates": {
+        "NDYN05_blackhole_eta1p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta1p50_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": true,
+          "WSINDy/test_results.csv": true,
+          "summary.json": true
+        }
+      },
+      "rom_remote": {
+        "NDYN05_blackhole_eta1p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN05_blackhole_eta1p50_slim": {
+          "LSTM/test_results.csv": true,
+          "MVAR/test_results.csv": true,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": true,
+          "WSINDy/test_results.csv": true,
+          "summary.json": true
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Supernova eta=0.05",
+      "rom_candidates": {
+        "NDYN06_supernova_eta0p05": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta0p05_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN06_supernova_eta0p05": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta0p05_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Supernova eta=0.15",
+      "rom_candidates": {
+        "NDYN06_supernova_eta0p15": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta0p15_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN06_supernova_eta0p15": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta0p15_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Supernova eta=0.50",
+      "rom_candidates": {
+        "NDYN06_supernova_eta0p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta0p50_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN06_supernova_eta0p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta0p50_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": false
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Supernova eta=1.00",
+      "rom_candidates": {
+        "NDYN06_supernova_eta1p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta1p00_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN06_supernova_eta1p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta1p00_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Supernova eta=1.50",
+      "rom_candidates": {
+        "NDYN06_supernova_eta1p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta1p50_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN06_supernova_eta1p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN06_supernova_eta1p50_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Crystal eta=0.05",
+      "rom_candidates": {
+        "NDYN07_crystal_eta0p05": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta0p05_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN07_crystal_eta0p05": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta0p05_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Crystal eta=0.10",
+      "rom_candidates": {
+        "NDYN07_crystal_eta0p10": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta0p10_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN07_crystal_eta0p10": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta0p10_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Crystal eta=0.50",
+      "rom_candidates": {
+        "NDYN07_crystal_eta0p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta0p50_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN07_crystal_eta0p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta0p50_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Crystal eta=1.00",
+      "rom_candidates": {
+        "NDYN07_crystal_eta1p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta1p00_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN07_crystal_eta1p00": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta1p00_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    },
+    {
+      "label": "Crystal eta=1.50",
+      "rom_candidates": {
+        "NDYN07_crystal_eta1p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta1p50_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "rom_remote": {
+        "NDYN07_crystal_eta1p50": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        },
+        "NDYN07_crystal_eta1p50_slim": {
+          "LSTM/test_results.csv": false,
+          "MVAR/test_results.csv": false,
+          "WSINDy/identification_summary.json": false,
+          "WSINDy/multifield_model.json": false,
+          "WSINDy/test_results.csv": false,
+          "summary.json": false
+        }
+      },
+      "status": "ready locally",
+      "ws_local": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      },
+      "ws_remote": {
+        "LSTM/test_results.csv": false,
+        "MVAR/test_results.csv": false,
+        "WSINDy/identification_summary.json": false,
+        "WSINDy/multifield_model.json": true,
+        "WSINDy/test_results.csv": true,
+        "summary.json": true
+      }
+    }
+  ],
+  "remote_root": "/users/emaciaso/scratch/oscar_output",
+  "tracked_files": [
+    "summary.json",
+    "MVAR/test_results.csv",
+    "LSTM/test_results.csv",
+    "WSINDy/test_results.csv",
+    "WSINDy/multifield_model.json",
+    "WSINDy/identification_summary.json"
+  ]
+}

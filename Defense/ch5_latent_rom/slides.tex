@@ -1,0 +1,163 @@
+% ======================================================================
+%  Ch5 — Latent ROM: MVAR vs LSTM
+% ======================================================================
+
+\iffalse
+\begin{frame}[shrink=8]{MVAR in Aligned POD Coordinates}
+\footnotesize
+
+\textbf{Model class}
+\[
+  \yvec(t_k)
+  =
+  A_0+\sum_{j=1}^{w}A_j\,\yvec(t_{k-j})+\varepsilon(t_k),
+  \qquad
+  w=5,\; r=19
+\]
+
+\textbf{Vectorized ridge fit}
+\[
+  \phi_k
+  =
+  \begin{bmatrix}
+    1\\[2pt]
+    y(t_{k-1})\\
+    \vdots\\
+    y(t_{k-w})
+  \end{bmatrix},
+  \qquad
+  \hat y(t_k)=\phi_k^\top B
+\]
+\[
+  \hat B
+  =
+  (X^\top X+\alpha\Gamma)^{-1}X^\top Y,
+  \qquad
+  \alpha=10^{-4}
+\]
+
+\textbf{Closed-loop rollout}
+\[
+  z_{k+1}
+  =
+  \mathcal{A}_{\mathrm{comp}}\,z_k+b_{\mathrm{comp}},
+  \qquad
+  \rho(\mathcal{A}_{\mathrm{comp}})<1
+  \;\text{favours bounded rollout}
+\]
+
+\[
+  p_{\mathrm{MVAR}}
+  =
+  r+w r^2
+  =
+  19 + 5\cdot 19^2
+  =
+  1{,}824.
+\]
+
+\begin{itemize}
+  \item Interpretable linear finite-memory hypothesis test in latent space
+  \item Effective lag window = $w\Delta t_{\mathrm{ROM}} = 0.6$ s
+  \item Closed-form training; median runtime below one minute
+\end{itemize}
+\end{frame}
+
+\begin{frame}[shrink=8]{LSTM as a Nonlinear Diagnostic}
+\footnotesize
+
+\textbf{Sequence-to-one surrogate}
+\[
+  \mathbf{z}_k
+  \approx
+  f_\theta(\mathbf{z}_{k-1},\ldots,\mathbf{z}_{k-p}),
+  \qquad p=5
+\]
+
+\smallskip
+\textbf{Residual prediction}
+\[
+  \widehat{\mathbf{z}}_k
+  =
+  \mathbf{z}_{k-1}
+  +
+  \Delta_k,
+  \qquad
+  \Delta_k = \mathbf{W}_y\,\mathrm{LayerNorm}(\mathbf{h}_p)+\mathbf{b}_y
+\]
+
+\textbf{Parameter count per layer}
+\[
+  p_{\mathrm{layer}}
+  =
+  4(d_{\mathrm{in}}h+h^2)+8h
+\]
+so with $d=19$, $h=128$, two LSTM layers, LayerNorm, and linear readout,
+\[
+  p_{\mathrm{LSTM}} = 211{,}091.
+\]
+
+\begin{columns}[T]
+\column{0.50\textwidth}
+\textbf{Architecture}
+\begin{itemize}
+  \item 2 layers
+  \item hidden width $h=128$
+  \item LayerNorm + residual readout
+  \item Adam + early stopping
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Interpretation}
+\begin{itemize}
+  \item roughly $116\times$ MVAR parameters
+  \item used as a nonlinear comparator, not the primary thesis model
+\end{itemize}
+\end{columns}
+
+\alert{If LSTM does not beat MVAR, the aligned latent dynamics are not
+genuinely demanding nonlinear memory.}
+\end{frame}
+
+\begin{frame}{$R^2$ Degradation: All Regimes}
+\centering
+\includegraphics[width=\textwidth,height=0.86\textheight,keepaspectratio]{appF_r2_degradation_combined.pdf}
+\end{frame}
+\fi
+
+\begin{frame}[shrink=17]{Efficiency Summary: MVAR vs LSTM}
+\centering
+\normalsize\[
+  p_{\mathrm{MVAR}} = r + wr^2 = 19 + 5{\cdot}19^2 = 1{,}824
+  \;\ll\;
+  p_{\mathrm{LSTM}} = 211{,}091\quad(116{\times}\text{ more})
+\]
+\[
+  \hat{B} = \bigl(X^\top X + \alpha\Gamma\bigr)^{-1}X^\top Y,\quad \alpha=10^{-4};
+  \qquad
+  z_{k+1} = \mathcal{A}_{\mathrm{comp}}\,z_k + b_{\mathrm{comp}},\quad
+  \rho(\mathcal{A}_{\mathrm{comp}})<1
+\]
+\vspace{0.2em}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{MVAR} & \textbf{LSTM} \\
+\midrule
+Trainable parameters & 1{,}824 & 211{,}091 \\
+Training time       & $<1$\,s (closed-form) & ${\sim}30$\,min (GPU Adam) \\
+Median test $R^2$ (CS+PV) & 0.995 & 0.585 \\
+Median test $R^2$ (VS) & 0.425 & $-0.052$ \\
+\bottomrule
+\end{tabular}
+
+\smallskip
+MVAR linear-in-latent hypothesis passes: closed-form training, companion-spectrum stability diagnostics, $116{\times}$ fewer parameters.
+\end{frame}
+
+\iffalse
+\begin{frame}{Training Cost: $116\times$ Fewer Parameters, No Accuracy Loss}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_runtime_comparison.pdf}
+\end{frame}
+\fi

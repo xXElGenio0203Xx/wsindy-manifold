@@ -1,0 +1,115 @@
+% ======================================================================
+%  Ch6 — Experimental Protocol & Metrics
+% ======================================================================
+
+\iffalse
+\begin{frame}[shrink=4]{Shared Evaluation Pipeline}
+
+\textbf{Every thesis experiment is driven by one YAML config and an
+eight-stage workflow:}
+
+\begin{enumerate}
+  \item Generate 340 training trajectories from the Vicsek--Morse simulator
+  \item Build the shared POD basis from shift-aligned density movies
+  \item Construct the latent dataset $y(t)\in\mathbb{R}^{19}$ with stride $3$
+  \item Fit MVAR and LSTM on the same latent coordinates
+  \item Generate 4 held-out test trajectories
+  \item Evaluate closed-loop EF-ROM forecasts after lifting
+  \item Run WSINDy on the same train split in physical field space
+  \item Evaluate weak-form fit, support stability, and targeted closure rollout
+\end{enumerate}
+
+\medskip
+\begin{columns}[T]
+\column{0.48\textwidth}
+\textbf{Train/test policy}
+\begin{itemize}
+  \item 340 train + 4 test runs per regime
+  \item Test set is never used for POD, ROM fitting, or WSINDy regression
+  \item Same held-out trajectories are used across both branches
+\end{itemize}
+
+\column{0.48\textwidth}
+\textbf{Forecast start}
+\[
+  t_{\mathrm{fc}}
+  =
+  \max\!\bigl(t_{\mathrm{fc}}^{\mathrm{req}},\,w_{\max}\Delta t_{\mathrm{ROM}}\bigr)
+  =
+  0.6 \text{ s}
+\]
+with $w_{\max}=5$ and $\Delta t_{\mathrm{ROM}}=0.12$ s.
+\end{columns}
+\end{frame}
+
+\begin{frame}[shrink=8]{Forecast Metrics for the EF-ROM Branch}
+\small
+\textbf{Per-snapshot coefficient of determination}
+\[
+  R^2(n)
+  =
+  1-
+  \frac{\sum_{j=1}^{d}(\rho_j^n-\hat\rho_j^n)^2}
+       {\sum_{j=1}^{d}(\rho_j^n-\bar\rho^n)^2},
+  \qquad
+  \bar\rho^n=\frac{1}{d}\sum_{j=1}^{d}\rho_j^n
+\]
+
+\[
+  R^2_{\mathrm{fc}}
+  =
+  \frac{1}{|\mathcal{T}_{\mathrm{fc}}|}
+  \sum_{n\in\mathcal{T}_{\mathrm{fc}}} R^2(n)
+\]
+
+\textbf{Relative errors}
+\[
+  \mathrm{RelErr}_p(n)=
+  \frac{\|\rho^n-\hat\rho^n\|_p}{\|\rho^n\|_p+\varepsilon},
+  \qquad p\in\{1,2,\infty\}
+\]
+
+\textbf{Mass violation}
+\[
+  \Delta m_{\max}
+  =
+  \max_{n\in\mathcal{T}_{\mathrm{fc}}}
+  \frac{|\hat m^n-m^n|}{m^{n_0}}
+\]
+
+\begin{itemize}
+  \item $R^2$ is the primary scalar metric for EF-ROM forecasting
+  \item Negative $R^2$ means worse than the spatial-mean null model
+  \item Relative norms and mass are secondary physical admissibility checks
+  \item Post-processing uses global mass rescaling after lifting
+\end{itemize}
+\end{frame}
+
+\begin{frame}[shrink=8]{Identification Metrics for the WSINDy Branch}
+\small
+\textbf{Weak-form fit}
+\[
+  R^2_{\mathrm{wf}}
+  =
+  1-
+  \frac{\|\mathbf{b}-\mathbf{G}\mathbf{w}^*\|_2^2}
+       {\|\mathbf{b}\|_2^2}
+\]
+
+\textbf{Dominant-balance ratio}
+\[
+  \Pi_j
+  =
+  \frac{|w_j^*|\;\|\mathbf{G}_{:,j}\|_2}{\|\mathbf{b}\|_2},
+  \qquad
+  \tilde\Pi_j=\Pi_j/\max_k \Pi_k
+\]
+
+\textbf{Branch-specific hierarchy}
+\begin{itemize}
+  \item EF-ROM is judged primarily by long-horizon forecast metrics.
+  \item WSINDy is judged primarily by sparse support recovery, sign plausibility, cross-scale stability, and strong $R^2_{\mathrm{wf}}$.
+  \item ETDRK4 rollout is reported separately as a closure stress test, not as the primary WSINDy score.
+\end{itemize}
+\end{frame}
+\fi

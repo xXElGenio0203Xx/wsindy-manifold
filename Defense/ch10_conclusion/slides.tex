@@ -1,0 +1,40 @@
+% ======================================================================
+%  Ch10 — Conclusion & Future Work
+% ======================================================================
+
+% ------ Slide: Takeaways ------
+\begin{frame}[shrink=6]{What the Thesis Showed}
+\normalsize
+\begin{enumerate}\setlength{\itemsep}{0.6em}
+  \item \textbf{Scientific:} $R^2_{\mathrm{wf},\rho}{>}0.999\;\not\Rightarrow\; R^2_{\mathrm{fc}}{>}0$ --- identification and autonomous rollout decouple; rollout is a closure stress test.
+
+  \item \textbf{Pipeline:} $\tilde\rho\xrightarrow{U_m^\top}\mathbf{y}\xrightarrow{\text{MVAR}}\hat{\mathbf{y}}\xrightarrow{U_m}\hat{\tilde\rho}$ coupled to WSINDy on the same coarse-grained fields.
+
+  \item \textbf{EF-ROM:} MVAR reaches $R^2_{\mathrm{fc}}{=}0.995$ (CS+PV) with $p_{\mathrm{MVAR}}{=}1{,}824$ vs.\ LSTM $p{=}211{,}091$; VS ceiling set by $R^2_{\mathrm{AR}}\approx 0.47$.
+
+  \item \textbf{WSINDy:} $R^2_{\mathrm{wf},\rho}{>}0.99$ in 8/9 regimes; continuity backbone $\partial_t\rho{+}\nabla\!\cdot\mathbf{p}{=}0$ universal; missing saturation $\Rightarrow$ closure failure.
+\end{enumerate}
+\end{frame}
+
+% ------ Slide: Future Work ------
+\begin{frame}{Future Directions}
+\large\textbf{Open directions:}\normalsize
+\begin{itemize}\setlength{\itemsep}{0.8em}
+  \item \textbf{Richer closure:} augment the discovered density law with a saturation term:
+  \[
+    \rho_t = -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi) - \gamma\,\Delta(\rho^2)
+  \]
+  The $\Delta(\rho^2)$ term arrests the Morse aggregation feedback $\rho\uparrow\Rightarrow|\nabla\Phi|\uparrow\Rightarrow$ blowup.
+  \item \textbf{Geometry:} extend shift alignment to curved domains, replacing $G=\mathbb{Z}_{n_y}\times\mathbb{Z}_{n_x}$ with the isometry group of the manifold.
+\end{itemize}
+\end{frame}
+
+% ------ Final slide ------
+\begin{frame}[plain]
+\vspace*{\fill}
+\centering
+{\Huge\bfseries\color{BrownPrimary} Thank you.}
+\\[1.2em]
+{\LARGE Questions?}
+\vspace*{\fill}
+\end{frame}

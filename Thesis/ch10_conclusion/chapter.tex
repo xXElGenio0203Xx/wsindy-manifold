@@ -44,13 +44,13 @@ density weak-form $R^2$ exceeded~0.99 on every regime except
 blackhole\_VS (Table~\ref{tab:mechanism_confidence}), with
 the continuity backbone recovered in all nine cases;
 the EF-ROM achieved forecast $R^2>0.99$ on the strongest constant-speed
-regimes (CS\,+\,PV median $0.994$), while VS median forecast $R^2$
+regimes (CS\,+\,PV median $0.995$), while VS median forecast $R^2$
 dropped to $0.425$ for MVAR and $-0.052$ for LSTM; and WSINDy
 nevertheless recovered sparse regime-consistent effective mechanisms even
 where autonomous rollout was poor.
 
 Weak-form sparse regression does detect interpretable coarse-grained
-structure in these data.  The remaining challenge---the \emph{closure gap}---is whether
+structure in these data.  The remaining challenge, the \emph{closure gap}, is whether
 the selected state variables and library are sufficiently rich to close
 that structure under autonomous evolution at the chosen effective scale.
 Bridging this gap is a structural problem, not primarily a fitting
@@ -81,8 +81,9 @@ counts reflect a practical compute constraint: each regime requires
 approximately 2--4~CPU-hours on the Oscar HPC cluster; scaling to
 $N{=}1000$ increases the per-regime cost roughly tenfold, which exceeded
 the available allocation for a full nine-regime benchmark.
-A preliminary $N$-convergence study was conducted, but a full cross-regime
-convergence analysis remains open.
+An $N$-convergence study on pure Vicsek confirms mean-field
+convergence at moderate particle counts (Appendix~\ref{app:n_convergence}),
+but a full cross-regime convergence analysis was not attempted.
 
 \paragraph{Closure and task asymmetry.}
 The main limitation of the WSINDy branch is that the selected state
@@ -95,9 +96,9 @@ so side-by-side metrics must be interpreted accordingly.
 No bootstrap confidence intervals are reported for the WSINDy
 coefficients.  Cross-scale stability selection
 (Section~\ref{subsec:stability}) serves as a proxy for
-robustness, but a formal uncertainty quantification campaign---e.g.\
+robustness, but a formal uncertainty quantification campaign (e.g.\
 resampling over initial-condition draws or KDE bandwidth
-perturbations---would strengthen the coefficient-level conclusions.
+perturbations) would strengthen the coefficient-level conclusions.
 
 \paragraph{Generalisability.}
 Even with nine benchmark regimes and four initial-condition families, the
@@ -157,7 +158,7 @@ finer spatial resolution) against weak test-function support
 map how the identified law changes with coarse-graining and would quantify
 which interaction mechanisms are robustly recoverable at which scales.
 This extension would clarify whether the recovered coefficients are
-properties of the physics or of the smoothing---the most immediate
+properties of the physics or of the smoothing; this is the most immediate
 methodological question raised by the present results.
 
 \emph{4.~Adaptive POD rank.}
@@ -207,7 +208,7 @@ replacing FFT-based convolutions (used here for the Morse potential
 $\Phi=W*\rho$) with manifold-aware kernel evaluations, for example via
 heat-kernel approximations or spherical-harmonic transforms on~$S^2$.
 This extension would enable WSINDy-based PDE discovery for agent-based
-models on curved surfaces---a setting increasingly relevant in
+models on curved surfaces, a setting increasingly relevant in
 biological collective motion (cells on tissue surfaces) and
 geophysical swarming (flocks navigating the Earth's curvature).
 The repository accompanying this thesis is named

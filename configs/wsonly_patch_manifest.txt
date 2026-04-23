@@ -1,0 +1,4 @@
+configs/noise_sweep_ws/NDYN04_gas_eta0p15.yaml oscar_output/NDYN04_gas_eta0p15_ws
+configs/noise_sweep_ws/NDYN05_blackhole_eta0p05.yaml oscar_output/NDYN05_blackhole_eta0p05_ws
+configs/n_convergence/NDYN08_pure_vicsek_N0500.yaml oscar_output/NDYN08_pure_vicsek_N0500
+configs/n_convergence/NDYN08_pure_vicsek_N1000.yaml oscar_output/NDYN08_pure_vicsek_N1000

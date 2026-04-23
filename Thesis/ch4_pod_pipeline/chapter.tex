@@ -254,8 +254,8 @@ Euclidean geometry and total transformed mass; exact linear-POD
 mass-preservation statements (Section~\ref{sec:mass_preservation})
 therefore do not apply prior to inverse transformation.
 
-All subsequent steps---mean computation, centering, SVD, restriction, and
-lifting---operate in the \emph{transformed} ($\tilde\rho$) space.  The
+All subsequent steps (mean computation, centering, SVD, restriction, and
+lifting) operate in the \emph{transformed} ($\tilde\rho$) space.  The
 inverse transform is applied after lifting:
 \begin{equation}
   \hat{\rho} = \bigl[\max(0,\,\hat{\tilde\rho})\bigr]^2 - \varepsilon,
@@ -359,8 +359,8 @@ $\hat\rho = [\max(0,\hat{\mathbf{x}})]^2 - \varepsilon$
 negatives introduced by POD truncation.
 
 \noindent\textbf{Stage~3: Optional admissibility postprocessing.}
-Two optional corrections restore basic physical admissibility---chiefly
-nonnegativity and total mass---that may be lost under the nonlinear
+Two optional corrections restore basic physical admissibility, chiefly
+nonnegativity and total mass, that may be lost under the nonlinear
 transform and forecast error:
 \begin{itemize}[nosep]
   \item \emph{Nonnegativity clamp}: $\hat\rho^{+} \leftarrow \max(\hat\rho,0)$.

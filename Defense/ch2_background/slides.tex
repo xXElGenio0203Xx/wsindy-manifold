@@ -1,0 +1,154 @@
+% ======================================================================
+%  Ch2 — Background: Microscopic Model & Coarse-Graining
+% ======================================================================
+
+\iffalse
+\begin{frame}[shrink=14]{Microscopic Vicsek--Morse Model}
+\footnotesize
+\begin{columns}[T]
+\column{0.60\textwidth}
+\textbf{Neighbour averaging and noisy alignment}
+\[
+  \mathcal{N}_i^n
+  =
+  \{j : d_\Omega(x_i^n,x_j^n)\le R\},
+  \qquad
+  s_i^n=\sum_{j\in\mathcal{N}_i^n} p_j^n,
+  \qquad
+  \bar p_i^n = \frac{s_i^n}{\|s_i^n\|}.
+\]
+\[
+  p_i^{n+1}=R(\Delta\theta_i^n)\,\bar p_i^n,
+  \qquad
+  x_i^{n+1}=x_i^n+\Delta t\,v_0\,p_i^{n+1},
+\]
+with $\Delta\theta_i^n \sim \mathrm{Unif}(-\eta/2,\eta/2)$.
+
+\smallskip
+\textbf{Morse attraction--repulsion}
+\[
+  f(r)
+  =
+  \frac{C_r}{\ell_r}e^{-r/\ell_r}
+  -
+  \frac{C_a}{\ell_a}e^{-r/\ell_a},
+  \qquad
+  F_{ij}=f(\|x_i-x_j\|)\,\hat r_{ij}.
+\]
+
+\smallskip
+\textbf{Constant-speed vs variable-speed forcing}
+\[
+  \tilde p_i^n
+  =
+  \bar p_i^n
+  +
+  \mu_t\frac{F_i^n}{\|F_i^n\|+\varepsilon},
+  \qquad
+  p_i^{n+1}
+  =
+  \frac{\tilde p_i^n}{\|\tilde p_i^n\|},
+\]
+\[
+  v_i(t+\Delta t)=v_i(t)+\Delta t\,\mu_t F_i(t)
+  \quad
+  \text{(VS diagnostic)}.
+\]
+
+\column{0.36\textwidth}
+\centering
+\textbf{Shared settings}\\[4pt]
+\small
+\begin{tabular}{lr}
+\toprule
+$N$ & 300 \\
+$L_x=L_y$ & 25 \\
+$\Delta t$ & 0.04 s \\
+$R$ & 4.0 \\
+$T_{\mathrm{train}}$ & 20 s \\
+$T_{\mathrm{test}}$ & 200 s \\
+$r_{\mathrm{cut}}$ & $5\max(\ell_r,\ell_a)$ \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\begin{itemize}
+  \item periodic torus in every run
+  \item CS: force changes heading only
+  \item VS: force also changes speed
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}[shrink=9]{KDE Coarse-Graining Defines the Shared Field Space}
+\small
+
+Gaussian KDE defines the density field
+\[
+  \rho(x,t)
+  =
+  \sum_{i=1}^N K_h\!\bigl(x-x_i(t)\bigr),
+  \qquad
+  K_h(z)
+  =
+  \frac{1}{2\pi h^2}
+  \exp\!\left(-\frac{\|z\|^2}{2h^2}\right).
+\]
+
+Velocity-weighted KDE defines the polarisation fluxes
+\[
+  p_\alpha(x,t)
+  =
+  \sum_{i=1}^N K_h\!\bigl(x-x_i(t)\bigr)\,v_{i,\alpha}(t),
+  \qquad
+  \alpha\in\{x,y\}.
+\]
+
+The nonlocal Morse field is
+\[
+  \Phi(x,t)
+  =
+  (W * \rho)(x,t)
+  =
+  \mathcal{F}^{-1}\!\bigl[\hat W \cdot \hat\rho\bigr](x,t),
+  \qquad
+  W(r)=-C_r e^{-r/\ell_r}+C_a e^{-r/\ell_a}.
+\]
+
+\begin{itemize}
+  \item Shared numerical representation: $64\times 64$ grid, bandwidth $\sigma=5.0$ grid cells.
+  \item Snapshot stride $=3$, so $\Delta t_{\mathrm{ROM}}=0.12$ s.
+  \item Periodic Gaussian smoothing preserves total mass up to discretization.
+\end{itemize}
+\end{frame}
+\fi
+
+\begin{frame}[shrink=6]{Nine Regimes, One Field Space}
+\begin{columns}[c]
+\column{0.48\textwidth}\centering
+\includegraphics[width=\textwidth,height=0.60\textheight,keepaspectratio]{traj_DYN4_t15.png}\\[2pt]
+{\small\textbf{Blackhole regime:} 300 agents, strong Morse attraction ($C_a{=}20$)}
+\column{0.48\textwidth}\centering
+\includegraphics[width=\textwidth,height=0.60\textheight,keepaspectratio]{kde_DO_DM01_dmill_C09_l05.pdf}\\[2pt]
+{\small\textbf{Coarse-grained fields:} density $\rho$,\; polarisation $\mathbf{p}$,\; Morse field $\Phi$}
+\end{columns}
+\medskip\centering\large
+$\rho{=}\displaystyle\sum_i K_h(x{-}x_i),\qquad
+\mathbf{p}{=}\displaystyle\sum_i K_h(x{-}x_i)\mathbf{v}_i,\qquad
+\Phi{=}W*\rho$
+\end{frame}
+
+\begin{frame}[shrink=13]{Shared Benchmark Design}
+\centering
+\includegraphics[width=\textwidth,height=0.62\textheight,keepaspectratio]{thesis_benchmark_design.pdf}\\[3pt]
+{\small $N{=}300$,\; $64{\times}64$ grid,\; $K_h$: Gaussian $h{=}5$ cells,\; $\Delta t_{\mathrm{ROM}}{=}0.12\,\mathrm{s}$,\; 9 regimes $\times$ 4 IC families}\\[0.2em]
+{\small $K_h(z)=\tfrac{1}{2\pi h^2}e^{-\|z\|^2/(2h^2)}$;\quad $\rho=\textstyle\sum_i K_h(x{-}x_i)$,\; $\mathbf{p}=\textstyle\sum_i K_h(x{-}x_i)\mathbf{v}_i$,\; $\Phi=W*\rho$}\\[0.2em]
+{\small\textbf{VS update:}\; $v_i(t{+}\Delta t)=v_i(t)+\Delta t\,\mu_t F_i(t)$ \quad (VS variant: force also changes speed; CS variant: heading only)}
+\end{frame}
+
+\iffalse
+\begin{frame}{KDE Coarse-Graining to Multi-Field Data}
+\centering
+\includegraphics[width=\textwidth,height=0.88\textheight]{kde_DO_DM01_dmill_C09_l05.pdf}
+\end{frame}
+\fi

@@ -33,7 +33,7 @@ means that the discovered PDE satisfies:
   \item active mechanisms that are consistent with the expected
         regime-level physics encoded by the candidate library.
 \end{enumerate}
-Autonomous rollout is reported as a closure diagnostic---not as the primary
+Autonomous rollout is reported as a closure diagnostic, not as the primary
 criterion of identification quality.  A well-identified but unclosed PDE
 may diverge under integration without invalidating the identification itself.
 
@@ -218,7 +218,7 @@ negligible relative to the test-function support scale.
   \draw[arrow] (data) -- node[above, font=\small] {IBP} node[below, font=\footnotesize, text width=3cm, align=center] {transfers derivatives\\onto known $\psi$} (test);
   % Bottom annotation
   \node[below=0.6cm of data.south east, anchor=north, text width=10cm, align=center, font=\small\itshape] at (3.75,-1.8)
-    {Result: all derivatives act on the analytic, smooth $\psi$ --- never on the noisy~$u$.};
+    {Result: all derivatives act on the analytic, smooth $\psi$, never on the noisy~$u$.};
 \end{tikzpicture}
 \caption{Schematic of the weak-form integration-by-parts mechanism.  The
 noisy field data~$u$ (left) enters the inner product undifferentiated,
@@ -472,7 +472,7 @@ field-level regressions rather than a POD latent time-stepper.
 \section{Sparse regression and model selection}
 \label{sec:regression}
 
-Sparsity-promoting regression originates with the Lasso~\cite{tibshirani1996lasso}; in the PDE-discovery context, the same principle underpins both SINDy's sequential thresholded least squares~\cite{brunton2016sindy} and the SR3 relaxation~\cite{zheng2019sr3}.
+Sparsity-promoting regression originates with the Lasso; in the PDE-discovery context, the same principle underpins both SINDy's sequential thresholded least squares~\cite{brunton2016sindy} and the SR3 relaxation~\cite{zheng2019sr3}.
 
 \subsection{Column preconditioning}
 \label{subsec:precondition}
@@ -694,7 +694,7 @@ To enable exponential time-stepping, the discovered RHS is decomposed into
   \label{eq:lin_nonlin_split}
 \end{equation}
 where $L$ collects all terms that are \emph{linear} in~$u$ (feature $=u$,
-any operator---e.g.\ $\alpha\Delta u$, $\beta\partial_x u$) and $N(u)$
+any operator, e.g.\ $\alpha\Delta u$, $\beta\partial_x u$) and $N(u)$
 contains the nonlinear remainder (e.g.\ $\Delta u^2$, $|\nabla u|^2$).
 In Fourier space, $L$ has a diagonal multiplier
 \begin{equation}
@@ -741,7 +741,7 @@ non-physical operator, or degenerate optimisation mode identified during
 trial runs.  All six are active regardless of YAML configuration.
 We group them by how they intervene in the identification pipeline.
 
-\paragraph{Library-structure biases (constrain what can be discovered).}
+\paragraph{Library-structure biases.}
 \emph{Biharmonic operator removal.}
 The biharmonic operator~$\nabla^4$ was removed from the candidate library.
 In trial runs it absorbed energy from the physically motivated viscous
@@ -756,11 +756,11 @@ automatically excluded, preventing the regression from fitting interaction
 artefacts where no interaction force exists.  This is the only bias that
 uses regime metadata.
 
-\paragraph{Post-fit filters (constrain regression output, not library).}
+\paragraph{Post-fit filters.}
 \emph{Sign constraints on post-fit coefficients.}
 After each MSTLS solve, coefficients whose physical sign is known
-\emph{a priori}---viscous terms must be non-positive, ensuring
-dissipation rather than anti-diffusion---are checked; sign-violating
+\emph{a priori} (viscous terms must be non-positive, ensuring
+dissipation rather than anti-diffusion) are checked; sign-violating
 survivors are zeroed and the fit is re-solved.
 \emph{Coefficient magnitude cap.}
 Retained coefficients exceeding $|c|>5.0$ are removed, guarding against
@@ -771,7 +771,7 @@ Because both filters act \emph{after} the sparse selection step, they
 cannot introduce terms that the data did not select; they can only
 remove terms that violate known physics.
 
-\paragraph{Preprocessing biases (act before regression).}
+\paragraph{Preprocessing biases.}
 \emph{Centred flux estimation.}
 The KDE flux estimator subtracts the domain-mean flux from each snapshot
 before weak-form convolution.  Without this correction, a nonzero mean

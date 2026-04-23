@@ -1,0 +1,128 @@
+% ======================================================================
+%  Ch1 — Introduction / Motivation
+% ======================================================================
+
+\iffalse
+\begin{frame}[shrink=6]{From Agents to PDEs: The Closure Problem}
+\small
+
+From microscopic trajectories on the periodic domain
+$\Omega=[0,L_x)\times[0,L_y)$, the thesis observes the coarse-grained state
+\[
+  \mathbf{q}(x,t)
+  =
+  \bigl(\rho(x,t),\,p_x(x,t),\,p_y(x,t),\,\Phi(x,t)\bigr),
+  \qquad
+  \Phi = W * \rho .
+\]
+
+The density must satisfy a \textbf{conservation law}:
+\[
+  \partial_t \rho + \nabla\!\cdot \mathbf{j} = 0.
+\]
+
+The \textbf{closure problem} is to identify an \textbf{effective flux law}
+\[
+  \mathbf{j}_{\boldsymbol{\theta}}[\rho,\mathbf{p},\Phi],
+  \qquad
+  \mathbf{p}=(p_x,p_y),
+\]
+such that
+\[
+  \partial_t \rho + \nabla\!\cdot
+  \mathbf{j}_{\boldsymbol{\theta}}[\rho,\mathbf{p},\Phi] = 0
+\]
+matches the observed field data.
+
+\medskip
+Scalar density alone is not expected to close: alignment survives in
+$\mathbf{p}$ and Morse interactions survive in $\Phi$.
+\end{frame}
+\fi
+
+\begin{frame}[plain]
+\centering
+\begin{columns}[c]
+\column{0.50\textwidth}\centering
+\includegraphics[width=\textwidth,height=0.68\textheight,keepaspectratio]{traj_DYN7_t38.png}\\[2pt]
+{\small Microscopic: 300 self-propelled particles}
+\column{0.50\textwidth}\centering
+\includegraphics[width=\textwidth,height=0.68\textheight,keepaspectratio]{kde_DO_DM01_dmill_C09_l05.pdf}\\[2pt]
+{\small Coarse-grained fields: $\rho$,\; $\mathbf{p}$,\; $\Phi$}
+\end{columns}
+\medskip
+\large
+$\rho=\displaystyle\sum_i K_h(x{-}x_i),\qquad
+\mathbf{p}=\displaystyle\sum_i K_h(x{-}x_i)\mathbf{v}_i,\qquad
+\Phi=W*\rho$
+\end{frame}
+
+\iffalse
+\begin{frame}{Thesis Pipeline Overview}
+\centering
+\includegraphics[width=\textwidth,height=0.88\textheight]{thesis_pipeline_overview.pdf}
+\end{frame}
+\fi
+
+\begin{frame}{Two Headline Results}
+\large
+\begin{itemize}\setlength{\itemsep}{1.8em}
+  \item \textbf{MVAR matches or exceeds LSTM accuracy with $116{\times}$ fewer parameters}\\[0.3em]
+        {\normalsize Aligned latent dynamics are near-linear --- model capacity is not the bottleneck.}
+  \item \textbf{WSINDy recovers the PDE skeleton ($R^2_{\mathrm{wf},\rho}{>}0.99$) in 8 of 9 regimes --- but closure can still fail}\\[0.3em]
+        {\normalsize Strong identification $\not\Rightarrow$ adequate closure: missing saturation causes autonomous rollout to diverge.}
+\end{itemize}
+\medskip
+\normalsize\centering
+$R^2_{\mathrm{fc}} = 1 - \dfrac{\|\rho^*-\hat\rho\|_F^2}{\|\rho^*-\bar\rho\|_F^2}$\quad\textbf{\textit{vs.}}\quad$R^2_{\mathrm{wf},\rho} = 1 - \dfrac{\|\mathbf{b}_\rho - \mathbf{G}_\rho\mathbf{w}^*_\rho\|^2}{\|\mathbf{b}_\rho\|^2}$\\[0.5em]
+\large\textbf{Strong weak-form fit can coexist with failed autonomous rollout.}
+\end{frame}
+
+\begin{frame}[shrink=25]{Two Pipelines, Two Questions}
+\large\centering
+$\partial_t\rho + \nabla\!\cdot\mathbf{j}_{\boldsymbol\theta}[\rho,\mathbf{p},\Phi]=0\quad\longleftarrow$ \textbf{shared closure target}\\[0.5em]
+\begin{columns}[T]
+\column{0.48\textwidth}
+\begin{block}{Part I: EF-ROM}
+\normalsize
+\begin{itemize}\setlength{\itemsep}{0.4em}
+  \item Shift-aligned POD + latent MVAR or LSTM
+  \item Question: \textbf{forecastability} --- how well can we predict collective motion?
+  \item Score: closed-loop $R^2_{\mathrm{fc}}$
+\end{itemize}
+\vspace{0.1em}\small
+\[
+\mathbf{y}_k = U_m^\top(\tilde{\mathbf{x}}_k{-}\boldsymbol{\mu}),\quad
+\hat{\mathbf{y}}_k = A_0{+}\sum_{j=1}^{w}A_j\mathbf{y}_{k-j}
+\]
+\[
+z_{k+1} = \mathcal{A}_{\mathrm{comp}}\,z_k + b_{\mathrm{comp}},\quad\rho(\mathcal{A}_{\mathrm{comp}}){<}1
+\]
+\end{block}
+
+\column{0.48\textwidth}
+\begin{block}{Part II: WSINDy}
+\normalsize
+\begin{itemize}\setlength{\itemsep}{0.4em}
+  \item Weak-form sparse regression on field data
+  \item Question: \textbf{identifiability} --- what PDE governs the density?
+  \item Score: weak-form $R^2_{\mathrm{wf},\rho}$
+\end{itemize}
+\vspace{0.1em}\small
+\[
+b_k=-\!\int_{Q_k}\!u\,\partial_t\psi_k,\quad
+\mathbf{b}=\mathbf{G}\mathbf{w}
+\]
+\[
+\mathbf{w}^*=\mathrm{MSTLS}(\mathbf{G},\mathbf{b},\lambda),\quad
+R^2_{\mathrm{wf}}=1-\tfrac{\|\mathbf{b}-\mathbf{G}\mathbf{w}^*\|^2}{\|\mathbf{b}\|^2}
+\]
+\end{block}
+\end{columns}
+
+\bigskip
+\centering
+\large
+Rollout is a \textbf{closure stress test}, not the main identifiability score.\\[0.4em]
+$\Rightarrow$\quad $R^2_{\mathrm{wf},\rho}{>}0.99$ \emph{and} rollout diverges --- these are compatible.
+\end{frame}

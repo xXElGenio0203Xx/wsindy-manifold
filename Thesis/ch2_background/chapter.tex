@@ -11,8 +11,8 @@ and test data.  The model extends the discrete-time
 Vicsek alignment framework studied in~\cite{alvarez2025eqfree} with Morse
 attraction--repulsion forces~\cite{dorsogna2006morse} and variable-speed dynamics, producing a family
 of regimes whose macroscopic behavior ranges from gentle drift to
-near-singular collapse.  Each microscopic ingredient---alignment,
-attraction--repulsion, and speed mode---motivates a specific candidate term in the WSINDy library (Chapter~\ref{ch:wsindy_methodology}): alignment maps to self-advection and relaxation terms, Morse forces to nonlocal density-weighted gradients, and variable speed to flux--density coupling that the present library does not close.
+near-singular collapse.  Each microscopic ingredient (alignment,
+attraction--repulsion, and speed mode) motivates a specific candidate term in the WSINDy library (Chapter~\ref{ch:wsindy_methodology}): alignment maps to self-advection and relaxation terms, Morse forces to nonlocal density-weighted gradients, and variable speed to flux--density coupling that the present library does not close.
 
 \subsection{Vicsek-style noisy alignment}
 
@@ -49,7 +49,7 @@ followed by the forward Euler position update
 x_i^{n+1} = x_i^n + \Delta t\,v_0\,p_i^{n+1}.
 \label{eq:vicsek_position}
 \end{equation}
-This is the standard Vicsek alignment mechanism~\cite{vicsek1995vicsek}; its mean-field limit and the continuum equations that arise from it are studied in~\cite{toner2005hydrodynamics,bertin2006boltzmann,degond2008continuum}.
+This is the standard Vicsek alignment mechanism~\cite{vicsek1995vicsek,ginelli2015physics}; its mean-field limit and the continuum equations that arise from it are studied in~\cite{toner2005hydrodynamics,bertin2006boltzmann,degond2008continuum}.
 The noise model is specified per regime (uniform or Gaussian angular noise); the original model uses uniform angular noise
 $\Delta\theta_i^n \sim \mathrm{Unif}(-\eta/2,\ \eta/2)$ with strength $\eta$; in addition, we also consider Gaussian noise
 $\Delta\theta_i^n \sim \mathcal{N}(0,\sigma^2)$.
@@ -126,7 +126,7 @@ $v_i(t+\Delta t) = v_i(t) + \Delta t\,\mu_t\,F_i(t)$,
 $x_i(t+\Delta t) = x_i(t) + \Delta t\,v_i(t+\Delta t)$.
 When speed is no longer slaved to heading, the effective
 phase-space dimension increases and the POD latent coordinates
-may no longer capture the dynamics faithfully---making VS regimes
+may no longer capture the dynamics faithfully, making VS regimes
 a stress test for low-dimensional ROM assumptions.
 The full update pseudocode is given in Algorithm~\ref{alg:vicsek}
 (Appendix~\ref{app:detailed_algorithms}); the key step is the sequential
@@ -155,7 +155,7 @@ position update on the periodic torus.
   \includegraphics[width=0.33\textwidth]{ch3_experimentation/figures/traj_DYN6_t0.png} &
   \includegraphics[width=0.33\textwidth]{ch3_experimentation/figures/traj_DYN6_t15.png} &
   \includegraphics[width=0.33\textwidth]{ch3_experimentation/figures/traj_DYN6_t38.png} \\[-4pt]
-  \multicolumn{3}{c}{\small (d) Blackhole VS regime (variable speed --- erratic trajectories)} \\[1pt]
+  \multicolumn{3}{c}{\small (d) Blackhole VS regime (variable speed, erratic trajectories)} \\[1pt]
 
   {\small $t \approx 0$\,s} & {\small $t \approx 6$\,s} & {\small $t \approx 15$\,s}
 \end{tabular}}
@@ -289,7 +289,7 @@ If the grid is square ($\Delta x=\Delta y$) and the same $\sigma$ is used in bot
 \label{eq:smoothed_histogram}
 \end{equation}
 approximates the \emph{cell-averaged} continuous Gaussian KDE \eqref{eq:kde_def} with physical bandwidth $h=\sigma\,\Delta x$.
-This follows from standard properties of Gaussian convolution; for foundational KDE theory see, e.g.,~\cite{wasserman2006all}.
+This follows from standard properties of Gaussian convolution.
 \end{remark}
 
 \begin{remark}[Mass conservation in periodic domains]
@@ -359,8 +359,8 @@ $W(r) = -C_r\,e^{-r/\ell_r} + C_a\,e^{-r/\ell_a}$:
 \label{eq:morse_potential_field}
 \end{equation}
 evaluated efficiently via 2-D FFT convolution.
-The combined field set $(\rho, p_x, p_y)$---together with their spatial
-derivatives and, when forces are active, $\Phi$---forms the input to the
+The combined field set $(\rho, p_x, p_y)$, together with their spatial
+derivatives and, when forces are active, $\Phi$, forms the input to the
 weak-form PDE library constructed in Chapter~8.
 
 These auxiliary fields are introduced because the macroscopic flux is not

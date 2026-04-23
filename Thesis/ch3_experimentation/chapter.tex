@@ -47,6 +47,7 @@ Effective ROM time step $\Delta t_{\mathrm{ROM}}$ & $0.12\,$s       & $= \Delta 
 Fixed POD modes $m$                         & 19                & \cv{fixed\_modes} \\
 Density transform                           & $\sqrt{\cdot}$    & \cv{density\_transform} \\
 Shift alignment                             & enabled (mean ref) & \cv{shift\_align} \\
+Ridge penalty $\alpha$                      & $10^{-4}$         & \cv{rom.mvar.ridge\_alpha} \\
 Mass post-processing                        & scale             & \cv{mass\_postprocess} \\
 \hline
 \end{tabular}
@@ -72,9 +73,9 @@ mechanisms.
 \subsection{NDYN regimes (physics-knob variations)}
 \label{subsec:ndyn_regimes}
 
-Fourteen \emph{NDYN} regimes isolate individual physics knobs---speed, noise
+Fourteen \emph{NDYN} regimes isolate individual physics knobs (speed, noise
 strength, attraction/repulsion amplitude, force length scale, and speed
-mode---while holding the others at moderate baseline values.
+mode) while holding the others at moderate baseline values.
 The repository defines 14 NDYN configurations, of which 11 non-duplicate
 entries are retained in the final systematic catalogue
 (Appendix~\ref{app:full_regime_catalogue}).
@@ -97,8 +98,8 @@ inflates the effective latent dimension.
 A second set of fourteen \emph{DO} (dynamics-outcome) regimes holds speed
 $v_0{=}3$, noise $\eta{=}0.2$, and interaction parameters fixed except for
 the repulsion coefficient~$C_r$ and repulsion length~$\ell_r$.  This
-sweep targets specific collective behaviours---collective swarms, single and
-double mills, double rings, and escape patterns---following the D'Orsogna
+sweep targets specific collective behaviours (collective swarms, single and
+double mills, double rings, and escape patterns) following the D'Orsogna
 classification~\cite{dorsogna2006morse}.  The full DO catalogue is provided
 in Appendix~\ref{app:full_regime_catalogue}.
 

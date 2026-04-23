@@ -76,7 +76,7 @@ on the surviving columns until convergence.
 \end{breakablealgorithm}
 
 \noindent The implementation is in \texttt{src/wsindy/regression.py} (\cv{mstls}).
-The default $\hat\lambda$ grid is 25 log-spaced values in $[10^{-4},1]$.
+The default $\hat\lambda$ grid is 40 log-spaced values in $[10^{-4},10^1]$.
 The tie-break rule on line~17 (prefer equal-loss models with fewer
 active terms) enforces an Occam preference: among all threshold values
 that achieve the same normalised residual, we select the sparsest

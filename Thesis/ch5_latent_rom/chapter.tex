@@ -4,7 +4,7 @@
 This chapter describes the two latent-space time-steppers used in the
 restrict--evolve--lift pipeline of Chapter~\ref{ch:global_pod_pipeline}:
 a multivariate autoregressive model~(MVAR) and a long short-term memory
-network~(LSTM)~\cite{hochreiter1997lstm}.
+network~(LSTM).
 Both models operate on the $r$-dimensional POD coefficient
 vector~\cite{berkooz1993pod}
 $y(t_k)\in\mathbb{R}^r$ and produce a one-step-ahead prediction that is
@@ -56,7 +56,7 @@ The corresponding one-step-ahead prediction is
 \end{equation}
 
 \subsection{Ridge-regularized training}\label{subsec:mvar_training}
-The unknown parameters $(A_0,\{A_j\}_{j=1}^w)$ are obtained by minimizing a ridge-penalized least-squares problem~\cite{wasserman2006all}:
+The unknown parameters $(A_0,\{A_j\}_{j=1}^w)$ are obtained by minimizing a ridge-penalized least-squares problem:
 \begin{equation}\label{eq:mvar_ls_problem}
   \min_{A_0,\{A_j\}_{j=1}^w}\;
   \sum_{c=1}^{C}\;\sum_{k=w+1}^{K}
@@ -224,7 +224,7 @@ A $p$-step autoregressive surrogate learns the one-step map
 \end{equation}
 where $f_\theta$ is a parameterized nonlinear model.
 LSTMs are preferred over vanilla RNNs because the gated cell state
-mitigates vanishing/exploding gradients, which matters when the latent
+mitigates vanishing/exploding gradients~\cite{hochreiter1997lstm}, which matters when the latent
 series exhibits long transients or regime shifts.
 
 \noindent\textbf{LSTM architecture.}
@@ -235,7 +235,7 @@ the LSTM processes the sequence through forget, input, and output gates
 that regulate information flow into the cell state~$\mathbf{c}_\tau$ and
 hidden state~$\mathbf{h}_\tau$ (gate equations in
 Eq.~\eqref{eq:lstm_gates}, Appendix~\ref{app:supplementary_figures}).
-The final hidden state is passed through LayerNorm~\cite{ba2016layernorm} before a linear readout.
+The final hidden state is passed through LayerNorm before a linear readout.
 
 \noindent\textbf{Residual (delta) prediction.}
 In all experiments, the network uses residual prediction, so
@@ -252,7 +252,7 @@ state, which improves stability during closed-loop rollout.
 
 \noindent\textbf{Training objective and configuration.}
 The LSTM is trained via one-step MSE on sliding windows of
-ground-truth latent states, optimised with Adam~\cite{kingma2014adam}; early stopping,
+ground-truth latent states, optimised with Adam; early stopping,
 gradient clipping, and a
 learning-rate scheduler are used during training.
 Full hyperparameters are listed in
@@ -264,7 +264,7 @@ $4(d_{\mathrm{in}}h + h^2) + 8h$ weights (four gates $\times$
 input-to-hidden, hidden-to-hidden, and two biases).
 With $d{=}r{=}19$, $h{=}128$, $L{=}2$ layers, plus LayerNorm ($2h$) and
 a linear readout ($hd+d$), the total is
-$p_{\mathrm{LSTM}} = 76{,}288 + 132{,}096 + 256 + 2{,}451 = 211{,}091$---roughly
+$p_{\mathrm{LSTM}} = 76{,}288 + 132{,}096 + 256 + 2{,}451 = 211{,}091$, roughly
 $116\times$ the MVAR count of $1{,}824$, a ratio that will become relevant
 when interpreting forecast quality in Chapter~\ref{ch:rom_results}.
 
@@ -296,7 +296,7 @@ interpretable~\cite{alvarez2025eqfree}.
 
 The comparison in Chapter~\ref{ch:rom_results} should therefore be
 interpreted primarily as evidence about the effective geometry of the
-aligned latent dynamics---whether they are primarily linear but
+aligned latent dynamics: whether they are primarily linear but
 potentially unstable, substantially nonlinear, or insufficiently
 low-dimensional for either surrogate to capture over long
-horizons---rather than as a leaderboard-style predictor comparison.
+horizons. It is not a leaderboard-style predictor comparison.

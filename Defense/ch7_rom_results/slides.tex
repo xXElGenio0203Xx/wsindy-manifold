@@ -1,0 +1,194 @@
+% ======================================================================
+%  Ch7 — ROM Results: MVAR vs LSTM
+% ======================================================================
+
+\iffalse
+\begin{frame}[shrink=8]{Shift Predictability Is the Structural Ceiling}
+\small
+Both surrogates evolve only the \emph{aligned} latent state:
+\[
+  y_k = U_m^\top(\tilde x_k-\mu),
+  \qquad
+  \hat x_{k+1}
+  =
+  \mathcal{L}\!\bigl(
+    \Phi_{\mathrm{ROM}}(y_k,\ldots,y_{k-w+1})
+  \bigr).
+\]
+The bulk shift
+\[
+  \boldsymbol{\Delta}(t)=(\Delta y(t),\Delta x(t))
+\]
+is removed by registration and is \emph{not} itself forecasted by MVAR or LSTM.
+
+\medskip
+Consequences from the thesis:
+\begin{itemize}
+  \item gas and pure Vicsek shifts are strongly autocorrelated and admit simple AR fits with $R^2\approx 0.88$
+  \item supernova and CS blackhole are intermediate at roughly $R^2\approx 0.83$
+  \item blackhole\_VS collapses to a near-memoryless shift process at roughly $R^2\approx 0.45$
+\end{itemize}
+
+\[
+  \text{poor shift predictability}
+  \Longrightarrow
+  \text{higher effective latent dimension}
+  \Longrightarrow
+  \text{lower forecast ceiling}.
+\]
+\end{frame}
+
+\begin{frame}{Shift Dynamics Across the Benchmark}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_phase_dynamics_ch7.pdf}
+\end{frame}
+
+\begin{frame}[shrink=6]{Phase Behavior via Order Parameters}
+\small
+\textbf{Global alignment order parameter}
+\[
+  \Psi(t)
+  =
+  \frac{1}{N}\left|\sum_{j=1}^{N} e^{i\theta_j(t)}\right|
+  \in [0,1],
+  \qquad
+  \Psi\to 1: \text{aligned flock},\quad
+  \Psi\to 0: \text{disordered gas}.
+\]
+
+\textbf{Peak density and angular speed}
+\[
+  \bar\rho_{\max}(t)=\frac{1}{N}\max_{x\in\Omega}\rho(x,t),
+  \qquad
+  \omega_i(t)=\frac{\mathrm{d}\theta_i}{\mathrm{d}t}.
+\]
+
+\medskip
+\begin{itemize}
+  \item \textbf{blackhole}: $\bar\rho_{\max}\uparrow$ monotonically as aggregation proceeds
+  \item \textbf{supernova}: $\bar\rho_{\max}\downarrow$ under repulsive explosion; $\Psi$ stays low
+  \item \textbf{pure Vicsek}: $\Psi\to 1$ within $\sim 5$ s; $\bar\rho_{\max}$ stays flat (no force)
+  \item \textbf{VS variants}: $\Psi$ and $\bar\rho_{\max}$ decorrelate because speed tracks $|v_i(t)|$
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Order Parameters Across Regimes}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_order_params_ch7.pdf}
+\end{frame}
+\fi
+
+\begin{frame}[shrink=2]{ROM Forecast Quality Across Regimes}
+\centering
+\normalsize$R^2_{\mathrm{fc}} = 1 - \|\rho^* - \hat\rho\|_F^2\,/\,\|\rho^* - \bar\rho\|_F^2$\quad (closed-loop rollout, held-out test ICs)\\[3pt]
+\includegraphics[width=\textwidth,height=0.62\textheight,keepaspectratio]{thesis_r2_heatmap.pdf}\\[3pt]
+{\small \textbf{Median CS+PV:} $R^2{=}0.995$;\quad MVAR dominates the main benchmark; parity only in the easiest regimes.\quad \textbf{VS block:} ceiling set by shift AR: $R^2_{\mathrm{AR}}({\rm BH\,VS}){=}0.47$}
+\end{frame}
+
+\iffalse
+% Figure B.1 from thesis appendix — R^2 degradation over time, all 48 experiments
+\begin{frame}[shrink=6]{$R^2$ Degradation Over Time: Full Experiment Suite}
+\centering
+{\small Faint traces = individual runs;\enspace bold = median;\enspace shading = IQR.\enspace Diverged LSTM runs ($R^2<{-}2$) clipped at axis.}\\[4pt]
+\includegraphics[width=\textwidth,height=0.74\textheight,keepaspectratio]{appF_r2_degradation_combined.pdf}\\[3pt]
+{\small \textbf{Blue (MVAR):} median stays near 1 for CS, degrades for VS.\quad
+\textbf{Red (LSTM):} higher variance across all groups; faster degradation on VS and blackhole.}
+\end{frame}
+\fi
+
+\begin{frame}[shrink=8]{Shift Predictability: The Structural Ceiling}
+\centering
+\normalsize
+$\boldsymbol{\delta}(t) = a_0 + \sum_{k=1}^{p}a_k\,\boldsymbol{\delta}(t{-}k)+\boldsymbol{\varepsilon}_t,\quad p{=}5$
+\quad---\quad
+$R^2_{\mathrm{AR}}\downarrow\;\Rightarrow\;$ memoryless bulk drift $\;\Rightarrow\;$ $R^2_{\mathrm{fc}}$ ceiling$\downarrow$\\[2pt]
+\small
+$R^2_{\mathrm{fc}} \lesssim R^2_{\mathrm{AR}}(\boldsymbol{\delta}):\quad$
+\textbf{Gas CS:} $R^2_{\mathrm{AR}}=0.89 \to R^2_{\mathrm{fc}}=0.995$;\quad
+\textbf{BH VS:} $R^2_{\mathrm{AR}}=0.47 \to R^2_{\mathrm{fc}}=0.43$\\[3pt]
+\includegraphics[width=\textwidth,height=0.68\textheight,keepaspectratio]{thesis_shift_ar.pdf}
+\end{frame}
+
+\iffalse
+\begin{frame}{Forecast Degradation Over Time}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_r2_degradation.pdf}
+\end{frame}
+\fi
+
+\begin{frame}{When the ROM Works vs.~When It Fails}
+\centering
+\normalsize
+\begin{columns}[T]
+\column{0.49\textwidth}
+\centering
+{\bfseries\color{BrownPrimary} Gas (CS) --- shift is predictable}
+\includegraphics[width=\textwidth,height=0.33\textheight,keepaspectratio]{ch7_snapshots_gas.pdf}
+\vspace{0.2em}
+{\small $R^2_{\mathrm{AR}}=0.89\;\Rightarrow\; R^2_{\mathrm{fc}}=0.995$: shape \emph{and} location match}
+\column{0.49\textwidth}
+\centering
+{\bfseries\color{BrownAccent} Blackhole VS --- shift is memoryless}
+\includegraphics[width=\textwidth,height=0.33\textheight,keepaspectratio]{appE_snapshots_blackhole.pdf}
+\vspace{0.2em}
+{\small $R^2_{\mathrm{AR}}=0.47\;\Rightarrow\; R^2_{\mathrm{fc}}=0.43$: right shape, wrong location}
+\end{columns}
+\medskip
+\normalsize
+$\rho^*(x,t)\approx\rho_{\mathrm{ROM}}(x-\boldsymbol{\delta}_{\mathrm{err}}(t),t)\;$---\;shape tracked, bulk translation missed
+\end{frame}
+
+\iffalse
+\begin{frame}[shrink=8]{Quantitative Comparison: Accuracy, Cost, and Stability}
+\small
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{MVAR} & \textbf{LSTM} \\
+\midrule
+Trainable parameters & 1{,}824 & 211{,}091 \\
+Median train time & $<1$ min & $\sim 45$ min \\
+Median $R^2$ (CS+PV) & 0.995 & 0.585 \\
+Median $R^2$ (VS) & 0.425 & $-0.052$ \\
+\bottomrule
+\end{tabular}
+
+\medskip
+For MVAR, latent stability is monitored through the companion spectrum; the post-hoc diagnostic projection is
+\[
+  \tilde\lambda_i
+  =
+  \begin{cases}
+    \lambda_i/|\lambda_i|, & |\lambda_i|>1,\\
+    \lambda_i, & \text{otherwise.}
+  \end{cases}
+\]
+
+\begin{itemize}
+  \item gas and pure Vicsek are naturally stable; blackhole needs only minimal correction
+  \item VS variants clip only a few unstable modes, but the error remains high
+  \item the bottleneck is therefore not network size or mild latent instability; it is the aligned transport structure in the data
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Part I Summary by Regime Group}
+\centering
+\includegraphics[width=\textwidth,height=0.84\textheight,keepaspectratio]{thesis_r2_by_group.pdf}
+\end{frame}
+\fi
+
+\iffalse
+\begin{frame}{Part I Summary: MVAR Suffices, VS Exposes the Limit}
+\small
+\begin{enumerate}
+  \item \textbf{Shift alignment and POD} create a compact latent state that is close to linear on the constant-speed benchmark.
+  \item \textbf{MVAR} reaches near-perfect accuracy on gas and blackhole with transparent dynamics and \textbf{two orders of magnitude lower cost}.
+  \item \textbf{LSTM} does not systematically improve any regime family, despite massively larger parameter count.
+  \item The \textbf{forecast ceiling} is a property of the aligned data manifold, not a failure to use a larger nonlinear surrogate.
+  \item \textbf{VS failure mechanism:} the bulk shift becomes nearly memoryless --- the ROM forecasts the right shape in the wrong place.
+\end{enumerate}
+
+\bigskip
+\centering
+$\Longrightarrow$ \textbf{Part II asks not what is forecastable, but what mechanisms are identifiable.}
+\end{frame}
+\fi
