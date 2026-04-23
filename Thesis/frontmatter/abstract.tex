@@ -39,12 +39,41 @@ collective-motion data.%
 
 \vspace{1.5em}
 \noindent\textbf{Acknowledgments.}\enspace
-I am grateful to my thesis advisor, Prof.\ Björn Sandstede, for his
-guidance throughout this project, and to my second reader,
-Prof.\ Ian~Wong.
+Foremost, I am deeply grateful to my thesis advisor, Prof.\ Bj\"orn Sandstede,
+whose influence on this project has been profound and irreplaceable.
+He gave me the initial ideas that set the direction of this work, and remained
+a constant source of guidance as those ideas evolved into a full pipeline.
+Every time I brought him a result I did not understand, he found the right
+question to ask; every time I was moving in the wrong direction, he saw it
+before I did and redirected me with patience.
+His validation --- knowing that the mathematical choices I was making were
+sound --- gave me the confidence to push further than I would have dared
+on my own.
+His feedback on drafts was precise and direct, always pointing to what
+mattered most, and his high standards for clarity and rigor are visible
+throughout this text.
+I am also grateful to my second reader, Prof.\ Ian~Wong, for his thoughtful
+reading and encouragement.
+
+This thesis was an opportunity to see the full power of applied mathematics
+and modern computation working together.
+It draws on nearly every area I studied at Brown in the APMA--CS--Mathematics
+track: probability theory and statistics (KDE density fields, noise models,
+convergence analysis); linear algebra and functional analysis (POD, SVD
+truncation, Hilbert-space weak formulations, Kolmogorov $n$-widths);
+differential equations (ETDRK4 time-stepping, PDE library construction,
+the Fokker--Planck framing); machine learning and deep learning (LSTM
+sequence models, SR3 sparse regression); abstract algebra --- group theory
+enters through the continuous SO(2) rotational symmetry that motivates the
+shift-alignment step, where symmetry reduction has the flavour of quotienting
+by a group action; and topology, which threads through the persistent
+homology literature against which we position our approach.
+Applied mathematics is at its best when it refuses to stay in one lane ---
+and high-performance computing gave us the experimental scale to take those
+mathematical ideas seriously.
+
 I thank the Center for Computation and Visualization
 (CCV) at Brown University for providing access to
-the OSCAR high-performance computing
-cluster, on which all particle simulations,
-ROM training, WSINDy fitting, and ETDRK4 rollout computations were
-performed.
+the OSCAR high-performance computing cluster, on which all particle
+simulations, ROM training, WSINDy fitting, and ETDRK4 rollout computations
+were performed.
