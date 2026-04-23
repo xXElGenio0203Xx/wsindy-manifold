@@ -123,11 +123,11 @@ The nonlocal Morse field is
 \end{frame}
 \fi
 
-\begin{frame}[shrink=6]{Nine Regimes, One Field Space}
+\begin{frame}[shrink=6]{From Particles to the Shared Field Space}
 \begin{columns}[c]
 \column{0.48\textwidth}\centering
 \includegraphics[width=\textwidth,height=0.60\textheight,keepaspectratio]{traj_DYN4_t15.png}\\[2pt]
-{\small\textbf{Blackhole regime:} 300 agents, strong Morse attraction ($C_a{=}20$)}
+{\small\textbf{Representative regime (blackhole):} 300 agents, strong Morse attraction ($C_a{=}20$)}
 \column{0.48\textwidth}\centering
 \includegraphics[width=\textwidth,height=0.60\textheight,keepaspectratio]{kde_DO_DM01_dmill_C09_l05.pdf}\\[2pt]
 {\small\textbf{Coarse-grained fields:} density $\rho$,\; polarisation $\mathbf{p}$,\; Morse field $\Phi$}
@@ -135,15 +135,22 @@ The nonlocal Morse field is
 \medskip\centering\large
 $\rho{=}\displaystyle\sum_i K_h(x{-}x_i),\qquad
 \mathbf{p}{=}\displaystyle\sum_i K_h(x{-}x_i)\mathbf{v}_i,\qquad
-\Phi{=}W*\rho$
+\Phi{=}W*\rho$\\[0.3em]
+{\small\color{AccentGray}Same KDE pipeline applied to all 9 regimes $\times$ 4 IC families.}
 \end{frame}
 
-\begin{frame}[shrink=13]{Shared Benchmark Design}
+\begin{frame}[shrink=10]{Shared Benchmark Design}
 \centering
-\includegraphics[width=\textwidth,height=0.62\textheight,keepaspectratio]{thesis_benchmark_design.pdf}\\[3pt]
-{\small $N{=}300$,\; $64{\times}64$ grid,\; $K_h$: Gaussian $h{=}5$ cells,\; $\Delta t_{\mathrm{ROM}}{=}0.12\,\mathrm{s}$,\; 9 regimes $\times$ 4 IC families}\\[0.2em]
-{\small $K_h(z)=\tfrac{1}{2\pi h^2}e^{-\|z\|^2/(2h^2)}$;\quad $\rho=\textstyle\sum_i K_h(x{-}x_i)$,\; $\mathbf{p}=\textstyle\sum_i K_h(x{-}x_i)\mathbf{v}_i$,\; $\Phi=W*\rho$}\\[0.2em]
-{\small\textbf{VS update:}\; $v_i(t{+}\Delta t)=v_i(t)+\Delta t\,\mu_t F_i(t)$ \quad (VS variant: force also changes speed; CS variant: heading only)}
+\includegraphics[width=\textwidth,height=0.56\textheight,keepaspectratio]{thesis_benchmark_design.pdf}\\[4pt]
+% Summary chips -----------------------------------------------------
+{\footnotesize
+\colorbox{AccentROM!15}{\color{AccentROM}\textbf{9 regimes}}\;
+\colorbox{AccentROM!15}{\color{AccentROM}\textbf{4 IC families}}\;
+\colorbox{AccentWSINDy!15}{\color{AccentWSINDy}\textbf{shared KDE fields}}\;
+\colorbox{AccentWSINDy!15}{\color{AccentWSINDy}\textbf{same train/test split}}%
+}\\[0.4em]
+{\small $N{=}300$,\; $64{\times}64$ grid,\; $h{=}5$ cells,\; $\Delta t_{\mathrm{ROM}}{=}0.12\,\mathrm{s}$}\\[0.2em]
+{\footnotesize\color{AccentGray}VS variant: force also changes speed\enspace·\enspace CS variant: heading only}
 \end{frame}
 
 \iffalse

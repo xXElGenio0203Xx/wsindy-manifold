@@ -43,18 +43,23 @@ $\mathbf{p}$ and Morse interactions survive in $\Phi$.
 \begin{frame}[plain]
 \centering
 \begin{columns}[c]
-\column{0.50\textwidth}\centering
-\includegraphics[width=\textwidth,height=0.68\textheight,keepaspectratio]{traj_DYN7_t38.png}\\[2pt]
-{\small Microscopic: 300 self-propelled particles}
-\column{0.50\textwidth}\centering
-\includegraphics[width=\textwidth,height=0.68\textheight,keepaspectratio]{kde_DO_DM01_dmill_C09_l05.pdf}\\[2pt]
-{\small Coarse-grained fields: $\rho$,\; $\mathbf{p}$,\; $\Phi$}
+\column{0.42\textwidth}\centering
+\includegraphics[width=\textwidth,height=0.62\textheight,keepaspectratio]{traj_DYN7_t38.png}\\[4pt]
+{\small\color{AccentGray}\textbf{particles}}\\
+{\footnotesize\color{AccentGray}$N{=}300$ self-propelled agents}
+\column{0.08\textwidth}\centering
+{\Huge\color{AccentROM}$\longrightarrow$}\\[2pt]
+{\scriptsize\color{AccentGray}KDE}
+\column{0.42\textwidth}\centering
+\includegraphics[width=\textwidth,height=0.62\textheight,keepaspectratio]{kde_DO_DM01_dmill_C09_l05.pdf}\\[4pt]
+{\small\color{AccentGray}\textbf{coarse fields:}\; $\rho,\ \mathbf{p},\ \Phi$}
 \end{columns}
-\medskip
-\large
-$\rho=\displaystyle\sum_i K_h(x{-}x_i),\qquad
-\mathbf{p}=\displaystyle\sum_i K_h(x{-}x_i)\mathbf{v}_i,\qquad
-\Phi=W*\rho$
+
+\vspace{0.6em}
+\centering\normalsize
+$\rho{=}\displaystyle\sum_i K_h(x{-}x_i),\qquad
+\mathbf{p}{=}\displaystyle\sum_i K_h(x{-}x_i)\mathbf{v}_i,\qquad
+\Phi{=}W*\rho$
 \end{frame}
 
 \iffalse
@@ -65,17 +70,32 @@ $\rho=\displaystyle\sum_i K_h(x{-}x_i),\qquad
 \fi
 
 \begin{frame}{Two Headline Results}
-\large
-\begin{itemize}\setlength{\itemsep}{1.8em}
-  \item \textbf{MVAR matches or exceeds LSTM accuracy with $116{\times}$ fewer parameters}\\[0.3em]
-        {\normalsize Aligned latent dynamics are near-linear --- model capacity is not the bottleneck.}
-  \item \textbf{WSINDy recovers the PDE skeleton ($R^2_{\mathrm{wf},\rho}{>}0.99$) in 8 of 9 regimes --- but closure can still fail}\\[0.3em]
-        {\normalsize Strong identification $\not\Rightarrow$ adequate closure: missing saturation causes autonomous rollout to diverge.}
-\end{itemize}
-\medskip
-\normalsize\centering
-$R^2_{\mathrm{fc}} = 1 - \dfrac{\|\rho^*-\hat\rho\|_F^2}{\|\rho^*-\bar\rho\|_F^2}$\quad\textbf{\textit{vs.}}\quad$R^2_{\mathrm{wf},\rho} = 1 - \dfrac{\|\mathbf{b}_\rho - \mathbf{G}_\rho\mathbf{w}^*_\rho\|^2}{\|\mathbf{b}_\rho\|^2}$\\[0.5em]
-\large\textbf{Strong weak-form fit can coexist with failed autonomous rollout.}
+\vspace{-0.3em}
+\begin{beamercolorbox}[wd=\textwidth,sep=0.55em,rounded=true]{}%
+\color{AccentROM}\rule{4pt}{1.1em}\hspace{0.5em}%
+\begin{minipage}[t]{0.92\textwidth}\color{black}
+\textbf{\large MVAR matches or exceeds LSTM accuracy with $\mathbf{116\times}$ fewer parameters.}\\[0.25em]
+{\small\color{AccentGray}Aligned latent dynamics are near-linear --- model capacity is not the bottleneck.}
+\end{minipage}
+\end{beamercolorbox}
+
+\vspace{0.8em}
+\begin{beamercolorbox}[wd=\textwidth,sep=0.55em,rounded=true]{}%
+\color{AccentWSINDy}\rule{4pt}{1.1em}\hspace{0.5em}%
+\begin{minipage}[t]{0.92\textwidth}\color{black}
+\textbf{\large WSINDy recovers the PDE skeleton ($R^2_{\mathrm{wf},\rho}{>}0.99$) in 8 of 9 regimes --- but closure can still fail.}\\[0.25em]
+{\small\color{AccentGray}Strong identification $\not\Rightarrow$ adequate closure: missing saturation causes autonomous rollout to diverge.}
+\end{minipage}
+\end{beamercolorbox}
+
+\vfill
+\begin{beamercolorbox}[wd=\textwidth,sep=0.35em,center]{}
+\footnotesize
+$R^2_{\mathrm{fc}} = 1 - \dfrac{\|\rho^*-\hat\rho\|_F^2}{\|\rho^*-\bar\rho\|_F^2}$\quad\textbf{\textit{vs.}}\quad
+$R^2_{\mathrm{wf},\rho} = 1 - \dfrac{\|\mathbf{b}_\rho - \mathbf{G}_\rho\mathbf{w}^*_\rho\|^2}{\|\mathbf{b}_\rho\|^2}$
+\\[0.3em]
+{\small\textbf{Strong weak-form fit can coexist with failed autonomous rollout.}}
+\end{beamercolorbox}
 \end{frame}
 
 \begin{frame}[shrink=25]{Two Pipelines, Two Questions}

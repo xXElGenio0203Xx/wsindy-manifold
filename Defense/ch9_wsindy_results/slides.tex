@@ -46,24 +46,24 @@
 \end{frame}
 \fi
 
-\begin{frame}[shrink=34]{Per-Regime Identification Verdict}
+\begin{frame}[shrink=32]{Per-Regime Identification Verdict}
 \centering
 \normalsize$R^2_{\mathrm{wf},\rho} = 1 - \|\mathbf{b}_\rho - \mathbf{G}_\rho\mathbf{w}^*_\rho\|^2\,/\,\|\mathbf{b}_\rho\|^2$\\[0.4em]
 \small
-\begin{tabular}{lcccl}
+\begin{tabular}{lccll}
 \toprule
 \textbf{Regime} & $R^2_{\mathrm{wf},\rho}$ & $R^2_{\mathrm{wf},p}$ & \textbf{Closure} & \textbf{Verdict} \\
 \midrule
-gas (CS)        & 0.9998 & 0.69 & partial    & \cellcolor{green!25}strong \\
-blackhole (CS)  & 0.9995 & 0.79 & partial    & \cellcolor{green!25}strong \\
-supernova (CS)  & 0.9990 & 0.34 & inadequate & \cellcolor{yellow!40}moderate \\
-crystal (CS)    & 0.9999 & 0.58 & partial    & \cellcolor{green!25}strong \\
-pure Vicsek     & 1.0000 & 0.82 & adequate   & \cellcolor{green!25}strong \\
+gas (CS)        & 0.9998 & 0.69 & \cellcolor{AccentAmber!25}partial     & \cellcolor{AccentWSINDy!25}strong   \\
+blackhole (CS)  & 0.9995 & 0.79 & \cellcolor{AccentAmber!25}partial     & \cellcolor{AccentWSINDy!25}strong   \\
+supernova (CS)  & 0.9990 & 0.34 & \cellcolor{AccentFail!25}inadequate   & \cellcolor{AccentAmber!30}moderate \\
+crystal (CS)    & 0.9999 & 0.58 & \cellcolor{AccentAmber!25}partial     & \cellcolor{AccentWSINDy!25}strong   \\
+pure Vicsek     & 1.0000 & 0.82 & \cellcolor{AccentWSINDy!25}adequate   & \cellcolor{AccentWSINDy!25}strong   \\
 \midrule
-gas\_VS         & 0.9990 & 0.74 & partial    & \cellcolor{green!25}strong \\
-blackhole\_VS   & 0.9520 & 0.21 & inadequate & \cellcolor{orange!35}partial \\
-supernova\_VS   & 0.9970 & 0.39 & inadequate & \cellcolor{yellow!40}moderate \\
-crystal\_VS     & 0.9999 & 0.86 & inadequate & \cellcolor{green!25}strong \\
+gas\_VS         & 0.9990 & 0.74 & \cellcolor{AccentAmber!25}partial     & \cellcolor{AccentWSINDy!25}strong   \\
+blackhole\_VS   & 0.9520 & 0.21 & \cellcolor{AccentFail!25}inadequate   & \cellcolor{AccentFail!25}partial   \\
+supernova\_VS   & 0.9970 & 0.39 & \cellcolor{AccentFail!25}inadequate   & \cellcolor{AccentAmber!30}moderate \\
+crystal\_VS     & 0.9999 & 0.86 & \cellcolor{AccentFail!25}inadequate   & \cellcolor{AccentWSINDy!25}strong   \\
 \bottomrule
 \end{tabular}
 
@@ -74,9 +74,12 @@ crystal\_VS     & 0.9999 & 0.86 & inadequate & \cellcolor{green!25}strong \\
   \item Closure is reported separately because identification and rollout can decouple.
 \end{itemize}
 \smallskip
-{\footnotesize\textbf{Verdict key:}\enspace $\checkmark\checkmark$~\textbf{strong}\enspace $\checkmark$~\textbf{moderate}\enspace $\sim$~\textbf{partial}/\textbf{adequate}\enspace $\times$~\textbf{inadequate}}
-\smallskip
-{\small\textbf{Strong ID:} $\;$\texttt{div\_p} coeff $\in[-1.01,-0.95]$;\;$R^2_{\mathrm{wf},\rho}>0.99$;\; plausible signs;\; support stable across 6 test-function scales}
+\begin{beamercolorbox}[wd=\textwidth,sep=0.35em,rounded=true]{}%
+\color{AccentWSINDy}\rule{3pt}{0.9em}\hspace{0.4em}%
+\begin{minipage}[t]{0.92\textwidth}\footnotesize\color{black}
+\textbf{Strong-ID criteria:}\; \texttt{div\_p} coeff $\in[-1.01,-0.95]$;\; $R^2_{\mathrm{wf},\rho}{>}0.99$;\; plausible signs;\; support stable across 6 test-function scales.
+\end{minipage}
+\end{beamercolorbox}
 \end{frame}
 
 \begin{frame}[shrink=10]{Pure Vicsek: WSINDy Validates against Kinetic Theory}
@@ -316,8 +319,15 @@ The $p_y$ equation is symmetric under $x\leftrightarrow y$.
 
 \begin{frame}{Momentum Equation: Cross-Regime Term Selection}
 \centering
-\includegraphics[width=\textwidth,height=0.74\textheight,keepaspectratio]{thesis_regime_heatmap_px.pdf}\\[4pt]
-{\small\textbf{Self-advection and pressure are universal; Morse forcing discriminates attraction/repulsion regimes.}}
+\includegraphics[width=\textwidth,height=0.66\textheight,keepaspectratio]{thesis_regime_heatmap_px.pdf}\\[6pt]
+% Column callouts ----------------------------------------------------
+{\footnotesize
+\colorbox{AccentROM!18}{\color{AccentROM}\textbf{$\partial_x\rho$\,: pressure}}\quad
+\colorbox{AccentROM!18}{\color{AccentROM}\textbf{$\nabla\!\cdot(p_x\mathbf{p})$\,: self-advection}}\quad
+\colorbox{AccentFail!18}{\color{AccentFail}\textbf{$\rho\,\partial_x\Phi$\,: Morse forcing}}%
+}\\[3pt]
+{\small\textbf{Self-advection and pressure are universal; Morse forcing discriminates attraction/repulsion regimes.}}\\[1pt]
+{\footnotesize\color{AccentGray}Pure Vicsek row: Morse column absent.\enspace·\enspace Attractive regimes: Morse column active.}
 \end{frame}
 
 \iffalse
@@ -327,36 +337,60 @@ The $p_y$ equation is symmetric under $x\leftrightarrow y$.
 \end{frame}
 \fi
 
-\begin{frame}[shrink=4]{Identification Success, Closure Failure}
+\begin{frame}[shrink=6]{Identification Success, Closure Failure}
 \begin{columns}[T]
-\column{0.54\textwidth}
-\normalsize
-\textbf{What WSINDy finds:} sparse effective laws with $R^2_{\mathrm{wf},\rho}{>}0.999$:
-\[
-  \rho_t \approx -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi).
-\]
-Under autonomous rollout, the attractive feedback loop is:
-\[
-  \rho\uparrow
-  \Rightarrow
-  |\nabla\Phi|\uparrow
-  \Rightarrow
-  \rho\,\partial_x\Phi\uparrow
-  \Rightarrow
-  \text{further aggregation}
-\]
-\textbf{Missing:} a saturation/congestion term to arrest the feedback.\\[0.5em]
-\begin{itemize}\normalsize\setlength{\itemsep}{0.3em}
-  \item Gas \& crystal: \textbf{strong} id, \textbf{partial} closure
-  \item Blackhole (CS): \textbf{strong} id, \textbf{partial} closure
-  \item Pure Vicsek: \textbf{strong} id, \textbf{adequate} closure
-  \item Blackhole VS: \textbf{partial} id, \textbf{inadequate} closure
-\end{itemize}
-\column{0.44\textwidth}
+% ---- Left: identified law --------------------------------------------
+\column{0.32\textwidth}
 \centering
-{\small x-slices through density peak: top = truth, bottom = unclosed rollout}\\[-1pt]
-{\footnotesize\textit{(1D synthetic slice through $\rho$ peak; qualitative blowup pattern holds in 2D)}}
-\includegraphics[width=\textwidth,height=0.62\textheight,keepaspectratio]{thesis_closure_blowup.pdf}\\[-2pt]
-{\scriptsize \textbf{Id is strong} ($R^2_{\mathrm{wf},\rho}{>}0.999$) --- missing saturation causes blowup}
+{\small\color{AccentWSINDy}\textbf{Identified law}}\\[0.3em]
+\begin{beamercolorbox}[wd=\textwidth,sep=0.4em,rounded=true]{}%
+\color{AccentWSINDy}\rule{3pt}{1em}\hspace{0.3em}%
+\begin{minipage}[t]{0.88\textwidth}\color{black}\small
+\[
+\rho_t \approx -\nabla\!\cdot\mathbf{p} - c\,\nabla\!\cdot(\rho\nabla\Phi)
+\]
+\vspace{-0.9em}
+\end{minipage}
+\end{beamercolorbox}
+\vspace{0.4em}
+{\footnotesize $R^2_{\mathrm{wf},\rho}{>}0.999$ on held-out data.}\\[0.6em]
+{\footnotesize\color{AccentGray}\textbf{Missing:} a saturation / congestion term to arrest the feedback.}
+
+% ---- Center: feedback cycle ------------------------------------------
+\column{0.32\textwidth}
+\centering
+{\small\color{AccentFail}\textbf{Unarrested feedback loop}}\\[0.3em]
+\begin{tikzpicture}[
+  >={Stealth[length=2mm]},
+  node distance=0.9cm and 0.7cm,
+  every node/.style={font=\footnotesize},
+  state/.style={rounded corners=2pt, draw=AccentFail, very thick,
+                fill=AccentFail!8, inner sep=3pt, minimum width=1.6cm,
+                align=center},
+]
+\node[state] (rho)  {$\rho\uparrow$};
+\node[state, right=of rho] (gphi) {$|\nabla\Phi|\uparrow$};
+\node[state, below=of gphi] (drift) {$\rho\,\partial_x\Phi\uparrow$};
+\node[state, below=of rho]  (agg)   {aggregation};
+\draw[->, very thick, AccentFail] (rho) -- (gphi);
+\draw[->, very thick, AccentFail] (gphi) -- (drift);
+\draw[->, very thick, AccentFail] (drift) -- (agg);
+\draw[->, very thick, AccentFail] (agg) -- (rho);
+\end{tikzpicture}\\[0.4em]
+{\footnotesize\color{AccentGray}No mechanism bounds $\rho$ from above.}
+
+% ---- Right: closure figure -------------------------------------------
+\column{0.32\textwidth}
+\centering
+{\small\color{AccentFail}\textbf{Autonomous rollout blowup}}\\[0.2em]
+\includegraphics[width=\textwidth,height=0.52\textheight,keepaspectratio]{thesis_closure_blowup.pdf}\\[2pt]
+{\scriptsize\color{AccentGray} top: truth\enspace·\enspace bottom: unclosed rollout}\\
+{\scriptsize\color{AccentGray}\textit{1D synthetic slice; pattern holds in 2D}}
 \end{columns}
+
+\vspace{0.7em}
+\begin{beamercolorbox}[wd=\textwidth,sep=0.4em,center,rounded=true]{}
+\color{AccentFail}\rule{3pt}{0.9em}\hspace{0.4em}%
+\textbf{Strong identification can coexist with failed autonomous rollout.}
+\end{beamercolorbox}
 \end{frame}
