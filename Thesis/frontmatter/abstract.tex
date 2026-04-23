@@ -40,45 +40,16 @@ collective-motion data.%
 \vspace{1.5em}
 \noindent\textbf{Acknowledgments.}\enspace
 I am grateful to my thesis advisor, Prof.\ Bj\"orn Sandstede, who gave me
-the initial ideas that set the direction of this work and remained a source
-of guidance as those ideas evolved into a full pipeline.
+the initial ideas that shaped this project and continued to guide it as
+those ideas developed into a full research pipeline.
 I am also grateful to my second reader, Prof.\ Ian~Wong, for his thoughtful
 reading and encouragement.
 
-This thesis was an opportunity to see the full power of applied mathematics
-and modern computation working together.
-Looking back, it draws on nearly every area I studied at Brown in the
-APMA--CS--MATH track, often in ways I did not anticipate when I first
-encountered those subjects.
-Probability theory and statistics underlie the KDE fields that convert
-discrete agent trajectories into continuous density snapshots, the noise
-models, and the convergence analysis.
-Linear algebra and functional analysis provide the backbone: POD and SVD
-truncation, the Hilbert-space formulation of the weak form, and the
-Kolmogorov $n$-width theory that explains \emph{why} transport-dominated
-systems resist linear reduction.
-Differential equations are everywhere --- in the ETDRK4 integrator, in
-the PDE candidate library, in the Fokker--Planck framing of the mean-field
-limit.
-Machine learning and deep learning enter through the LSTM sequence models
-and the SR3 sparse regression framework.
-Abstract algebra makes a perhaps unexpected appearance: the continuous
-SO(2) rotational symmetry of the system is precisely the kind of group
-action studied in algebra, and the shift-alignment step is, in essence,
-quotienting the data by that group action to obtain a canonical
-representative.
-Topology threads through the persistent homology literature against which
-we position our approach, and statistics returns at the end in the form of
-stability selection and model-order criteria.
-I am grateful to all the faculty and courses at Brown that built these
-foundations in me, and I find it exciting that a single undergraduate
-thesis could call on all of them at once.
-Applied mathematics is at its best when it refuses to stay in one lane ---
-and high-performance computing gave us the experimental scale to take those
-mathematical ideas seriously.
-
-I thank the Center for Computation and Visualization
-(CCV) at Brown University for providing access to
-the OSCAR high-performance computing cluster, on which all particle
-simulations, ROM training, WSINDy fitting, and ETDRK4 rollout computations
-were performed.
+This thesis gave me the opportunity to see how many different parts of
+mathematics and computation can come together in a single problem.
+I am grateful to the faculty and courses at Brown that built the foundation
+for this work across applied mathematics, mathematics, and computer science.
+I also thank the Center for Computation and Visualization (CCV) at Brown
+University for providing access to the OSCAR high-performance computing
+cluster, on which all particle simulations, ROM training, WSINDy fitting,
+and ETDRK4 rollout computations were performed.
