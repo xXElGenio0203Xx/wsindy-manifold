@@ -10,7 +10,7 @@ Chapters~\ref{ch:rom_results} and~\ref{ch:wsindy_results}.
 \label{sec:appE_snapshots}
 % -----------------------------------------------------------------------
 
-The following density-snapshot grids complement the representative gas
+The following density-snapshot grid complements the representative gas
 regime shown in Figure~\ref{fig:ch7_snapshots_gas} of the main text.
 
 \begin{figure}[H]
@@ -72,16 +72,12 @@ In summary, MVAR degrades most rapidly on supernova (fast spatial expansion),
 while LSTM degrades most rapidly on variable-speed variants.
 
 % -----------------------------------------------------------------------
-\section{$R^2$ by regime group and density--latent comparison}
+\section{$R^2$ by regime group}
 % -----------------------------------------------------------------------
 
 Figure~\ref{fig:appE_r2_by_group} disaggregates the forecast $R^2$ by
 regime group, confirming that MVAR dominates on CS regimes while LSTM
 narrows the gap only for a few well-behaved VS cases.
-Density-space and latent-space $R^2$ are closely aligned across all test
-runs: the median absolute gap $|R^2_{\text{density}} - R^2_{\text{latent}}|$
-is below $0.02$ for MVAR and $0.04$ for LSTM, confirming that the POD
-truncation preserves forecast quality.
 
 \begin{figure}[H]
 \centering
@@ -96,19 +92,21 @@ Figure~\ref{fig:ch7_r2_heatmap}.}
 \section{Mass conservation and phase dynamics}
 % -----------------------------------------------------------------------
 
-Both MVAR and LSTM preserve total mass to machine precision
-($|M(t)/M_0 - 1| < 10^{-14}$) throughout the forecast horizon, since the
-POD lifting step is a linear injection that exactly preserves the column
-space of the snapshot matrix.
-Figure~\ref{fig:appE_phase_dynamics} displays the shift-alignment
-statistics aggregated across regimes.
+In practice, both MVAR and LSTM preserve total mass to machine precision
+($|M(t)/M_0 - 1| < 10^{-14}$) throughout the forecast horizon, after the
+inverse POD transform and the adopted mass-postprocessing step (clipping
+and renormalisation) described in Chapter~\ref{ch:global_pod_pipeline}.
+Figure~\ref{fig:appE_phase_dynamics} displays the shift-magnitude
+evolution for each benchmark regime.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{../Thesis_Figures/thesis_phase_dynamics_detail.pdf}
-\caption{Aggregate phase (shift) dynamics: (a)~mean shift trajectory,
-(b)~PSD, (c)~AR($p$) predictability, (d)~shift variance,
-(e)~autocorrelation, (f)~legend.}
+\caption{Shift magnitude $|\delta(t)|$ (pixels) over the forecast
+horizon for each of the eight benchmark regimes.  Constant-speed
+regimes (top row) show smooth quasi-periodic oscillations;
+variable-speed variants (bottom row) exhibit faster, noisier
+fluctuations that are harder to predict with a fixed-lag AR model.}
 \label{fig:appE_phase_dynamics}
 \end{figure}
 
